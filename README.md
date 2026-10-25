@@ -52,27 +52,16 @@ Either way, I have provided detailed instructions for installation and usage bel
 2. install [node.js](https://nodejs.org/)
 3. open Command Prompt/Terminal **in the folder where `index.js is` located** (right click -> open in terminal or use the `cd` command to change the directory)
 4. install the Puppeteer library by running `npm i puppeteer` in your opened Command Prompt/Terminal window*
-5. provide your **Education Perfect credentials** through environment variables - the program will use them for auto-login  
+5. set your **Education Perfect credentials** as environment variables - the program will use them for auto-login  
+   - **Windows (Command Prompt):** `set EP_EMAIL=you@example.com` then `set EP_PASSWORD=your-password`  
+   - **Windows (PowerShell):** `$env:EP_EMAIL='you@example.com'; $env:EP_PASSWORD='your-password'`  
+   - **Linux/macOS (Terminal):** `export EP_EMAIL='you@example.com' EP_PASSWORD='your-password'`  
 
 
 _*...or whatever method is used to install js libraries on your platform... Google it if necessary._  
-_*To enable auto-login, set the `EP_EMAIL` and `EP_PASSWORD` environment variables before running the script (and keep
-the credential values out of the source file). Examples:_
-- **Windows (PowerShell):**
-  ```powershell
-  $env:EP_EMAIL="your-email@example.com"
-  $env:EP_PASSWORD="your-password"
-  ```
-- **Windows (CMD):**
-  ```cmd
-  set EP_EMAIL=your-email@example.com
-  set EP_PASSWORD=your-password
-  ```
-- **Linux / macOS (Bash / Zsh):**
-  ```bash
-  export EP_EMAIL="your-email@example.com"
-  export EP_PASSWORD="your-password"
-  ```
+_*To enable auto-login, set **both** `EP_EMAIL` and `EP_PASSWORD` before running the script (and keep
+the credential values out of the source file). Forgot to set them? No worries - the browser still opens and you can
+log in manually. You can also edit the script directly, but environment variables are the recommended approach._  
 
 
 *NOTE: if Puppeteer complains about the lack of a Chromium browser the first time you run it, open up Terminal and run 
@@ -138,7 +127,7 @@ it won't be detected.*
 ## Details
 ### Expected behavior
 When you run the script, it should:  
-* Open a new browser window (that does not have any user data, so you must log in to EP manually - or set the `EP_EMAIL` and `EP_PASSWORD` environment variables for auto-login);  
+* Open a new browser window (that does not have any user data, so you log in to EP manually - or set both the `EP_EMAIL` and `EP_PASSWORD` environment variables for auto-login);  
 * Load EP home page;  
 * All auto-answer functionality is loaded in the background, ready to be used whenever;  
 * Log in for you if you provided your credentials.  
@@ -171,11 +160,10 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
   edge cases, and for those that still fail to match, the self-learning function will take care of that in *most* of the 
   remaining scenarios. There are still extreme cases of very bad formatting (such as commas with repeated words and 
   blatant disparities between displayed answer and expected answer) where a question may not get correctly answered. 
-  These should also get fixed soon. 
-
 
 
 ## Known limitations
+
 - **Audio-based tasks aren't supported yet.**
 - The answer parser handles *most* word-list formatting edge cases, but extreme cases may still result in incorrect answers; the self-learning error-correction feature helps, but doesn't cover every scenario.
 - The anti-cheat bypass depends on how Education Perfect's anti-cheat features behave, and might stop working when the service changes.
@@ -199,6 +187,7 @@ and is not part of this repository.
 
 
 ## License and permission
+
 This project does not claim any license and does not grant any permission for the use of Education Perfect's services
 or for automated access to them. Use of the service may be subject to [Education Perfect's terms of service](https://www.educationperfect.com/).
 The code and documentation here are provided as-is for educational and hobby purposes.

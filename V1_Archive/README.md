@@ -1,9 +1,9 @@
 # EducationPerfected
-#### Javascript user-script to automatically answer Education Perfect language questions at **high** speeds.  
+#### JavaScript user-script to automatically answer Education Perfect language questions at **high** speeds.  
 Works for word-word (translation) tasks and Dash mode.  
 **Does not work with Audio-tasks, YET.**  <br><br>
 
-### **Read this then read the README of this repository (the V2 program is the [index.js](../index.js) in the root) [here](../README.md)**
+### **Read this, then read the [main README of this repository](../README.md) (the V2 program is the [index.js](../index.js) in the root)**
 
 ![example image](result.png)
 
