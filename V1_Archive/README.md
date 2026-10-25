@@ -3,7 +3,7 @@
 Works for word-word (translation) tasks and Dash mode.  
 **Does not work with Audio-tasks, YET.**  <br><br>
 
-### **Read this then read the README inside v2 folder [here](https://github.com/KEN-2000l/EducationPerfected/tree/main/v2)**
+### **Read this then read the README of this repository (the V2 program is the [index.js](../index.js) in the root) [here](../README.md)**
 
 ![example image](result.png)
 

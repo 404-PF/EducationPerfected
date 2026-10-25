@@ -4,8 +4,8 @@ const puppeteer = require('puppeteer');
 
 (async () => {
     const DIR = {
-        email: 'YOUR EMAIL',  // replace YOUR EMAIL with your email for auto login (keep everything else the same)
-        password: 'YOUR PASSWORD',  // replace YOUR PASSWORD with your password for auto login
+        email: process.env.EP_EMAIL,  // set EP_EMAIL environment variable to your Education Perfect email for auto login
+        password: process.env.EP_PASSWORD,  // set EP_PASSWORD environment variable to your Education Perfect password for auto login
 
         login_url: 'https://app.educationperfect.com/app/login',
 
@@ -35,6 +35,11 @@ const puppeteer = require('puppeteer');
         exit_continue_button_css: 'button.continue-button',
 
         continue_button_css: 'button#continue-button',
+    }
+
+    if (!DIR.email || !DIR.password) {
+        console.log('EP_EMAIL and EP_PASSWORD environment variables are not set; cannot auto-login.');
+        return;
     }
 
     // launch browser

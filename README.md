@@ -1,19 +1,26 @@
-> [!IMPORTANT] 
-> **This project is abandoned**
-
 # EducationPerfected
 
 #### Javascript program to automatically answer Education Perfect language questions at **high** speeds.
 Works for word-to-word (translation) tasks and Dash mode.  
-**Does not work with Audio-based tasks, YET.**
-
+**Does not work with Audio-based tasks, YET.** 
 
 ![example image](result.png)
 
 
-**CURRECT STATUS: ALL intended features functional.***  
-_*Last time I checked, which was... two years ago???_
+## Status
 
+> [!WARNING]
+> **This repository is an experimental continuation** of the original EducationPerfected project. It is *not* the original, actively maintained project.
+
+The original project was started by [akioweh](https://github.com/KEN-2000l) and is now **[archived](https://github.com/KEN-2000l/EducationPerfected)**. This repository continues that work as an experimental effort.
+
+The archived project's README described its status as: **_CURRECT STATUS: ALL intended features functional._**  
+_*Last time I checked, which was... two years ago???*_  
+That claim was never re-verified here, so this project should be treated as **experimental**.
+
+- The program in this repository is version **V1.4** of the V2 approach, which is an independent Javascript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to carry out web-browser automation.
+- As of the latest updates, the anti-cheat workaround no longer triggers anti-cheat detection messages.
+- However, this continuation has not been comprehensively tested against the live Education Perfect service, and behavior may change or break as the service updates.
 
 ## Introduction
 This project began as a way automate tasks on [Education Perfect](https://www.educationperfect.com/) 
@@ -22,7 +29,7 @@ As a perfectionist myself, I set out to perfect Education Perfect - making Educa
 The main goal/target were and still are language tasks that require you to translate words/phrases from one language
 to another.  
 Of course, there are also tasks in the same format but with audio involved. _Unfortunately, we (me or any
-other kind contributors) have not been able to automate those tasks._
+other kind contributors) have not been able to automate those tasks._ 
 
 The obvious approach was to write a simple userscript in Javascript that works by being injected into the browser 
 debugger console. This is the classic method to perform simple automation in browsers. This method is simple, 
@@ -45,13 +52,14 @@ Either way, I have provided detailed instructions for installation and usage bel
 2. install [node.js](https://nodejs.org/)
 3. open Command Prompt/Terminal **in the folder where `index.js is` located** (right click -> open in terminal or use the `cd` command to change the directory)
 4. install the Puppeteer library by running `npm i puppeteer` in your opened Command Prompt/Terminal window*
-5. edit the downloaded script (using notepad) to fill in your **EP credentials** at **lines 7 & 8** if you want auto-login\*\*
+5. provide your **Education Perfect credentials** through environment variables - the program will use them for auto-login  
 
 
 _*...or whatever method is used to install js libraries on your platform... Google it if necessary._  
-_\*\*yes, this program is completely safe and will not steal your password or anything... Ask anyone who understands
-Javascript code. Make sure you replace only `YOUR EMAIL` with your exact email used to log in to EP (keep everything 
-else in that line intact, including the quote characters); same for `YOUR PASSWORD`_
+_*To enable auto-login, set the `EP_EMAIL` and `EP_PASSWORD` environment variables before running the script (and keep
+the credential values out of the source file). If you prefer, you can still edit the script directly, but environment
+variables are the recommended approach._  
+
 
 *NOTE: if Puppeteer complains about the lack of a Chromium browser the first time you run it, open up Terminal and run 
 `node node_modules/puppeteer/install.js` to manually install the browser that is supposed to be bundled with Puppeteer.*
@@ -116,8 +124,7 @@ it won't be detected.*
 ## Details
 ### Expected behavior
 When you run the script, it should:  
-* Open a new browser window (that does not have any user data, so you must log in to EP manually. Alternatively, fill 
-in your details in the script file at line 7 & 8 for auto-login);  
+* Open a new browser window (that does not have any user data, so you must log in to EP manually - or set the `EP_EMAIL` and `EP_PASSWORD` environment variables for auto-login);  
 * Load EP home page;  
 * All anto-answer functionality is loaded in the background, ready to be used whenever;  
 * Log in for you if you provided your credentials.  
@@ -150,9 +157,14 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
   edge cases, and for those that still fail to match, the self-learning function will take care of that in *most* of the 
   remaining scenarios. There are still extreme cases of very bad formatting (such as commas with repeated words and 
   blatant disparities between displayed answer and expected answer) where a question may not get correctly answered. 
-  These should also get fixed soon.
+  These should also get fixed soon. 
 
 
+
+## Known limitations
+- **Audio-based tasks are not supported yet.**
+- The answer parser handles *most* word-list formatting edge cases, but extreme cases may still result in incorrect answers; the self-learning error-correction feature helps, but does not cover every scenario.
+- The anti-cheat bypass depends on how Education Perfect's anti-cheat features behave, and may stop working when the service changes.
 
 ## Future plans
 This is a purely hobby-driven project. This means I do not guarantee consistent development or continued maintenance of
@@ -167,3 +179,12 @@ TODO list? or never-DO list? no one knows :P
 - Support for audio-based tasks
 - Dedicated anti-cheat bypass features
 - Even better answer parsing
+
+A dedicated desktop app has also been floated as a possible future direction; it would be a separate, experimental effort
+and is not part of this repository.
+
+
+## License and permission
+This project does not claim any license and does not grant any permission for the use of Education Perfect's services
+or for automated access to them. Use of the service may be subject to [Education Perfect's terms of service](https://www.educationperfect.com/).
+The code and documentation here are provided as-is for educational and hobby purposes.
