@@ -4,8 +4,8 @@ const puppeteer = require('puppeteer');
 
 (async () => {
     const DIR = {
-        email: 'YOUR EMAIL',  // replace YOUR EMAIL with your email for auto login (keep everything else the same)
-        password: 'YOUR PASSWORD',  // replace YOUR PASSWORD with your password for auto login
+        email: process.env.EP_EMAIL,  // set EP_EMAIL environment variable to your Education Perfect email for auto login
+        password: process.env.EP_PASSWORD,  // set EP_PASSWORD environment variable to your Education Perfect password for auto login
 
         login_url: 'https://app.educationperfect.com/app/login',
 
@@ -52,15 +52,20 @@ const puppeteer = require('puppeteer');
             console.log('Waiting for login page to load...');
             await page.waitForSelector(DIR.username_css);
 
-            // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
-            console.log('Filling in login details...');
-            await page.type(DIR.username_css, DIR.email);
-            await page.type(DIR.password_css, DIR.password);
-            await page.keyboard.press('Enter');
+            if (DIR.email && DIR.password) {
+                // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
+                console.log('Filling in login details...');
+                await page.type(DIR.username_css, DIR.email);
+                await page.type(DIR.password_css, DIR.password);
+                await page.keyboard.press('Enter');
 
-            console.log('Waiting for home page to load...');
-            // await page.waitForSelector(DIR.home_css, { timeout: 0 });
-            console.log('EP Home page loaded; Logged in.');
+                console.log('Waiting for home page to load...');
+                // await page.waitForSelector(DIR.home_css, { timeout: 0 });
+                console.log('EP Home page loaded; Logged in.');
+            } else {
+                console.log('EP_EMAIL and EP_PASSWORD are not set; skipping auto-login. Log in manually in the opened browser window.');
+                await page.waitForSelector(DIR.home_css, { timeout: 0 });
+            }
 
 
             // ===== Auto-answer code starts here ===== //
