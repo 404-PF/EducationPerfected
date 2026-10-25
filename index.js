@@ -38,8 +38,7 @@ const puppeteer = require('puppeteer');
     }
 
     if (!DIR.email || !DIR.password) {
-        console.log('EP_EMAIL and EP_PASSWORD environment variables are not set; cannot auto-login.');
-        return;
+        console.log('EP_EMAIL and EP_PASSWORD environment variables are not set. You can log in manually in the opened browser window.');
     }
 
     // launch browser
@@ -57,15 +56,16 @@ const puppeteer = require('puppeteer');
             console.log('Waiting for login page to load...');
             await page.waitForSelector(DIR.username_css);
 
-            // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
-            console.log('Filling in login details...');
-            await page.type(DIR.username_css, DIR.email);
-            await page.type(DIR.password_css, DIR.password);
-            await page.keyboard.press('Enter');
-
-            console.log('Waiting for home page to load...');
-            // await page.waitForSelector(DIR.home_css, { timeout: 0 });
-            console.log('EP Home page loaded; Logged in.');
+            if (DIR.email && DIR.password) {
+                // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
+                console.log('Filling in login details...');
+                await page.type(DIR.username_css, DIR.email);
+                await page.type(DIR.password_css, DIR.password);
+                await page.keyboard.press('Enter');
+                console.log('EP Home page loaded; Logged in.');
+            } else {
+                console.log('Please log in manually.');
+            }
 
 
             // ===== Auto-answer code starts here ===== //

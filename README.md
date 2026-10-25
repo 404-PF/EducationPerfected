@@ -1,6 +1,6 @@
 # EducationPerfected
 
-#### A Javascript program that automatically answers Education Perfect language questions at **super** speeds.
+#### A JavaScript program that automatically answers Education Perfect language questions at **super** speeds.
 Works for word-to-word (translation) tasks and Dash mode.  
 **Does not work with Audio-based tasks... yet.** 
 
@@ -18,7 +18,7 @@ The original's README used to claim its status was: **_CURRECT STATUS: ALL inten
 _*Last time they checked... which was... two years ago???*_  
 That was never re-verified here, so don't assume this project is fully working.
 
-- This repo's program is version **V1.4** of the V2 approach: an independent Javascript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
+- This repo's program is version **V1.4** of the V2 approach: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
 - That said, the program hasn't been run through the wringer against the live Education Perfect service, so behavior may change or break as the service updates.
 
@@ -31,7 +31,7 @@ to another.
 Of course, there are also tasks in the same format but with audio involved. _Unfortunately, we (me or any
 other kind contributors) have not been able to automate those tasks._ 
 
-The obvious approach was to write a simple userscript in Javascript that gets injected into the browser 
+The obvious approach was to write a simple userscript in JavaScript that gets injected into the browser 
 debugger console. This is the classic method to perform simple automation in browsers. This method is simple, 
 cross-platform, and required minimal skill to install & run the script - it was very easy and universal.  
 _This was [V1](V1_Archive) of this project._  
@@ -40,7 +40,7 @@ anti-cheat features that partially disabled the userscript.
 
 To circumvent this, the script needed more control over the web page and must not run in the page debugger console.  
 _This is now V2 of this project:_  
-**At the current stage**, it's an independent Javascript ([node.js](https://nodejs.org/)) program that uses the 
+**At the current stage**, it's an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the 
 [Puppeteer](https://github.com/puppeteer/puppeteer) library to carry out web-browser automation. The goal is the same
 as V1 and the functionality is largely the same. Unfortunately, the standalone structure does make installation slightly 
 more complicated, but it is currently the only way to enable full anti-cheat bypass.  
@@ -57,8 +57,22 @@ Either way, I have provided detailed instructions for installation and usage bel
 
 _*...or whatever method is used to install js libraries on your platform... Google it if necessary._  
 _*To enable auto-login, set the `EP_EMAIL` and `EP_PASSWORD` environment variables before running the script (and keep
-the credential values out of the source file). If you prefer, you can still edit the script directly, but environment
-variables are the recommended approach._  
+the credential values out of the source file). Examples:_
+- **Windows (PowerShell):**
+  ```powershell
+  $env:EP_EMAIL="your-email@example.com"
+  $env:EP_PASSWORD="your-password"
+  ```
+- **Windows (CMD):**
+  ```cmd
+  set EP_EMAIL=your-email@example.com
+  set EP_PASSWORD=your-password
+  ```
+- **Linux / macOS (Bash / Zsh):**
+  ```bash
+  export EP_EMAIL="your-email@example.com"
+  export EP_PASSWORD="your-password"
+  ```
 
 
 *NOTE: if Puppeteer complains about the lack of a Chromium browser the first time you run it, open up Terminal and run 
