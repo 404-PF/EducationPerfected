@@ -61,7 +61,7 @@ Either way, I have provided detailed instructions for installation and usage bel
 _*...or whatever method is used to install js libraries on your platform... Google it if necessary._  
 _*To enable auto-login, set **both** `EP_EMAIL` and `EP_PASSWORD` before running the script (and keep
 the credential values out of the source file). Forgot to set them? No worries - the browser still opens and you can
-log in manually. You can also edit the script directly, but environment variables are the recommended approach._  
+log in manually. Keep credentials out of the source file by using the environment variables above._  
 
 
 *NOTE: if Puppeteer complains about the lack of a Chromium browser the first time you run it, open up Terminal and run 

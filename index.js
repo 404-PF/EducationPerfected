@@ -64,6 +64,7 @@ const puppeteer = require('puppeteer');
                 console.log('EP Home page loaded; Logged in.');
             } else {
                 console.log('EP_EMAIL and EP_PASSWORD are not set; skipping auto-login. Log in manually in the opened browser window.');
+                await page.waitForSelector(DIR.home_css, { timeout: 0 });
             }
 
 
