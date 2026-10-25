@@ -126,7 +126,7 @@ it won't be detected.*
 When you run the script, it should:  
 * Open a new browser window (that does not have any user data, so you must log in to EP manually - or set the `EP_EMAIL` and `EP_PASSWORD` environment variables for auto-login);  
 * Load EP home page;  
-* All anto-answer functionality is loaded in the background, ready to be used whenever;  
+* All auto-answer functionality is loaded in the background, ready to be used whenever;  
 * Log in for you if you provided your credentials.  
 
 Then, you can:  
@@ -148,7 +148,7 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
 
 - **Self-Learning/Error Correction:**  
   When an error is made (due to bad question/answer parsing, lag, or missing word list), the script handles the popup and extracts the correct answer information to stop making the same mistake again (hopefully).  
-  The incorrect answer popup has a normal delay of 3 seconds before you can close it, but that's slow, so it instead gets delyeeted :P
+  The incorrect answer popup has a normal delay of 3 seconds before you can close it, but that's slow, so it instead gets deleted :P
 
 - **Smart-ish Word Parsing:**  
   A big source of incorrect answers is when no answer is found due to unsatisfactory matching (of the question to an answer).  
