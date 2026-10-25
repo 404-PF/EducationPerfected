@@ -10,17 +10,17 @@ Works for word-to-word (translation) tasks and Dash mode.
 ## Status
 
 > [!WARNING]
-> **This repository is an experimental continuation** of the original EducationPerfected project. It is *not* the original, actively maintained project.
+> **This repository continues the original EducationPerfected project.** It is *not* the original, actively maintained project.
 
-The original project was started by [akioweh](https://github.com/KEN-2000l) and is now **[archived](https://github.com/KEN-2000l/EducationPerfected)**. This repository continues that work as an experimental effort.
+The original project was started by [akioweh](https://github.com/KEN-2000l) and is now **[archived](https://github.com/KEN-2000l/EducationPerfected)**. This repository continues that work.
 
 The archived project's README described its status as: **_CURRECT STATUS: ALL intended features functional._**  
 _*Last time I checked, which was... two years ago???*_  
-That claim was never re-verified here, so this project should be treated as **experimental**.
+That claim was never re-verified here, so the current state of this project should not be assumed to be fully working.
 
 - The program in this repository is version **V1.4** of the V2 approach, which is an independent Javascript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to carry out web-browser automation.
 - As of the latest updates, the anti-cheat workaround no longer triggers anti-cheat detection messages.
-- However, this continuation has not been comprehensively tested against the live Education Perfect service, and behavior may change or break as the service updates.
+- However, the program has not been comprehensively tested against the live Education Perfect service, and behavior may change or break as the service updates.
 
 ## Introduction
 This project began as a way automate tasks on [Education Perfect](https://www.educationperfect.com/) 
@@ -180,7 +180,7 @@ TODO list? or never-DO list? no one knows :P
 - Dedicated anti-cheat bypass features
 - Even better answer parsing
 
-A dedicated desktop app has also been floated as a possible future direction; it would be a separate, experimental effort
+A dedicated desktop app has also been floated as a possible future direction; it would be a separate effort
 and is not part of this repository.
 
 
