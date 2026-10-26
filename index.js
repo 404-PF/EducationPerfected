@@ -35,6 +35,9 @@ const puppeteer = require('puppeteer');
         exit_continue_button_css: 'button.continue-button',
 
         continue_button_css: 'button#continue-button',
+
+        // non-blocking feedback toast (injected by this script, not part of EP)
+        toast_id: '__ep_toast',
     }
 
     // launch browser
@@ -57,7 +60,9 @@ const puppeteer = require('puppeteer');
                 console.log('Filling in login details...');
                 await page.type(DIR.username_css, DIR.email);
                 await page.type(DIR.password_css, DIR.password);
-                await page.keyboard.press('Enter');
+                // wait for the redirect to finish before continuing, so the hotkey setup
+                // below runs in the logged-in document instead of racing the navigation
+                await Promise.all([page.waitForNavigation(), page.keyboard.press('Enter')]);
 
                 console.log('Waiting for home page to load...');
                 // await page.waitForSelector(DIR.home_css, { timeout: 0 });
@@ -251,17 +256,71 @@ const puppeteer = require('puppeteer');
                 }
             }
 
+            // Non-blocking feedback.
+            // The old implementation used the native window.alert(), which is modal: it freezes
+            // the page's JS (including the answer loop and hotkey handler) until it is dismissed.
+            // Instead we render a small toast in the page and let it fade out on its own.
+            // The toast is a persistent live region (role="status"), so screen readers announce
+            // each message the way they would have announced the native alert.
             async function alert(msg) {
-                await page.evaluate(m => window.alert(m), msg);
+                await page.evaluate((m, id) => {
+                    let toast = document.getElementById(id);
+                    if (!toast) {
+                        // recreated after navigation, or on first use
+                        toast = document.createElement('div');
+                        toast.id = id;
+                        toast.setAttribute('role', 'status');
+                        toast.setAttribute('aria-live', 'polite');
+                        Object.assign(toast.style, {
+                            position: 'fixed',
+                            top: '16px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            zIndex: '2147483647',
+                            padding: '10px 18px',
+                            borderRadius: '6px',
+                            background: 'rgba(20, 20, 20, 0.9)',
+                            color: '#fff',
+                            font: '14px/1.4 sans-serif',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                            pointerEvents: 'none',
+                            opacity: '0',
+                            transition: 'opacity 400ms ease',
+                        });
+                        document.body.appendChild(toast);
+                    }
+
+                    // reuse the same element so the live region stays registered with AT
+                    toast.textContent = m;
+                    toast.style.opacity = '1';
+
+                    clearTimeout(toast.__epHide);
+                    clearTimeout(toast.__epClear);
+                    toast.__epHide = setTimeout(() => { toast.style.opacity = '0'; }, 1600);
+                    toast.__epClear = setTimeout(() => { toast.textContent = ''; }, 2100);
+                }, msg, DIR.toast_id);
             }
 
-            // Expose API functions to the page (for hotkey event listeners to call)
+            // Expose API functions to the page (for hotkey event listeners to call).
+            // These bindings live on the browser context, not on the document, so they
+            // survive navigation - but the keyup listener does not, and must be re-added.
             await page.exposeFunction('refresh', refreshWords);
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
 
-            // Add event listeners for hotkeys ON the page
-            await page.evaluate(() => {
+            // Add event listeners for hotkeys ON the page.
+            // A document-level listener is destroyed by every navigation (login redirect,
+            // moving between SPA routes that trigger a full load, etc.), which used to leave
+            // the hotkeys dead afterwards.
+            //
+            // The browser-side install is registered as a preload script, so it re-runs on every
+            // new document at parse time and does not depend on the host noticing the navigation.
+            // It is also run once now, to cover the document that is already loaded. The window
+            // guard keeps it idempotent, so re-running it never stacks duplicate listeners.
+            const installHotkeysInPage = () => {
+                if (window.top !== window || window.__epHotkeysInstalled) return;
+                window.__epHotkeysInstalled = true;
+
                 document.addEventListener("keyup", async (event) => {
                     let key = event.key.toLowerCase();
                     if (key !== 'alt') {
@@ -274,7 +333,11 @@ const puppeteer = require('puppeteer');
                         }
                     }
                 });
-            });
+            };
+
+            await page.evaluateOnNewDocument(installHotkeysInPage);
+            await page.evaluate(installHotkeysInPage);
+
             console.log('Education Perfected V2 fully Loaded.');
         });
 })();
