@@ -318,7 +318,7 @@ const puppeteer = require('puppeteer');
             // It is also run once now, to cover the document that is already loaded. The window
             // guard keeps it idempotent, so re-running it never stacks duplicate listeners.
             const installHotkeysInPage = () => {
-                if (window.__epHotkeysInstalled) return;
+                if (window.top !== window || window.__epHotkeysInstalled) return;
                 window.__epHotkeysInstalled = true;
 
                 document.addEventListener("keyup", async (event) => {
