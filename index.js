@@ -35,6 +35,9 @@ const puppeteer = require('puppeteer');
         exit_continue_button_css: 'button.continue-button',
 
         continue_button_css: 'button#continue-button',
+
+        // non-blocking feedback toast (injected by this script, not part of EP)
+        toast_id: '__ep_toast',
     }
 
     // launch browser
@@ -251,30 +254,87 @@ const puppeteer = require('puppeteer');
                 }
             }
 
+            // Non-blocking feedback.
+            // The old implementation used the native window.alert(), which is modal: it freezes
+            // the page's JS (including the answer loop and hotkey handler) until it is dismissed.
+            // Instead we render a small toast in the page and let it fade out on its own.
             async function alert(msg) {
-                await page.evaluate(m => window.alert(m), msg);
+                await page.evaluate((m, id) => {
+                    const existing = document.getElementById(id);
+                    if (existing) existing.remove();
+
+                    const toast = document.createElement('div');
+                    toast.id = id;
+                    toast.textContent = m;
+                    Object.assign(toast.style, {
+                        position: 'fixed',
+                        top: '16px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: '2147483647',
+                        padding: '10px 18px',
+                        borderRadius: '6px',
+                        background: 'rgba(20, 20, 20, 0.9)',
+                        color: '#fff',
+                        font: '14px/1.4 sans-serif',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                        pointerEvents: 'none',
+                        opacity: '1',
+                        transition: 'opacity 400ms ease',
+                    });
+                    document.body.appendChild(toast);
+
+                    setTimeout(() => { toast.style.opacity = '0'; }, 1600);
+                    setTimeout(() => { toast.remove(); }, 2100);
+                }, msg, DIR.toast_id);
             }
 
-            // Expose API functions to the page (for hotkey event listeners to call)
+            // Expose API functions to the page (for hotkey event listeners to call).
+            // These bindings live on the browser context, not on the document, so they
+            // survive navigation - but the keyup listener does not, and must be re-added.
             await page.exposeFunction('refresh', refreshWords);
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
 
-            // Add event listeners for hotkeys ON the page
-            await page.evaluate(() => {
-                document.addEventListener("keyup", async (event) => {
-                    let key = event.key.toLowerCase();
-                    if (key !== 'alt') {
-                        if ((event.altKey && key === "r") || (key === "®")) {
-                            await window.refresh();
-                        } else if ((event.altKey && key === "s") || (key === "ß")) {
-                            await window.startAnswer();
-                        } else if ((event.altKey && key === "a") || (key === "å")) {
-                            await window.toggleMode();
+            // Add event listeners for hotkeys ON the page.
+            // A document-level listener is destroyed by every navigation (login redirect,
+            // moving between SPA routes that trigger a full load, etc.), which used to leave
+            // the hotkeys dead afterwards. This has to be called again on each new document.
+            // The guard makes it idempotent so we never stack duplicate listeners.
+            async function installHotkeys() {
+                await page.evaluate(() => {
+                    if (window.__epHotkeysInstalled) return;
+                    window.__epHotkeysInstalled = true;
+
+                    document.addEventListener("keyup", async (event) => {
+                        let key = event.key.toLowerCase();
+                        if (key !== 'alt') {
+                            if ((event.altKey && key === "r") || (key === "®")) {
+                                await window.refresh();
+                            } else if ((event.altKey && key === "s") || (key === "ß")) {
+                                await window.startAnswer();
+                            } else if ((event.altKey && key === "a") || (key === "å")) {
+                                await window.toggleMode();
+                            }
                         }
-                    }
+                    });
                 });
+            }
+
+            await installHotkeys();
+
+            // Re-attach the hotkeys whenever the document is replaced. `framenavigated` fires in
+            // the main frame for every full (cross-document) navigation, including the post-login
+            // redirect; same-document SPA routing keeps our listener alive, so nothing is needed.
+            page.on('framenavigated', async frame => {
+                if (frame !== page.mainFrame()) return;
+                try {
+                    await installHotkeys();
+                } catch (e) {
+                    // navigation can race with injection; the next event will retry
+                }
             });
+
             console.log('Education Perfected V2 fully Loaded.');
         });
 })();
