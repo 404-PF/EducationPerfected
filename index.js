@@ -309,17 +309,47 @@ const puppeteer = require('puppeteer');
                 return TOGGLE ? 'timeout' : 'aborted';
             }
 
+            // the last (question, answer) submitted in the current run, so a round that failed to
+            // advance can never be submitted a second time (e.g. slow rendering, or a restart).
+            // Cleared whenever a modal is handled, since that means the round resolved.
+            let lastSubmitted = null;
+
+            // Resolves whatever modal is on screen.
+            // Never assigns its result to TOGGLE: the user may have pressed Alt+S while the modal
+            // was being handled, and that stop request must survive. Returns false only when the
+            // task is complete (the exit buttons were clicked).
+            async function handleModalAndContinue(question, answer) {
+                const keepGoing = await handleModal(question, answer);
+                if (!keepGoing) return false;
+                if (TOGGLE) {
+                    // a modal means the round resolved, so the next pass is a fresh round and the
+                    // stall guard must not treat a recurring question as a resubmission
+                    lastSubmitted = null;
+                }
+                return TOGGLE;
+            }
+
             // main function that continually answers questions until completion modal pops up or hotkey pressed again
             async function answerLoop() {
                 if (TOGGLE) throw Error("Tried to initiate answerLoop while it is already running");
 
                 TOGGLE = true;
+                lastSubmitted = null;
                 console.log("answerLoop entered.");
 
-                // the last (question, answer) we submitted, so a round that failed to advance can
-                // never be submitted a second time (e.g. slow rendering, or a restart after a stop)
-                let lastSubmitted = null;
+                try {
+                    await answerQuestions();
+                } finally {
+                    // always clean up, including on error paths, so a late modal or backdrop
+                    // is never left covering the page
+                    await deleteModals();
+                    TOGGLE = false;
+                    console.log('answerLoop Exited.');
+                }
+            }
 
+            // the answering loop itself; separated so answerLoop can always clean up
+            async function answerQuestions() {
                 while (TOGGLE) {
                     let question = await page.$eval(DIR.question_css, el => el.textContent);
                     let answer = findAnswer(question);
@@ -335,8 +365,7 @@ const puppeteer = require('puppeteer');
                         const stalled = await waitForAdvance(question, 0);
                         if (stalled === 'aborted') break;
                         if (stalled === 'modal') {
-                            TOGGLE = await handleModal(question, answer);
-                            if (!TOGGLE) break;
+                            if (!await handleModalAndContinue(question, answer)) break;
                         }
                         continue;
                     }
@@ -372,16 +401,17 @@ const puppeteer = require('puppeteer');
                     if (outcome === 'aborted') break;
 
                     if (outcome === 'modal') {
-                        TOGGLE = await handleModal(question, answer);
-                        if (!TOGGLE) break;
+                        if (!await handleModalAndContinue(question, answer)) break;
                         continue;
                     }
 
                     if (outcome === 'timeout') {
                         // the round has not moved on yet
                         if (ENTER) {
-                            // do not resubmit the same question blindly
-                            throw new Error(`Question "${question}" did not advance after submitting "${answer}".`);
+                            // do not resubmit the same question blindly; break rather than throw so
+                            // the loop falls through to its modal cleanup
+                            console.error(`Question "${question}" did not advance after submitting "${answer}". Stopping.`);
+                            break;
                         }
                         // semi-auto: the answer is typed and awaiting the user's Enter. Wait for the
                         // round to resolve before touching the next question, so stopping and
@@ -390,16 +420,11 @@ const puppeteer = require('puppeteer');
                         const resolved = await waitForAdvance(question, 0);
                         if (resolved === 'aborted') break;
                         if (resolved === 'modal') {
-                            TOGGLE = await handleModal(question, answer);
-                            if (!TOGGLE) break;
+                            if (!await handleModalAndContinue(question, answer)) break;
                         }
                         continue;
                     }
                 }
-
-                await deleteModals();
-                TOGGLE = false;
-                console.log('answerLoop Exited.');
             }
 
             // takes care of answerLoop toggling logic
