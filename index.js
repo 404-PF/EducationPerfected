@@ -88,36 +88,55 @@ const puppeteer = require('puppeteer');
                     .split("|")[0].trim();
             }
 
-            // Get words from the main task page
+            // Get words from the main task page. innerText (unlike textContent) respects rendering,
+            // so lists that are visually split one-per-line are read as separate entries instead of
+            // as a single run-together string.
             async function wordList(selector) {
                 return await page.$$eval(selector, els => {
                     let words = [];
-                    els.forEach(i => words.push(i.textContent));
+                    els.forEach(i => words.push(i.innerText));
                     return words;
                 });
             }
 
             // Refreshes the world lists on the main task page to enhance our vocabulary
             async function refreshWords() {
-                const l1 = await wordList(DIR.baseList_css);
-                const l2 = await wordList(DIR.targetList_css);
-                for (let i = 0; i < l1.length; i++) {
-                    fullDict[l2[i]] = cleanString(l1[i]);
-                    fullDict[l1[i]] = cleanString(l2[i]);
-                    cutDict[cleanString(l2[i])] = cleanString(l1[i]);
-                    cutDict[cleanString(l1[i])] = cleanString(l2[i]);
+                const base = await wordList(DIR.baseList_css);
+                const target = await wordList(DIR.targetList_css);
+
+                // the lists are paired by position, so a length mismatch means the pairing cannot
+                // be trusted; skip rather than learning nonsense translations
+                const count = Math.min(base.length, target.length);
+                if (base.length !== target.length) {
+                    console.warn(`Word list lengths differ (${base.length} base vs ${target.length} target); not pairing to avoid wrong answers.`);
+                } else if (count === 0) {
+                    console.warn('No word lists found. Press Refresh Words on the task-starter page with the word lists visible.');
                 }
-                console.log('Word Lists Refreshed.');
-                await alert('Word Lists Refreshed.');
+
+                for (let i = 0; i < count; i++) {
+                    const l1 = base[i];
+                    const l2 = target[i];
+                    fullDict[l2] = cleanString(l1);
+                    fullDict[l1] = cleanString(l2);
+                    cutDict[cleanString(l2)] = cleanString(l1);
+                    cutDict[cleanString(l1)] = cleanString(l2);
+                }
+
+                // report how many entries were scraped so a partial/empty scrape is diagnosable
+                const msg = `Word Lists Refreshed. ${count} entries (${base.length} base, ${target.length} target).`;
+                console.log(msg);
+                await alert(msg);
             }
 
 
-            // extracts what (EP detected as) the user typed, from the fancy multicolored display
-            // appended to logs for debugging/self-learning purposes
+            // extracts what EP detected as the user's answer, reading the per-word segments of the
+            // fancy multicoloured display. Reads only, so a missing field is an empty string, not a throw.
             async function getModalAnswered() {
-                return await page.$$eval('td#users-answer-field > *', el => {
+                return await page.evaluate(() => {
+                    const field = document.querySelector('td#users-answer-field');
+                    if (!field) return '';
                     let answered = '';
-                    el.forEach(i => {
+                    field.querySelectorAll('*').forEach(i => {
                         if (i.textContent !== null && i.style.color !== 'rgba(0, 0, 0, 0.25)') answered = answered + i.textContent;
                     })
                     return answered;
@@ -125,24 +144,64 @@ const puppeteer = require('puppeteer');
             }
 
             // Learn from the mistakes :)
+            // Returns true if the dictionary was updated, false if there was no usable correction.
             async function correctAnswer(question, answer) {
-                // wait until modal content is fully loaded
-                await page.waitForFunction((css) => {
-                    return document.querySelector(css).textContent !== "blau";
-                }, {}, DIR.modal_question_css);
+                // wait until the modal's correct answer has actually been filled in. The old guard
+                // only checked for "not blau", which an empty or not-yet-rendered field satisfies,
+                // so empty answers were read and then written into the dictionary permanently.
+                let loaded = true;
+                try {
+                    await page.waitForFunction((qCss, aCss) => {
+                        const q = document.querySelector(qCss);
+                        const a = document.querySelector(aCss);
+                        if (!q || !a) return false;
+                        if (q.textContent.trim() === 'blau') return false;
+                        return a.textContent.trim() !== '';
+                    }, { timeout: 5000 }, DIR.modal_question_css, DIR.modal_correct_answer_css);
+                } catch (e) {
+                    loaded = false;
+                }
 
                 // extract modal contents (for debugging and correcting answers)
-                let modalQuestion = await page.$eval(DIR.modal_question_css, el => el.textContent);
-                let modalAnswer = await page.$eval(DIR.modal_correct_answer_css, el => el.textContent);
-                let modalCutAnswer = cleanString(modalAnswer);
-                let modalAnswered = await getModalAnswered();
+                const modal = await page.evaluate((qCss, aCss) => {
+                    const q = document.querySelector(qCss);
+                    const a = document.querySelector(aCss);
+                    return {
+                        question: q ? q.textContent : '',
+                        answer: a ? a.textContent : '',
+                    };
+                }, DIR.modal_question_css, DIR.modal_correct_answer_css);
+                const modalQuestion = modal.question;
+                const modalAnswer = modal.answer;
+                const modalCutAnswer = cleanString(modalAnswer);
+                const modalAnswered = await getModalAnswered();
+
+                // a missing/empty modal is not a correction; bail out and leave the dictionaries alone
+                const modalsGone = await page.evaluate((css) => document.querySelectorAll(css).length === 0, DIR.modal_css);
+                if (!loaded || modalsGone || modalCutAnswer === '') {
+                    console.log(`Skipping answer correction for "${question}": ${modalsGone ? 'modal disappeared' : 'no usable correct answer'} (raw modal answer: "${modalAnswer}").`);
+                    return false;
+                }
 
                 // dismisses the modal (bypasses the required cooldown)
-                await page.$eval(DIR.continue_button_css, el => el.disabled = false);
-                await page.click(DIR.continue_button_css);
+                const continueClicked = await page.evaluate((css) => {
+                    const button = document.querySelector(css);
+                    if (!button) return false;
+                    button.disabled = false;
+                    button.click();
+                    return true;
+                }, DIR.continue_button_css);
+                if (!continueClicked) {
+                    console.log('Continue button missing; deleting modal directly.');
+                    await deleteModals();
+                }
 
-                // update/correct answer dictionary
+                // update/correct answer dictionary. Both dictionaries are updated so that a lookup
+                // which was answered from cutDict gets fixed on the path that actually failed.
                 fullDict[question] = modalCutAnswer;
+                fullDict[modalQuestion] = cleanString(modalAnswer);
+                cutDict[cleanString(question)] = modalCutAnswer;
+                cutDict[modalQuestion] = modalCutAnswer;
 
                 // logging for debugging if needed
                 let log = "===== Details after Incorrect Answer: =====\n"
@@ -154,6 +213,7 @@ const puppeteer = require('puppeteer');
                 log = log + `Modal Detected Answered: \n => ${modalAnswered}\n\n\n`;
 
                 console.log(log);
+                return true;
             }
 
             // deletes all existing modals and backdrops. Used to force-speed things up
@@ -168,12 +228,16 @@ const puppeteer = require('puppeteer');
 
             // very advanced logic (ofc) used to find matching answer
             function findAnswer(question) {
-                let answer = fullDict[question];
-                if (answer) return answer;
-                answer = fullDict[question.replace(",", ";")];
-                if (answer) return answer;
-                answer = cutDict[cleanString(question)];
-                if (answer) return answer;
+                const candidates = [
+                    fullDict[question],
+                    fullDict[question.replace(",", ";")],
+                    cutDict[cleanString(question)],
+                ];
+                // skip blank entries: a poisoned or half-scraped dictionary value must not be
+                // treated as a hit, otherwise the loop stalls on an unanswerable question
+                for (const answer of candidates) {
+                    if (typeof answer === 'string' && answer.trim() !== '') return answer;
+                }
                 console.log(`No answer found for ${question}`);
                 return generateRandomString(8, 10);
             }
@@ -190,6 +254,32 @@ const puppeteer = require('puppeteer');
                 return result;
             }
 
+            // Handles whatever modal is on screen after an answer was submitted.
+            // Returns false when the loop should stop (task complete), true to keep answering.
+            async function handleModal(question, answer, opts = {}) {
+                const { allowExit = true } = opts;
+
+                // allow the modal a moment to render before deciding what it is
+                await page.waitForSelector(DIR.modal_css, { timeout: 2000 }).catch(() => { });
+
+                // incorrect answer and modal pops up; initiate answer-correction procedure
+                if (await page.$(DIR.modal_question_css) !== null) {
+                    await correctAnswer(question, answer);
+                    await deleteModals();
+                } else if (allowExit && await page.$(DIR.exit_button_css)) {
+                    // list complete; clicks button to exit
+                    await page.click(DIR.exit_button_css);
+                    return false;
+                } else if (allowExit && await page.$(DIR.exit_continue_button_css)) {
+                    await page.click(DIR.exit_continue_button_css);
+                    return false;
+                } else {
+                    // no idea what the modal is for so let's just pretend it doesn't exist
+                    await deleteModals();
+                }
+                return true;
+            }
+
             // main function that continually answers questions until completion modal pops up or hotkey pressed again
             async function answerLoop() {
                 if (TOGGLE) throw Error("Tried to initiate answerLoop while it is already running");
@@ -200,28 +290,58 @@ const puppeteer = require('puppeteer');
                 while (TOGGLE) {
                     let question = await page.$eval(DIR.question_css, el => el.textContent);
                     let answer = findAnswer(question);
+                    if (typeof answer !== 'string' || answer === '') {
+                        console.log(`Refusing to type an empty answer for "${question}".`);
+                        break;
+                    }
 
+                    // clear the box first, then type. Every keystroke is awaited so the next
+                    // iteration cannot read the question while this answer is still arriving.
                     await page.click(DIR.answer_box_css, { clickCount: 3 });
+                    await page.keyboard.press('Backspace');
                     await page.keyboard.sendCharacter(answer);
-                    ENTER && page.keyboard.press('Enter');
+
+                    // make sure the box really contains the answer before submitting it
+                    const typed = await page.$eval(DIR.answer_box_css, el => el.value);
+                    if (typed !== answer) {
+                        console.log(`Answer box mismatch; expected "${answer}", got "${typed}". Retrying.`);
+                        await page.click(DIR.answer_box_css, { clickCount: 3 });
+                        await page.keyboard.press('Backspace');
+                        await page.keyboard.type(answer);
+                        const retyped = await page.$eval(DIR.answer_box_css, el => el.value);
+                        if (retyped !== answer) {
+                            throw new Error(`Could not enter answer "${answer}" (box contains "${retyped}").`);
+                        }
+                    }
+
+                    if (ENTER) {
+                        await page.keyboard.press('Enter');
+                        // let the round advance before reading the question again, so the next
+                        // lookup is not answered against the question that was just submitted
+                        const previous = question;
+                        await page.waitForFunction((css, prev) => {
+                            const el = document.querySelector(css);
+                            return el === null || el.textContent !== prev;
+                        }, { timeout: 5000 }, DIR.question_css, previous).catch(() => { });
+                    } else {
+                        // semi-auto: submit is the user's job. Just clear the next question
+                        // as soon as it arrives and wait for the user's Enter.
+                        const previous = question;
+                        await page.waitForFunction((css, prev) => {
+                            const el = document.querySelector(css);
+                            return el === null || el.textContent !== prev;
+                        }, { timeout: 0 }, DIR.question_css, previous);
+                        if (await page.$(DIR.modal_css)) {
+                            // a modal (e.g. answer feedback) is in the way; let it be handled
+                            TOGGLE = await handleModal(previous, answer, { allowExit: false });
+                            if (!TOGGLE) break;
+                        }
+                    }
 
                     // special case: modal pops up
-                    if (await page.$(DIR.modal_css)) {
-                        // incorrect answer and modal pops up; initiate answer-correction procedure
-                        if (await page.$(DIR.modal_question_css) !== null) {
-                            await correctAnswer(question, answer);
-                            await deleteModals();
-                            // list complete; clicks button to exit
-                        } else if (await page.$(DIR.exit_button_css)) {
-                            await page.click(DIR.exit_button_css);
-                            break;
-                        } else if (await page.$(DIR.exit_continue_button_css)) {
-                            await page.click(DIR.exit_continue_button_css);
-                            break;
-                        } else {
-                            // no idea what the modal is for so let's just pretend it doesn't exist
-                            await deleteModals();
-                        }
+                    if (ENTER && await page.$(DIR.modal_css)) {
+                        TOGGLE = await handleModal(question, answer);
+                        if (!TOGGLE) break;
                     }
                 }
 
