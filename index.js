@@ -1,4 +1,4 @@
-// v1.4
+// v1.5
 
 const puppeteer = require('puppeteer');
 
@@ -74,8 +74,17 @@ const puppeteer = require('puppeteer');
 
 
             // ===== Auto-answer code starts here ===== //
-            let TOGGLE = false;
+            let TOGGLE = false;  // user intent: the loop should be answering right now
+            let RUNNING = null;  // promise handle of the run currently executing, or null
+            let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
+
+            // How long to wait for EP to move on to the next question after a submission.
+            // EP round-trips (large class, slow backend, transient lag) can legitimately
+            // exceed 5s, so a fixed 5s timeout used to abort the whole task on one slow
+            // round. Keep generous, and retry the round once before giving up.
+            const ADVANCE_TIMEOUT = 15000;
+
             let fullDict = {};
             let cutDict = {};
 
@@ -287,31 +296,52 @@ const puppeteer = require('puppeteer');
                 return true;
             }
 
-            // Waits until either the question advances past `previous` or a modal becomes visible.
-            // Polls instead of using waitForFunction so the wait is abortable: TOGGLE can go false
-            // at any time (Alt+S, or a restart) and must not leave a stray loop running.
-            // Resolves early with status 'timeout' rather than throwing.
-            async function waitForAdvance(previous, timeout) {
+            // Waits until the round moves on past `previous`, or a modal becomes visible.
+            // "Moved on" is not just a question-text change: dictionary tasks can redraw
+            // the exact same question, so the answer box is watched too — EP clearing it
+            // for the next round means the round resolved even though the text repeats.
+            // Only a present, empty box counts: a transiently missing box is not progress,
+            // and a box holding new text (e.g. the user editing the proposed answer in
+            // semi-auto) must keep the loop waiting. Polls instead of using
+            // waitForFunction so the wait is abortable: TOGGLE can go false at any time
+            // (Alt+S, or a restart) and must not leave a stray loop running. Resolves
+            // early with status 'timeout' rather than throwing.
+            async function waitForAdvance(previous, timeout, submitted) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
-                    const state = await page.evaluate((qCss, mCss) => {
+                    const state = await page.evaluate((qCss, mCss, aCss) => {
                         const q = document.querySelector(qCss);
+                        const box = document.querySelector(aCss);
                         return {
                             question: q ? q.textContent : null,
                             modal: document.querySelector(mCss) !== null,
+                            box: box ? box.value : null,
                         };
-                    }, DIR.question_css, DIR.modal_css);
+                    }, DIR.question_css, DIR.modal_css, DIR.answer_box_css);
 
                     if (state.modal) return 'modal';
                     if (state.question === null || state.question !== previous) return 'advanced';
+                    if (typeof submitted === 'string' && state.box === '') return 'advanced';
                     await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 return TOGGLE ? 'timeout' : 'aborted';
             }
 
-            // the last (question, answer) submitted in the current run, so a round that failed to
-            // advance can never be submitted a second time (e.g. slow rendering, or a restart).
-            // Cleared whenever a modal is handled, since that means the round resolved.
+            // Reads the answer box's value; null when the box is not currently rendered
+            // (transitional render between rounds). $eval throws on a missing node, and
+            // that must never crash the loop.
+            async function answerBoxValue() {
+                try {
+                    return await page.$eval(DIR.answer_box_css, el => el.value);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            // the last (question, answer) submitted in the current run. A round whose
+            // submission is still on screen must not be resubmitted blindly — the stall
+            // guard below checks for exactly that. Cleared whenever a modal is handled,
+            // since that means the round resolved.
             let lastSubmitted = null;
 
             // Resolves whatever modal is on screen.
@@ -331,19 +361,34 @@ const puppeteer = require('puppeteer');
 
             // main function that continually answers questions until completion modal pops up or hotkey pressed again
             async function answerLoop() {
-                if (TOGGLE) throw Error("Tried to initiate answerLoop while it is already running");
+                if (RUNNING !== null) throw Error("Tried to initiate answerLoop while it is already running");
 
                 TOGGLE = true;
                 lastSubmitted = null;
                 console.log("answerLoop entered.");
 
                 try {
+                    // If the previous run's modal cleanup is still in flight, wait for it
+                    // before answering: the old deleteModals() must never remove a modal
+                    // that belongs to this fresh run (e.g. its first wrong-answer modal).
+                    // A stop pressed during this hand-over simply leaves TOGGLE false, and
+                    // the loop below exits without touching the page.
+                    if (CLEANUP !== null) await CLEANUP;
                     await answerQuestions();
                 } finally {
-                    // always clean up, including on error paths, so a late modal or backdrop
-                    // is never left covering the page
-                    await deleteModals();
+                    // Go inert BEFORE the async cleanup runs. deleteModals() costs two
+                    // browser round-trips, so clearing the flags first makes the stop
+                    // observable immediately: an Alt+S landing during cleanup starts a
+                    // fresh run instead of being consumed as a phantom second stop, and
+                    // no stale flag write can kill that new run.
                     TOGGLE = false;
+                    RUNNING = null;
+
+                    // always clean up, including on error paths, so a late modal or backdrop
+                    // is never left covering the page. CLEANUP is recorded so a run spawned
+                    // during this cleanup chains after it instead of overlapping it.
+                    CLEANUP = deleteModals().catch(e => console.error('answerLoop cleanup failed:', e));
+                    await CLEANUP;
                     console.log('answerLoop Exited.');
                 }
             }
@@ -358,11 +403,21 @@ const puppeteer = require('puppeteer');
                         break;
                     }
 
-                    if (lastSubmitted !== null && lastSubmitted.question === question && lastSubmitted.answer === answer) {
+                    // The screen can look identical after a round: dictionary tasks draw
+                    // words at random, so the next question can repeat the same text. The
+                    // previous submission is still pending only while the box still holds
+                    // exactly what was typed for it; a cleared box means EP moved on and
+                    // expects a fresh round, so identical question+answer is then legitimate.
+                    const boxValue = await answerBoxValue();
+                    const stillPending = lastSubmitted !== null
+                        && lastSubmitted.question === question
+                        && lastSubmitted.answer === answer
+                        && boxValue === lastSubmitted.answer;
+                    if (stillPending) {
                         // the previous round for this question produced no visible progress. Rather
                         // than resubmitting it, wait for the page to catch up (or stop).
                         console.log(`Question "${question}" has not advanced since the last submission; waiting before retrying.`);
-                        const stalled = await waitForAdvance(question, 0);
+                        const stalled = await waitForAdvance(question, 0, lastSubmitted.answer);
                         if (stalled === 'aborted') break;
                         if (stalled === 'modal') {
                             if (!await handleModalAndContinue(question, answer)) break;
@@ -370,11 +425,15 @@ const puppeteer = require('puppeteer');
                         continue;
                     }
 
-                    // clear the box first, then type. Every keystroke is awaited so the next
-                    // iteration cannot read the question while this answer is still arriving.
+                    // clear the box first, then type. page.keyboard.type dispatches real
+                    // keydown/keypress/keyup events for every character (unlike
+                    // sendCharacter, which only fires an input event), so EP's answer box
+                    // observes genuine input and will not ignore the subsequent Enter.
+                    // Every keystroke is awaited so the next iteration cannot read the
+                    // question while this answer is still arriving.
                     await page.click(DIR.answer_box_css, { clickCount: 3 });
                     await page.keyboard.press('Backspace');
-                    await page.keyboard.sendCharacter(answer);
+                    await page.keyboard.type(answer);
 
                     // make sure the box really contains the answer before submitting it
                     const typed = await page.$eval(DIR.answer_box_css, el => el.value);
@@ -394,9 +453,10 @@ const puppeteer = require('puppeteer');
 
                     // wait for the round to move on before the next lookup, so the next answer is
                     // not typed against the question that was just submitted. A modal (wrong
-                    // answer, or task complete) ends the wait immediately instead of costing the
-                    // full timeout.
-                    const outcome = await waitForAdvance(question, ENTER ? 5000 : 0);
+                    // answer, or task complete) ends the wait immediately, and so does the box
+                    // being cleared for the next round — which happens even when the dealt
+                    // question repeats the same text.
+                    const outcome = await waitForAdvance(question, ENTER ? ADVANCE_TIMEOUT : 0, answer);
 
                     if (outcome === 'aborted') break;
 
@@ -406,38 +466,80 @@ const puppeteer = require('puppeteer');
                     }
 
                     if (outcome === 'timeout') {
-                        // the round has not moved on yet
-                        if (ENTER) {
-                            // do not resubmit the same question blindly; break rather than throw so
-                            // the loop falls through to its modal cleanup
+                        if (!ENTER) {
+                            // semi-auto: the answer is typed and awaiting the user's Enter. Wait for the
+                            // round to resolve before touching the next question, so stopping and
+                            // restarting the loop never double-submits. (This wait is unbounded, so it
+                            // cannot actually time out; the branch is kept for safety.)
+                            console.log(`Waiting for the answer to "${question}" to be submitted.`);
+                            const resolved = await waitForAdvance(question, 0, answer);
+                            if (resolved === 'aborted') break;
+                            if (resolved === 'modal') {
+                                if (!await handleModalAndContinue(question, answer)) break;
+                            }
+                            continue;
+                        }
+
+                        // the round has not moved on yet. One retry: EP can swallow the
+                        // first Enter (it checks for real key events now, but focus or
+                        // round-trip timing can still lose it). The timeout branch is only
+                        // reached with the round genuinely unresolved (no modal, question
+                        // unchanged, box not cleared for a new round), so re-submitting
+                        // the same content is safe. Only a second timeout stops the run;
+                        // break rather than throw so the loop falls through to its modal
+                        // cleanup.
+                        console.log(`Question "${question}" did not advance within ${ADVANCE_TIMEOUT}ms; pressing Enter again.`);
+                        if (!TOGGLE) break;
+                        await page.click(DIR.answer_box_css).catch(() => { });
+                        if (!TOGGLE) break;
+                        await page.keyboard.press('Enter');
+                        const retry = await waitForAdvance(question, ADVANCE_TIMEOUT, answer);
+                        if (retry === 'timeout') {
                             console.error(`Question "${question}" did not advance after submitting "${answer}". Stopping.`);
+                            await alert(`Answer loop stopped: "${question}" did not advance.`);
                             break;
                         }
-                        // semi-auto: the answer is typed and awaiting the user's Enter. Wait for the
-                        // round to resolve before touching the next question, so stopping and
-                        // restarting the loop never double-submits.
-                        console.log(`Waiting for the answer to "${question}" to be submitted.`);
-                        const resolved = await waitForAdvance(question, 0);
-                        if (resolved === 'aborted') break;
-                        if (resolved === 'modal') {
+                        if (retry === 'aborted') break;
+                        if (retry === 'modal') {
                             if (!await handleModalAndContinue(question, answer)) break;
                         }
-                        continue;
                     }
                 }
             }
 
-            // takes care of answerLoop toggling logic
+            // takes care of answerLoop toggling logic.
+            // Start/stop is decided from the RUNNING handle (the actually executing run),
+            // not from the TOGGLE flag: TOGGLE used to stay true for a while after a run
+            // had already stopped (cleanup still in flight), so gating on it made a
+            // restart press be consumed as a phantom second stop with no work done.
+            function startLoop() {
+                TOGGLE = true;
+                const myRun = answerLoop()
+                    .catch(e => {
+                        // log only: answerLoop's own finally already cleared TOGGLE on every
+                        // path that can reach this handler, and a stale TOGGLE = false here
+                        // would cancel a newer run spawned while the old cleanup was pending
+                        console.error(e);
+                    })
+                    .finally(() => {
+                        // backstop: a run that crashed outside answerLoop's finally must
+                        // not leave a stale handle behind, or every later press would be
+                        // misread as "stop while running". The identity check is needed
+                        // because a newer run can already be executing by the time an
+                        // older run's cleanup settles (an Alt+S during cleanup spawns a
+                        // fresh run while the old cleanup is still pending).
+                        if (RUNNING === myRun) RUNNING = null;
+                    });
+                RUNNING = myRun;
+            }
+
             async function toggleLoop() {
-                if (TOGGLE) {
+                if (RUNNING) {
                     TOGGLE = false;
                     console.log("Stopping answerLoop.");
                 } else {
                     console.log("Starting answerLoop.");
-                    answerLoop().catch(e => {
-                        console.error(e);
-                        TOGGLE = false
-                    });
+                    startLoop();
                 }
             }
 
