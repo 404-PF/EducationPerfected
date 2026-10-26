@@ -76,6 +76,7 @@ const puppeteer = require('puppeteer');
             // ===== Auto-answer code starts here ===== //
             let TOGGLE = false;  // user intent: the loop should be answering right now
             let RUNNING = null;  // promise handle of the run currently executing, or null
+            let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
 
             // How long to wait for EP to move on to the next question after a submission.
@@ -298,11 +299,13 @@ const puppeteer = require('puppeteer');
             // Waits until the round moves on past `previous`, or a modal becomes visible.
             // "Moved on" is not just a question-text change: dictionary tasks can redraw
             // the exact same question, so the answer box is watched too — EP clearing it
-            // (when `submitted` is no longer present) means the round resolved even
-            // though the text repeats. Polls instead of using waitForFunction so the
-            // wait is abortable: TOGGLE can go false at any time (Alt+S, or a restart)
-            // and must not leave a stray loop running. Resolves early with status
-            // 'timeout' rather than throwing.
+            // for the next round means the round resolved even though the text repeats.
+            // Only a present, empty box counts: a transiently missing box is not progress,
+            // and a box holding new text (e.g. the user editing the proposed answer in
+            // semi-auto) must keep the loop waiting. Polls instead of using
+            // waitForFunction so the wait is abortable: TOGGLE can go false at any time
+            // (Alt+S, or a restart) and must not leave a stray loop running. Resolves
+            // early with status 'timeout' rather than throwing.
             async function waitForAdvance(previous, timeout, submitted) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
@@ -318,7 +321,7 @@ const puppeteer = require('puppeteer');
 
                     if (state.modal) return 'modal';
                     if (state.question === null || state.question !== previous) return 'advanced';
-                    if (typeof submitted === 'string' && state.box !== submitted) return 'advanced';
+                    if (typeof submitted === 'string' && state.box === '') return 'advanced';
                     await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 return TOGGLE ? 'timeout' : 'aborted';
@@ -365,19 +368,27 @@ const puppeteer = require('puppeteer');
                 console.log("answerLoop entered.");
 
                 try {
+                    // If the previous run's modal cleanup is still in flight, wait for it
+                    // before answering: the old deleteModals() must never remove a modal
+                    // that belongs to this fresh run (e.g. its first wrong-answer modal).
+                    // A stop pressed during this hand-over simply leaves TOGGLE false, and
+                    // the loop below exits without touching the page.
+                    if (CLEANUP !== null) await CLEANUP;
                     await answerQuestions();
                 } finally {
                     // Go inert BEFORE the async cleanup runs. deleteModals() costs two
                     // browser round-trips, so clearing the flags first makes the stop
                     // observable immediately: an Alt+S landing during cleanup starts a
                     // fresh run instead of being consumed as a phantom second stop, and
-                    // the stale flag write below can no longer kill that new run.
+                    // no stale flag write can kill that new run.
                     TOGGLE = false;
                     RUNNING = null;
 
                     // always clean up, including on error paths, so a late modal or backdrop
-                    // is never left covering the page
-                    await deleteModals();
+                    // is never left covering the page. CLEANUP is recorded so a run spawned
+                    // during this cleanup chains after it instead of overlapping it.
+                    CLEANUP = deleteModals().catch(e => console.error('answerLoop cleanup failed:', e));
+                    await CLEANUP;
                     console.log('answerLoop Exited.');
                 }
             }
@@ -472,12 +483,15 @@ const puppeteer = require('puppeteer');
                         // the round has not moved on yet. One retry: EP can swallow the
                         // first Enter (it checks for real key events now, but focus or
                         // round-trip timing can still lose it). The timeout branch is only
-                        // reached while the box still holds exactly the submitted answer,
-                        // so re-submitting the same content is safe. Only a second timeout
-                        // stops the run; break rather than throw so the loop falls
-                        // through to its modal cleanup.
+                        // reached with the round genuinely unresolved (no modal, question
+                        // unchanged, box not cleared for a new round), so re-submitting
+                        // the same content is safe. Only a second timeout stops the run;
+                        // break rather than throw so the loop falls through to its modal
+                        // cleanup.
                         console.log(`Question "${question}" did not advance within ${ADVANCE_TIMEOUT}ms; pressing Enter again.`);
+                        if (!TOGGLE) break;
                         await page.click(DIR.answer_box_css).catch(() => { });
+                        if (!TOGGLE) break;
                         await page.keyboard.press('Enter');
                         const retry = await waitForAdvance(question, ADVANCE_TIMEOUT, answer);
                         if (retry === 'timeout') {
@@ -502,8 +516,10 @@ const puppeteer = require('puppeteer');
                 TOGGLE = true;
                 const myRun = answerLoop()
                     .catch(e => {
+                        // log only: answerLoop's own finally already cleared TOGGLE on every
+                        // path that can reach this handler, and a stale TOGGLE = false here
+                        // would cancel a newer run spawned while the old cleanup was pending
                         console.error(e);
-                        TOGGLE = false;
                     })
                     .finally(() => {
                         // backstop: a run that crashed outside answerLoop's finally must
