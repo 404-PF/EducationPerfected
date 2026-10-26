@@ -104,15 +104,20 @@ const puppeteer = require('puppeteer');
                 const base = await wordList(DIR.baseList_css);
                 const target = await wordList(DIR.targetList_css);
 
-                // the lists are paired by position, so a length mismatch means the pairing cannot
-                // be trusted; skip rather than learning nonsense translations
-                const count = Math.min(base.length, target.length);
                 if (base.length !== target.length) {
-                    console.warn(`Word list lengths differ (${base.length} base vs ${target.length} target); not pairing to avoid wrong answers.`);
-                } else if (count === 0) {
-                    console.warn('No word lists found. Press Refresh Words on the task-starter page with the word lists visible.');
+                    const mismatch = `Word Lists Not Refreshed: ${base.length} base vs ${target.length} target entries; lists do not line up, so pairing them would teach wrong answers.`;
+                    console.warn(mismatch);
+                    await alert(mismatch);
+                    return;
+                }
+                if (base.length === 0) {
+                    const empty = 'Word Lists Refreshed. 0 entries: no word lists found. Press Refresh Words on the task-starter page with the word lists visible.';
+                    console.warn(empty);
+                    await alert(empty);
+                    return;
                 }
 
+                const count = base.length;
                 for (let i = 0; i < count; i++) {
                     const l1 = base[i];
                     const l2 = target[i];
@@ -155,7 +160,9 @@ const puppeteer = require('puppeteer');
                         const q = document.querySelector(qCss);
                         const a = document.querySelector(aCss);
                         if (!q || !a) return false;
-                        if (q.textContent.trim() === 'blau') return false;
+                        // an empty question is transitional too; accepting it would store the
+                        // correction under "" and pollute every lookups that touch empty keys
+                        if (q.textContent.trim() === '' || q.textContent.trim() === 'blau') return false;
                         return a.textContent.trim() !== '';
                     }, { timeout: 5000 }, DIR.modal_question_css, DIR.modal_correct_answer_css);
                 } catch (e) {
@@ -178,8 +185,9 @@ const puppeteer = require('puppeteer');
 
                 // a missing/empty modal is not a correction; bail out and leave the dictionaries alone
                 const modalsGone = await page.evaluate((css) => document.querySelectorAll(css).length === 0, DIR.modal_css);
-                if (!loaded || modalsGone || modalCutAnswer === '') {
-                    console.log(`Skipping answer correction for "${question}": ${modalsGone ? 'modal disappeared' : 'no usable correct answer'} (raw modal answer: "${modalAnswer}").`);
+                const modalCutQuestion = cleanString(modalQuestion);
+                if (!loaded || modalsGone || modalCutAnswer === '' || modalCutQuestion === '') {
+                    console.log(`Skipping answer correction for "${question}": ${modalsGone ? 'modal disappeared' : 'no usable question/answer'} (raw modal answer: "${modalAnswer}").`);
                     return false;
                 }
 
@@ -198,10 +206,11 @@ const puppeteer = require('puppeteer');
 
                 // update/correct answer dictionary. Both dictionaries are updated so that a lookup
                 // which was answered from cutDict gets fixed on the path that actually failed.
+                // cutDict keys are always cleaned, so the modal question must be cleaned too.
                 fullDict[question] = modalCutAnswer;
-                fullDict[modalQuestion] = cleanString(modalAnswer);
+                fullDict[modalQuestion] = modalCutAnswer;
                 cutDict[cleanString(question)] = modalCutAnswer;
-                cutDict[modalQuestion] = modalCutAnswer;
+                cutDict[modalCutQuestion] = modalCutAnswer;
 
                 // logging for debugging if needed
                 let log = "===== Details after Incorrect Answer: =====\n"
@@ -256,9 +265,7 @@ const puppeteer = require('puppeteer');
 
             // Handles whatever modal is on screen after an answer was submitted.
             // Returns false when the loop should stop (task complete), true to keep answering.
-            async function handleModal(question, answer, opts = {}) {
-                const { allowExit = true } = opts;
-
+            async function handleModal(question, answer) {
                 // allow the modal a moment to render before deciding what it is
                 await page.waitForSelector(DIR.modal_css, { timeout: 2000 }).catch(() => { });
 
@@ -266,11 +273,11 @@ const puppeteer = require('puppeteer');
                 if (await page.$(DIR.modal_question_css) !== null) {
                     await correctAnswer(question, answer);
                     await deleteModals();
-                } else if (allowExit && await page.$(DIR.exit_button_css)) {
+                } else if (await page.$(DIR.exit_button_css)) {
                     // list complete; clicks button to exit
                     await page.click(DIR.exit_button_css);
                     return false;
-                } else if (allowExit && await page.$(DIR.exit_continue_button_css)) {
+                } else if (await page.$(DIR.exit_continue_button_css)) {
                     await page.click(DIR.exit_continue_button_css);
                     return false;
                 } else {
@@ -280,6 +287,28 @@ const puppeteer = require('puppeteer');
                 return true;
             }
 
+            // Waits until either the question advances past `previous` or a modal becomes visible.
+            // Polls instead of using waitForFunction so the wait is abortable: TOGGLE can go false
+            // at any time (Alt+S, or a restart) and must not leave a stray loop running.
+            // Resolves early with status 'timeout' rather than throwing.
+            async function waitForAdvance(previous, timeout) {
+                const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
+                while (TOGGLE && Date.now() < deadline) {
+                    const state = await page.evaluate((qCss, mCss) => {
+                        const q = document.querySelector(qCss);
+                        return {
+                            question: q ? q.textContent : null,
+                            modal: document.querySelector(mCss) !== null,
+                        };
+                    }, DIR.question_css, DIR.modal_css);
+
+                    if (state.modal) return 'modal';
+                    if (state.question === null || state.question !== previous) return 'advanced';
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                return TOGGLE ? 'timeout' : 'aborted';
+            }
+
             // main function that continually answers questions until completion modal pops up or hotkey pressed again
             async function answerLoop() {
                 if (TOGGLE) throw Error("Tried to initiate answerLoop while it is already running");
@@ -287,12 +316,29 @@ const puppeteer = require('puppeteer');
                 TOGGLE = true;
                 console.log("answerLoop entered.");
 
+                // the last (question, answer) we submitted, so a round that failed to advance can
+                // never be submitted a second time (e.g. slow rendering, or a restart after a stop)
+                let lastSubmitted = null;
+
                 while (TOGGLE) {
                     let question = await page.$eval(DIR.question_css, el => el.textContent);
                     let answer = findAnswer(question);
                     if (typeof answer !== 'string' || answer === '') {
                         console.log(`Refusing to type an empty answer for "${question}".`);
                         break;
+                    }
+
+                    if (lastSubmitted !== null && lastSubmitted.question === question && lastSubmitted.answer === answer) {
+                        // the previous round for this question produced no visible progress. Rather
+                        // than resubmitting it, wait for the page to catch up (or stop).
+                        console.log(`Question "${question}" has not advanced since the last submission; waiting before retrying.`);
+                        const stalled = await waitForAdvance(question, 0);
+                        if (stalled === 'aborted') break;
+                        if (stalled === 'modal') {
+                            TOGGLE = await handleModal(question, answer);
+                            if (!TOGGLE) break;
+                        }
+                        continue;
                     }
 
                     // clear the box first, then type. Every keystroke is awaited so the next
@@ -314,34 +360,40 @@ const puppeteer = require('puppeteer');
                         }
                     }
 
-                    if (ENTER) {
-                        await page.keyboard.press('Enter');
-                        // let the round advance before reading the question again, so the next
-                        // lookup is not answered against the question that was just submitted
-                        const previous = question;
-                        await page.waitForFunction((css, prev) => {
-                            const el = document.querySelector(css);
-                            return el === null || el.textContent !== prev;
-                        }, { timeout: 5000 }, DIR.question_css, previous).catch(() => { });
-                    } else {
-                        // semi-auto: submit is the user's job. Just clear the next question
-                        // as soon as it arrives and wait for the user's Enter.
-                        const previous = question;
-                        await page.waitForFunction((css, prev) => {
-                            const el = document.querySelector(css);
-                            return el === null || el.textContent !== prev;
-                        }, { timeout: 0 }, DIR.question_css, previous);
-                        if (await page.$(DIR.modal_css)) {
-                            // a modal (e.g. answer feedback) is in the way; let it be handled
-                            TOGGLE = await handleModal(previous, answer, { allowExit: false });
-                            if (!TOGGLE) break;
-                        }
-                    }
+                    if (ENTER) await page.keyboard.press('Enter');
+                    lastSubmitted = { question, answer };
 
-                    // special case: modal pops up
-                    if (ENTER && await page.$(DIR.modal_css)) {
+                    // wait for the round to move on before the next lookup, so the next answer is
+                    // not typed against the question that was just submitted. A modal (wrong
+                    // answer, or task complete) ends the wait immediately instead of costing the
+                    // full timeout.
+                    const outcome = await waitForAdvance(question, ENTER ? 5000 : 0);
+
+                    if (outcome === 'aborted') break;
+
+                    if (outcome === 'modal') {
                         TOGGLE = await handleModal(question, answer);
                         if (!TOGGLE) break;
+                        continue;
+                    }
+
+                    if (outcome === 'timeout') {
+                        // the round has not moved on yet
+                        if (ENTER) {
+                            // do not resubmit the same question blindly
+                            throw new Error(`Question "${question}" did not advance after submitting "${answer}".`);
+                        }
+                        // semi-auto: the answer is typed and awaiting the user's Enter. Wait for the
+                        // round to resolve before touching the next question, so stopping and
+                        // restarting the loop never double-submits.
+                        console.log(`Waiting for the answer to "${question}" to be submitted.`);
+                        const resolved = await waitForAdvance(question, 0);
+                        if (resolved === 'aborted') break;
+                        if (resolved === 'modal') {
+                            TOGGLE = await handleModal(question, answer);
+                            if (!TOGGLE) break;
+                        }
+                        continue;
                     }
                 }
 
