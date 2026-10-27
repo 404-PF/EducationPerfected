@@ -524,6 +524,7 @@ const puppeteer = require('puppeteer');
                 // answer entry forever
                 let boxVanishedRounds = 0;  // answer box missing at answer-entry time
                 let unstableRounds = 0;     // question text never held still in a pass
+                let boxTamperedRounds = 0;  // answer box rewritten between entry and submission
 
                 while (TOGGLE) {
                     let question = await readQuestionText();
@@ -669,6 +670,9 @@ const puppeteer = require('puppeteer');
                         console.log(boxAfter === ''
                             ? `Round auto-graded during "question changed" check (${question} → ${freshQuestion}); moving on.`
                             : `Question changed while typing ("${question}" → "${freshQuestion}"); looking the answer up again.`);
+                        // EP grading the just-typed text is real progress: the box was not
+                        // fighting us, so the interference streak ends here.
+                        if (boxAfter === '') boxTamperedRounds = 0;
                         continue;
                     }
                     await new Promise(resolve => setTimeout(resolve, 50));
@@ -682,6 +686,7 @@ const puppeteer = require('puppeteer');
                         console.log(boxAfter === ''
                             ? `Round auto-graded during late check (${question} → ${latestQuestion}); moving on.`
                             : `Question changed while typing ("${question}" → "${latestQuestion}"); looking the answer up again.`);
+                        if (boxAfter === '') boxTamperedRounds = 0;
                         continue;
                     }
                     // even with the question text intact, the box content can still change
@@ -696,7 +701,12 @@ const puppeteer = require('puppeteer');
                                 break;
                             }
                         } else {
-                            console.log(`Answer box changed before submission for "${question}" (now "${boxBeforeEnter}"); entering it again.`);
+                            boxTamperedRounds += 1;
+                            console.log(`Answer box changed before submission for "${question}" (now "${boxBeforeEnter}"); restart ${boxTamperedRounds}/5.`);
+                            if (boxTamperedRounds >= 5) {
+                                console.log('The answer box keeps changing between entry and submission; stopping the run.');
+                                break;
+                            }
                         }
                         continue;
                     }
@@ -704,6 +714,8 @@ const puppeteer = require('puppeteer');
 
                     if (ENTER) await page.keyboard.press('Enter');
                     lastSubmitted = { question, answer };
+                    // a real submission happened: any box-interference streak is over
+                    boxTamperedRounds = 0;
 
                     // wait for the round to move on before the next lookup, so the next answer is
                     // not typed against the question that was just submitted. A modal (wrong
