@@ -130,8 +130,8 @@ async function testCompletionExit(page, origin) {
 }
 
 async function testHotkeyPreloadSurvival(page, origin) {
-    let refreshed = 0;
-    const doRefresh = async () => { refreshed += 1; };
+    const state = { refreshed: 0 };
+    const doRefresh = async () => { state.refreshed += 1; };
     await page.exposeFunction('refresh', doRefresh);
     await page.evaluateOnNewDocument(() => {
         if (window.top !== window || window.__epHotkeysInstalled) return;
@@ -146,10 +146,10 @@ async function testHotkeyPreloadSurvival(page, origin) {
     await page.keyboard.up('Alt');
 
     const deadline = Date.now() + 2000;
-    while (refreshed === 0 && Date.now() < deadline) {
+    while (state.refreshed === 0 && Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 25));
     }
-    assert.equal(refreshed, 1);
+    assert.equal(state.refreshed, 1);
     check('exposeFunction survives navigation via evaluateOnNewDocument');
 }
 
