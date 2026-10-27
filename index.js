@@ -199,6 +199,14 @@ const puppeteer = require('puppeteer');
                 return merged;
             }
 
+            // The single key a question's futility meter lives under. All questions are
+            // normalized to their cleaned form first, so every separator rendering of the
+            // same item ("a, b" / "a; b" / "a;b") shares one count instead of each variant
+            // getting its own — otherwise alternating renderings would bypass the bound.
+            function futileKey(question) {
+                return cleanString(question);
+            }
+
             // Registers the candidate answers for `question` under every key form the
             // lookups use: the text as displayed, its comma-to-semicolon variant (EP
             // renders entry separators differently between passes), and the cleaned
@@ -337,7 +345,10 @@ const puppeteer = require('puppeteer');
 
             // Learn from the mistakes :)
             // Returns true if the dictionary was updated, false if there was no usable correction.
-            async function correctAnswer(question, answer) {
+            // `randomRound` means this pass already counted the round in the all-rejected
+            // branch (the submission was a random string), so an unreadable modal here must
+            // not count the same round a second time.
+            async function correctAnswer(question, answer, randomRound = false) {
                 // wait until the modal's correct answer has actually been filled in. The old guard
                 // only checked for "not blau", which an empty or not-yet-rendered field satisfies,
                 // so empty answers were read and then written into the dictionary permanently.
@@ -381,13 +392,18 @@ const puppeteer = require('puppeteer');
                     // would get a fresh random string each time). Count these toward the
                     // same futility bound so an unreadable modal cannot spin the loop
                     // forever. No rejection is recorded: keying it to `question` is
-                    // unproven (round skew), and the count alone bounds the spin.
-                    futileDict[question] = (futileDict[question] || 0) + 1;
-                    if (futileDict[question] >= 4) {
-                        futileStop = true;
-                        const message = `EP's correction modal could not be read for "${question}" ${futileDict[question]} rounds in a row; stopping the loop.`;
-                        console.error(message);
-                        await alert(message);
+                    // unproven (round skew), and the count alone bounds the spin. A random
+                    // submission round was already counted above, so this only counts
+                    // rounds whose submission came from a real candidate.
+                    if (!randomRound) {
+                        const key = futileKey(question);
+                        futileDict[key] = (futileDict[key] || 0) + 1;
+                        if (futileDict[key] >= 4) {
+                            futileStop = true;
+                            const message = `EP's correction modal could not be read for "${question}" ${futileDict[key]} rounds in a row; stopping the loop.`;
+                            console.error(message);
+                            await alert(message);
+                        }
                     }
                     return false;
                 }
@@ -429,9 +445,7 @@ const puppeteer = require('puppeteer');
                 // that repeats what is already stored (and already rejected) must leave
                 // the count alone, or the all-rejected bound below could never be reached.
                 if (learned) {
-                    for (const key of new Set([modalQuestion.trim(), modalQuestion.trim().replace(/,/g, ";"), cleanString(modalQuestion)])) {
-                        delete futileDict[key];
-                    }
+                    delete futileDict[futileKey(modalQuestion)];
                 }
 
                 // logging for debugging if needed
@@ -498,13 +512,13 @@ const puppeteer = require('puppeteer');
 
             // Handles whatever modal is on screen after an answer was submitted.
             // Returns false when the loop should stop (task complete), true to keep answering.
-            async function handleModal(question, answer) {
+            async function handleModal(question, answer, randomRound = false) {
                 // allow the modal a moment to render before deciding what it is
                 await page.waitForSelector(DIR.modal_css, { timeout: 2000 }).catch(() => { });
 
                 // incorrect answer and modal pops up; initiate answer-correction procedure
                 if (await page.$(DIR.modal_question_css) !== null) {
-                    await correctAnswer(question, answer);
+                    await correctAnswer(question, answer, randomRound);
                     await deleteModals();
                 } else if (await page.$(DIR.exit_button_css)) {
                     // list complete; clicks button to exit
@@ -681,8 +695,8 @@ const puppeteer = require('puppeteer');
             // Never assigns its result to TOGGLE: the user may have pressed Alt+S while the modal
             // was being handled, and that stop request must survive. Returns false only when the
             // task is complete (the exit buttons were clicked).
-            async function handleModalAndContinue(question, answer) {
-                const keepGoing = await handleModal(question, answer);
+            async function handleModalAndContinue(question, answer, randomRound = false) {
+                const keepGoing = await handleModal(question, answer, randomRound);
                 if (!keepGoing) return false;
                 if (TOGGLE) {
                     // a modal means the round resolved, so the next pass is a fresh round and the
@@ -834,20 +848,27 @@ const puppeteer = require('puppeteer');
                     unstableRounds = 0;
 
                     let answer = findAnswer(question);
+                    // true when this pass had no usable candidate and only a random string
+                    // is being submitted. correctAnswer must not count that round again if
+                    // the correction modal is also unreadable: the meter counts submission
+                    // ROUNDS, and counting both stages would trip the bound at half of it.
+                    let randomRound = false;
                     if (answer === null) {
                         // Every candidate this session knows for the question was already
                         // graded wrong. Feed EP a random string so its wrong-answer modal
                         // reveals the canonical answer (which then joins the candidates),
                         // but bound the cycle: an item that stays unanswerable must not
                         // loop incorrect answers forever.
-                        futileDict[question] = (futileDict[question] || 0) + 1;
-                        const attempt = futileDict[question];
+                        const futile = futileKey(question);
+                        futileDict[futile] = (futileDict[futile] || 0) + 1;
+                        const attempt = futileDict[futile];
                         if (attempt >= 4) {
                             const message = `EP rejected every known answer for "${question}" ${attempt} rounds in a row; stopping the loop. Check that item's entry in the word list.`;
                             console.error(message);
                             await alert(message);
                             break;
                         }
+                        randomRound = true;
                         console.log(`Every known answer for "${question}" was rejected; submitting a random string to make EP reveal its answer (round ${attempt}/4).`);
                         answer = generateRandomString(8, 10);
                     }
@@ -981,12 +1002,12 @@ const puppeteer = require('puppeteer');
                     if (outcome === 'advanced') {
                         // the round was graded and moved on: acceptance. Whatever futility
                         // streak this question had is over.
-                        futileDict[question] = 0;
+                        futileDict[futileKey(question)] = 0;
                         futileStop = false;
                     }
 
                     if (outcome === 'modal') {
-                        if (!await handleModalAndContinue(question, answer)) break;
+                        if (!await handleModalAndContinue(question, answer, randomRound)) break;
                         continue;
                     }
 
