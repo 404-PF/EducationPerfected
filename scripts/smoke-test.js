@@ -21,6 +21,148 @@ function check(name) {
     console.log(`  ok  ${name}`);
 }
 
+async function loginAndReachDashboard(page, origin) {
+    await page.goto(`${origin}/app/login`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#loginId', { timeout: 5000 });
+    const buttons = await page.$$('button');
+    let loginButton = null;
+    for (const handle of buttons) {
+        const label = await handle.evaluate(el => (el.closest('form') ? el.innerText.trim() : null));
+        if (label === 'Log in') loginButton = handle;
+        else await handle.dispose();
+    }
+    assert.ok(loginButton, 'login button resolved by label');
+    check('waitForSelector + $$ + ElementHandle.evaluate');
+
+    await page.type('#loginId', 'someone@example.com');
+    await page.type('#password', 'not-a-real-password');
+    const fields = await page.evaluate((u, p) => {
+        const user = document.querySelector(u);
+        const pass = document.querySelector(p);
+        return { user: user && user.value, pass: pass && pass.value, enabled: !user.disabled && !pass.disabled };
+    }, '#loginId', '#password');
+    assert.equal(fields.user, 'someone@example.com');
+    assert.equal(fields.pass, 'not-a-real-password');
+    check('page.type fills the login fields');
+
+    const navigation = page.waitForNavigation({ timeout: 5000 }).catch(() => null);
+    await loginButton.click();
+    await navigation;
+    await page.waitForSelector('main #single-spa-application\\:mfeGlobalNavigation\\:Tertiary', { timeout: 5000 });
+    check('ElementHandle.click navigates, escaped #home_css selector matches');
+}
+
+async function readWordLists(page, origin) {
+    await page.goto(`${origin}/task`, { waitUntil: 'domcontentloaded' });
+    const readList = selector => page.$$eval(selector, els => els.map(el => el.innerText));
+    const base = await readList('div.baseLanguage span');
+    const target = await readList('div.targetLanguage span');
+    assert.deepEqual(base, WORDS.map(w => w[0]));
+    assert.deepEqual(target, WORDS.map(w => w[1]));
+    check('$$eval reads the word lists');
+}
+
+async function testWrongAnswerModal(page) {
+    await page.keyboard.type('wrong', { delay: 20 });
+    assert.equal(await boxValue(), 'wrong');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('[uib-modal-window=modal-window]', { timeout: 2000 });
+    assert.equal(await page.$eval('#correct-answer-field', el => el.textContent), 'eins');
+    check('keyboard.type/press + modal waitForSelector');
+
+    await page.waitForFunction((q, a) => {
+        const question = document.querySelector(q);
+        const answer = document.querySelector(a);
+        return !!question && !!answer && question.textContent.trim() !== '' && answer.textContent.trim() !== '';
+    }, { timeout: 2000 }, '#question-field', '#correct-answer-field');
+    check('waitForFunction reads the correction');
+
+    const continued = await page.evaluate(css => {
+        const button = document.querySelector(css);
+        if (!button) return false;
+        button.disabled = false;
+        button.click();
+        return true;
+    }, '#continue-button');
+    assert.equal(continued, true);
+    await page.waitForFunction(() => document.querySelectorAll('[uib-modal-window]').length === 0, { timeout: 2000 });
+    check('evaluate re-enables and clicks Continue');
+}
+
+async function testCorrectAnswers(page) {
+    // Wait for the next question to appear after the modal is dismissed
+    await page.waitForFunction(expected => document.querySelector('#question-text').textContent === expected,
+        { timeout: 2000 }, WORDS[1][0]);
+
+    for (const [base, answer] of WORDS.slice(1)) {
+        const last = base === WORDS[WORDS.length - 1][0];
+        assert.equal(await question(), base);
+        await clearBox();
+        await page.keyboard.type(answer, { delay: 20 });
+        assert.equal(await boxValue(), answer);
+        await page.keyboard.press('Enter');
+
+        const advanced = await page.waitForFunction(isLast => {
+            const questionEl = document.querySelector('#question-text');
+            if (document.querySelectorAll('[uib-modal-window]').length > 0) return false;
+            if (isLast) return questionEl === null && !document.querySelector('#answer-text');
+            return questionEl !== null && questionEl.textContent !== '';
+        }, { timeout: 2000 }, last).then(() => true).catch(() => false);
+
+        assert.ok(advanced, last
+            ? `round "${answer}" is the last one and reaches the completion state`
+            : `round "${answer}" advances`);
+    }
+    check(`typed answers advance all ${WORDS.length} rounds`);
+}
+
+async function testCompletionExit(page, origin) {
+    // Completion state: the question disappears and the exit button is clickable.
+    assert.equal(await boxValue(), null);
+    await page.waitForSelector('button.exit-button', { timeout: 2000 });
+    const exit = await page.$('button.exit-button');
+    const exitNav = page.waitForNavigation({ timeout: 5000, waitUntil: 'domcontentloaded' }).catch(() => null);
+    await exit.click();
+    await exitNav;
+    // After clicking Exit, we should be on the dashboard (main with the shell selector).
+    await page.waitForSelector('main #single-spa-application\\:mfeGlobalNavigation\\:Tertiary', { timeout: 2000 });
+    check('completion exit button resolves and clicks to dashboard');
+}
+
+async function testHotkeyPreloadSurvival(page, origin) {
+    let refreshed = 0;
+    await page.exposeFunction('refresh', async () => { refreshed += 1; });
+    await page.evaluateOnNewDocument(() => {
+        if (window.top !== window || window.__epHotkeysInstalled) return;
+        window.__epHotkeysInstalled = true;
+        document.addEventListener('keyup', event => {
+            if (event.altKey && event.key.toLowerCase() === 'r') window.refresh();
+        });
+    });
+    await page.goto(`${origin}/task`, { waitUntil: 'domcontentloaded' });
+    await page.keyboard.down('Alt');
+    await page.keyboard.press('r');
+    await page.keyboard.up('Alt');
+
+    const deadline = Date.now() + 2000;
+    while (refreshed === 0 && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 25));
+    }
+    assert.equal(refreshed, 1);
+    check('exposeFunction survives navigation via evaluateOnNewDocument');
+}
+
+async function testPageGoneError(page) {
+    await page.close();
+    const closed = await page.evaluate(() => 1).then(() => null).catch(e => e);
+    const pageGone = /detached Frame|Execution context was destroyed|Cannot find context|Target closed|Session closed|Browser has been closed|Navigating was not successful/i;
+    assert.ok(closed && pageGone.test(closed.message),
+        `closing the page yields a recognisable error, got: ${closed && closed.message}`);
+    check(`closing the page produces an isPageGoneError-style message ("${closed.message}")`);
+}
+
+let question, boxValue, clearBox;
+
 async function main() {
     console.log(`Puppeteer executablePath: ${await puppeteer.executablePath()}`);
     const server = createServer();
@@ -37,7 +179,6 @@ async function main() {
             browser = await puppeteer.connect({ browserURL: process.env.SMOKE_BROWSER_URL, defaultViewport: null });
             console.log(`Connected to ${process.env.SMOKE_BROWSER_URL}`);
         } else {
-            // index.js launches with these options.
             browser = await puppeteer.launch({
                 headless: process.env.SMOKE_HEADFUL ? false : 'shell',
                 defaultViewport: null,
@@ -50,7 +191,9 @@ async function main() {
         console.log(`Browser: ${version}`);
         check('browser started');
 
-        const page = (await browser.pages())[0] || await browser.newPage();
+        // Always create a dedicated page; don't reuse the browser's first tab.
+        const page = await browser.newPage();
+
         // Host the mock under the origin index.js expects for the login form, using
         // request interception so the checks run against the same selectors as EP.
         await page.setRequestInterception(true);
@@ -60,142 +203,40 @@ async function main() {
             return request.abort();
         });
 
-        // --- login flow: goto, waitForSelector, $$ + ElementHandle.evaluate, type, click ---
-        await page.goto(`${origin}/app/login`, { waitUntil: 'domcontentloaded' });
-        await page.waitForSelector('#loginId', { timeout: 5000 });
-        const buttons = await page.$$('button');
-        let loginButton = null;
-        for (const handle of buttons) {
-            const label = await handle.evaluate(el => (el.closest('form') ? el.innerText.trim() : null));
-            if (label === 'Log in') loginButton = handle;
-            else await handle.dispose();
-        }
-        assert.ok(loginButton, 'login button resolved by label');
-        check('waitForSelector + $$ + ElementHandle.evaluate');
-
-        await page.type('#loginId', 'someone@example.com');
-        await page.type('#password', 'not-a-real-password');
-        const fields = await page.evaluate((u, p) => {
-            const user = document.querySelector(u);
-            const pass = document.querySelector(p);
-            return { user: user && user.value, pass: pass && pass.value, enabled: !user.disabled && !pass.disabled };
-        }, '#loginId', '#password');
-        assert.equal(fields.user, 'someone@example.com');
-        assert.equal(fields.pass, 'not-a-real-password');
-        check('page.type fills the login fields');
-
-        const navigation = page.waitForNavigation({ timeout: 5000 }).catch(() => null);
-        await loginButton.click();
-        await navigation;
-        await page.waitForSelector('main #single-spa-application\\:mfeGlobalNavigation\\:Tertiary', { timeout: 5000 });
-        check('ElementHandle.click navigates, escaped #home_css selector matches');
-
-        // --- word lists: $$eval reading innerText ---
-        await page.goto(`${origin}/task`, { waitUntil: 'domcontentloaded' });
-        const readList = selector => page.$$eval(selector, els => els.map(el => el.innerText));
-        const base = await readList('div.baseLanguage span');
-        const target = await readList('div.targetLanguage span');
-        assert.deepEqual(base, WORDS.map(w => w[0]));
-        assert.deepEqual(target, WORDS.map(w => w[1]));
-        check('$$eval reads the word lists');
-
-        // --- task page: $eval, evaluate, click, keyboard, waitForFunction ---
-        await page.goto(`${origin}/task/play`, { waitUntil: 'domcontentloaded' });
-        const question = () => page.$eval('#question-text', el => el.textContent);
-        assert.equal(await question(), 'one');
-        check('$eval reads the question');
-
-        const boxValue = () => page.$eval('#answer-text', el => el.value).catch(() => null);
-        const clearBox = async () => {
+        // Helpers that close over `page` and `origin`.
+        question = () => page.$eval('#question-text', el => el.textContent).catch(() => null);
+        boxValue = () => page.$eval('#answer-text', el => el.value).catch(() => null);
+        clearBox = async () => {
             await page.click('#answer-text', { clickCount: 3 });
             await page.keyboard.press('Backspace');
             assert.equal(await boxValue(), '');
         };
 
-        // Wrong answer -> correction modal; index.js reads it, re-enables Continue and clicks it.
-        await page.keyboard.type('wrong', { delay: 20 });
-        assert.equal(await boxValue(), 'wrong');
-        await page.keyboard.press('Enter');
-        await page.waitForSelector('[uib-modal-window=modal-window]', { timeout: 2000 });
-        assert.equal(await page.$eval('#correct-answer-field', el => el.textContent), 'eins');
-        check('keyboard.type/press + modal waitForSelector');
+        // --- login flow ---
+        await loginAndReachDashboard(page, origin);
 
-        await page.waitForFunction((q, a) => {
-            const question = document.querySelector(q);
-            const answer = document.querySelector(a);
-            return !!question && !!answer && question.textContent.trim() !== '' && answer.textContent.trim() !== '';
-        }, { timeout: 2000 }, '#question-field', '#correct-answer-field');
-        check('waitForFunction reads the correction');
+        // --- word lists ---
+        await readWordLists(page, origin);
 
-        const continued = await page.evaluate(css => {
-            const button = document.querySelector(css);
-            if (!button) return false;
-            button.disabled = false;
-            button.click();
-            return true;
-        }, '#continue-button');
-        assert.equal(continued, true);
-        await page.waitForFunction(() => document.querySelectorAll('[uib-modal-window]').length === 0, { timeout: 2000 });
-        check('evaluate re-enables and clicks Continue');
+        // --- task page ---
+        await page.goto(`${origin}/task/play`, { waitUntil: 'domcontentloaded' });
+        assert.equal(await question(), 'one');
+        check('$eval reads the question');
+
+        // Wrong answer -> correction modal
+        await testWrongAnswerModal(page);
 
         // Right answers advance through every remaining round.
-        await page.waitForFunction(expected => document.querySelector('#question-text').textContent === expected,
-            { timeout: 2000 }, WORDS[1][0]);
-        for (const [base, answer] of WORDS.slice(1)) {
-            const last = base === WORDS[WORDS.length - 1][0];
-            assert.equal(await question(), base);
-            await clearBox();
-            await page.keyboard.type(answer, { delay: 20 });
-            assert.equal(await boxValue(), answer);
-            await page.keyboard.press('Enter');
-            const advanced = await page.waitForFunction(isLast => {
-                const question = document.querySelector('#question-text');
-                if (document.querySelectorAll('[uib-modal-window]').length > 0) return false;
-                if (isLast) return question.textContent === '' && !document.querySelector('#answer-text');
-                return question.textContent !== '';
-            }, { timeout: 2000 }, last).then(() => true).catch(() => false);
-            assert.ok(advanced, last
-                ? `round "${answer}" is the last one and reaches the completion state`
-                : `round "${answer}" advances`);
-        }
-        check(`typed answers advance all ${WORDS.length} rounds`);
+        await testCorrectAnswers(page);
 
-        // Completion state: the question disappears and the exit button is clickable.
-        assert.equal(await boxValue(), null);
-        await page.waitForSelector('button.exit-button', { timeout: 2000 });
-        const exit = await page.$('button.exit-button');
-        const exitNav = page.waitForNavigation({ timeout: 5000 }).catch(() => null);
-        await exit.click();
-        await exitNav;
-        await page.waitForSelector('[uib-modal-window], main', { timeout: 2000 });
-        check('completion exit button resolves and clicks');
+        // Completion exit
+        await testCompletionExit(page, origin);
 
-        // --- host bindings + preload, as index.js installs its hotkeys ---
-        let refreshed = 0;
-        await page.exposeFunction('refresh', async () => { refreshed += 1; });
-        await page.evaluateOnNewDocument(() => {
-            if (window.top !== window || window.__epHotkeysInstalled) return;
-            window.__epHotkeysInstalled = true;
-            document.addEventListener('keyup', event => {
-                if (event.altKey && event.key.toLowerCase() === 'r') window.refresh();
-            });
-        });
-        await page.goto(`${origin}/task`, { waitUntil: 'domcontentloaded' });
-        await page.keyboard.down('Alt');
-        await page.keyboard.press('r');
-        await page.keyboard.up('Alt');
-        const deadline = Date.now() + 2000;
-        while (refreshed === 0 && Date.now() < deadline) await new Promise(r => setTimeout(r, 25));
-        assert.equal(refreshed, 1);
-        check('exposeFunction survives navigation via evaluateOnNewDocument');
+        // --- host bindings + preload ---
+        await testHotkeyPreloadSurvival(page, origin);
 
-        // --- page-gone error classification index.js relies on ---
-        await page.close();
-        const closed = await page.evaluate(() => 1).then(() => null).catch(e => e);
-        const pageGone = /detached Frame|Execution context was destroyed|Cannot find context|Target closed|Session closed|Browser has been closed|Navigating was not successful/i;
-        assert.ok(closed && pageGone.test(closed.message),
-            `closing the page yields a recognisable error, got: ${closed && closed.message}`);
-        check(`closing the page produces an isPageGoneError-style message ("${closed.message}")`);
+        // --- page-gone error classification ---
+        await testPageGoneError(page);
 
         console.log(`\nAll ${CHECKS.length} checks passed.`);
     } finally {

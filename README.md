@@ -59,7 +59,7 @@ Either way, I have provided detailed instructions for installation and usage bel
    - **Linux/macOS (Terminal):** `export EP_EMAIL='you@example.com' EP_PASSWORD='your-password'`  
 
 
-_*The starter scripts run `npm ci` for you the first time if `node_modules` is missing, so double-clicking is enough. `npm ci` installs exactly what [package-lock.json](package-lock.json) records - use it instead of `npm i puppeteer`, which would pull the latest Puppeteer instead of the tested one._  
+_*The starter scripts run `npm ci` for you the first time if `node_modules` is missing, so double-clicking is enough. `npm ci` installs exactly what [package-lock.json](package-lock.json) records, preserving the tested lockfile._  
 _*To enable auto-login, set **both** `EP_EMAIL` and `EP_PASSWORD` before running the script (and keep
 the credential values out of the source file). Forgot to set them? No worries - the browser still opens and you can
 log in manually. Keep credentials out of the source file by using the environment variables above._  

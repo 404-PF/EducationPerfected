@@ -5,7 +5,7 @@
   "description": "Automates Education Perfect language and Dash tasks with Puppeteer.",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "node index.js",
+    "start": "node bin/launch.js",
     "smoke": "node scripts/smoke-test.js"
   },
   "engines": {

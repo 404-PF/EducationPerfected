@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
+# bin/launch.js checks the Node version and dependencies before starting the program.
 cd "$(dirname "$0")" || exit 1
-
-if [ ! -f node_modules/puppeteer/package.json ]; then
-    echo 'Dependencies are not installed yet. Running "npm ci" once...'
-    if ! npm ci; then
-        echo
-        echo '"npm ci" failed. Install Node.js 22.12 or newer and run "npm ci" in this folder.'
-        read -r -p 'Press enter to close'
-        exit 1
-    fi
+node bin/launch.js
+status=$?
+if [[ "$status" -ne 0 ]]; then
+    echo
+    echo 'The program stopped with an error; the message above says why.'
+    read -r -p 'Press enter to close'
 fi
-
-node index.js
-read -r -p 'Press enter to close'
+exit "$status"

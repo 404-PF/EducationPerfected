@@ -49,17 +49,20 @@ const dashboardPage = PAGE(`
         <a href="/task">Task</a>
     </main>`);
 
+// Word lists: one div per word, each with a span inside (matching what the
+// smoke test reads with $$eval and what index.js reads with innerText).
 const starterPage = PAGE(`
     <main>
-        <div class="baseLanguage">${WORDS.map(w => `<span>${w[0]}</span>`).join('')}</div>
-        <div class="targetLanguage">${WORDS.map(w => `<span>${w[1]}</span>`).join('')}</div>
+        ${WORDS.map(([base]) => `<div class="baseLanguage"><span>${base}</span></div>`).join('')}
+        ${WORDS.map(([, target]) => `<div class="targetLanguage"><span>${target}</span></div>`).join('')}
         <button id="start-button-main" onclick="location.href='/task/play'">Start</button>
     </main>`);
 
 // Each round: question text and its answer. A wrong answer shows the modal with the
 // canonical answer; dismissing it advances the round, like EP does.
 const taskPage = (start) => {
-    const round = WORDS.slice(start).map(([base, target]) => ({ question: base, answer: target }));
+    const clamped = Number.isInteger(start) && start >= 0 && start < WORDS.length ? start : 0;
+    const round = WORDS.slice(clamped).map(([base, target]) => ({ question: base, answer: target }));
     return PAGE(`
     <main>
         <table><tr>
@@ -77,7 +80,9 @@ const taskPage = (start) => {
 
         function render() {
             if (index >= rounds.length) {
-                question.textContent = '';
+                // Remove the question element entirely - index.js waits for it to
+                // disappear to detect completion.
+                question.remove();
                 box.parentElement.innerHTML = '';
                 exit.hidden = false;
                 return;
@@ -135,7 +140,7 @@ function createServer() {
         if (url.pathname === '/task') return send(starterPage);
         if (url.pathname === '/task/play') {
             const start = Number.parseInt(url.searchParams.get('start') || '0', 10);
-            return send(taskPage(Number.isInteger(start) ? start : 0));
+            return send(taskPage(start));
         }
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end('not found');
