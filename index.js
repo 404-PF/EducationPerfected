@@ -44,12 +44,20 @@ const puppeteer = require('puppeteer');
         start_button_css: 'button#start-button-main',
 
         // task page elements
+        // Audited against the live app's current bundles (mfe-student-app, 2026-10-27):
+        // every selector here still matches the markup and the app's own code. The <td>
+        // names on the modal fields are load-bearing: the wrong-answer table is the only
+        // markup that puts these ids on a <td> (other dialogs reuse them on divs/spans).
+        // The modal's fields start as "&nbsp;" placeholders and are filled by the
+        // answer-feedback formatter, which is what the readiness check below waits for.
         modal_question_css: 'td#question-field',
         modal_correct_answer_css: 'td#correct-answer-field',
         modal_user_answered_css: 'td#users-answer-field',
         modal_css: 'div[uib-modal-window=modal-window]',
         modal_backdrop_css: 'div[uib-modal-backdrop=modal-backdrop]',
 
+        // task page: <span id="question-text"> inside #question-block (audio tasks use a
+        // span with the same id under .voice-speaker; they are unsupported anyway)
         question_css: '#question-text',
         answer_box_css: 'input#answer-text',
 
@@ -470,9 +478,11 @@ const puppeteer = require('puppeteer');
             // branch (the submission was a random string), so an unreadable modal here must
             // not count the same round a second time.
             async function correctAnswer(question, answer, randomRound = false) {
-                // wait until the modal's correct answer has actually been filled in. The old guard
-                // only checked for "not blau", which an empty or not-yet-rendered field satisfies,
-                // so empty answers were read and then written into the dictionary permanently.
+                // wait until the modal's question and correct answer have actually been
+                // filled in. Both start as "&nbsp;" placeholders, which trim() to '', so
+                // requiring non-empty text on both is the real readiness condition; the
+                // old guard accepted anything that was merely "not blau" (one sample word)
+                // and read empty placeholders into the dictionary permanently.
                 let loaded = true;
                 try {
                     await page.waitForFunction((qCss, aCss) => {
@@ -481,8 +491,7 @@ const puppeteer = require('puppeteer');
                         if (!q || !a) return false;
                         // an empty question is transitional too; accepting it would store the
                         // correction under "" and pollute every lookups that touch empty keys
-                        if (q.textContent.trim() === '' || q.textContent.trim() === 'blau') return false;
-                        return a.textContent.trim() !== '';
+                        return q.textContent.trim() !== '' && a.textContent.trim() !== '';
                     }, { timeout: 5000 }, DIR.modal_question_css, DIR.modal_correct_answer_css);
                 } catch (e) {
                     loaded = false;
