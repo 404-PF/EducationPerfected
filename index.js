@@ -1,4 +1,4 @@
-// v1.6
+// v1.7
 
 const puppeteer = require('puppeteer');
 
@@ -107,16 +107,24 @@ const puppeteer = require('puppeteer');
             }
 
             // Builds the ordered candidate answers for one raw word-list/modal answer.
-            // EP's answer fields mix two kinds of separators: "|" separates whole
-            // alternative answers (e.g. "she takes, she gets | she is taking, she is
-            // getting" — either full group is accepted), while "," and ";" inside a
-            // group may be alternatives OR literal parts of the one required string.
-            // Grading evidence (io prendo rejected "I take" while the modal showed
-            // "I take, I get") says the full group is tried first, the comma/semicolon
-            // pieces after — so a strict-grading task succeeds on attempt one and a
-            // lenient one only pays a single wrong round before the pieces are tried.
-            // Parentheses are stripped (EP writes optional parts like "(s)he", which
-            // the grader does not want typed literally).
+            //
+            // EP's answer data is a list of phrases, and the two screens join that list
+            // with different separators: the task-starter list joins alternatives with
+            // "; " (e.g. "she reads; she is reading"), while the wrong-answer modal joins
+            // them with ", " — or with " | " when a phrase itself contains a comma
+            // ("she takes, she gets | she is taking, she is getting"). Field evidence:
+            // the grader rejects any submission whose phrases/order don't match its
+            // canonical display — single pieces ("I take") and list-display joins
+            // ("I sell; I am selling") were both graded wrong while the modal's exact
+            // string is the item's canonical answer.
+            //
+            // So the candidates, in order: the ";"/"|" groups re-joined with ", " (only
+            // when no group contains a comma — otherwise the modal would have shown a
+            // pipe and that join's shape is implausible), then each whole group (commas
+            // included — the canonical shape for pipe-groups), then the bare pieces
+            // (covers grading that still accepts single alternatives). The full raw
+            // display string is never a candidate: EP never grades its own list-page
+            // "; " formatting, and submitting it wasted every first attempt.
             function answerCandidates(rawAnswer) {
                 const text = String(rawAnswer)
                     .replace(/\([^)]*\)/g, " ")
@@ -134,10 +142,15 @@ const puppeteer = require('puppeteer');
                     }
                 };
 
-                const groups = text.split("|").map(group => group.trim()).filter(group => group !== '');
+                // ";" and "|" both separate whole alternative answers; "," inside a
+                // group is part of that answer's text
+                const groups = text.split(/[;|]/).map(group => group.trim()).filter(group => group !== '');
+                if (groups.length > 1 && groups.every(group => !/[;,]/.test(group))) {
+                    push(groups.join(", "));  // EP joins alternative phrases with ", "
+                }
                 for (const group of groups) {
-                    push(group);  // the whole alternative group, commas included
-                    for (const segment of group.split(/[;,]/)) push(segment);
+                    push(group);  // the whole alternative answer, commas included
+                    for (const piece of group.split(",")) push(piece);
                 }
                 return candidates;
             }
