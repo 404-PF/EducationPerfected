@@ -1,4 +1,4 @@
-// v1.7
+// v2.3.0
 
 const puppeteer = require('puppeteer');
 
