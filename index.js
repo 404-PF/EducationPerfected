@@ -1,11 +1,162 @@
 // v2.2.0
 
 const puppeteer = require('puppeteer');
+const crypto = require('crypto');
+
+// ===== Credentials ===== //
+// Credentials are never stored in this (or any other tracked) file. They are read at
+// runtime, the first source that yields a value for BOTH fields wins:
+//   1. the EP_EMAIL / EP_PASSWORD environment variables
+//   2. the OS keychain (macOS Keychain, Windows Credential Manager, libsecret), under
+//      the service name below, when the optional `keytar` module is installed
+//   3. an interactive prompt on the terminal, when run attached to a TTY
+// Nothing is ever written to disk. Leave the sources unset to skip auto-login and
+// sign in manually in the browser window.
+const CREDENTIAL_SERVICE = 'EducationPerfected';
+
+// Rejects placeholder/whitespace values so an HTML-quoted or copied env var does not
+// silently count as real, and trims what string env vars often carry around (a
+// PowerShell `export` keeps quotes; a trailing newline is invisible).
+function cleanCredential(value) {
+    if (typeof value !== 'string') return null;
+    const cleaned = value.trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
+    return cleaned === '' ? null : cleaned;
+}
+
+// Resolves the optional keytar without letting a missing/broken install stop the
+// program: the user can still use env vars or type the password.
+function loadKeytar() {
+    try {
+        return require('keytar');
+    } catch (e) {
+        if (e.code !== 'MODULE_NOT_FOUND') {
+            console.warn(`Credential store unavailable (${e.message}); skipping the OS keychain.`);
+        }
+        return null;
+    }
+}
+
+async function readKeychainCredential(field) {
+    const keytar = loadKeytar();
+    if (!keytar) return null;
+    try {
+        return cleanCredential(await keytar.getPassword(CREDENTIAL_SERVICE, field));
+    } catch (e) {
+        console.warn(`Could not read the ${field} from the OS keychain (${e.message}); skipping it.`);
+        return null;
+    }
+}
+
+// Secret prompt: no echo, and no copy left in the terminal. Resolves null when stdin
+// is not a terminal (piped input is not trusted with a password) or the user submits
+// nothing, so the manual-login path still works everywhere.
+function promptSecret(label) {
+    return new Promise(resolve => {
+        const stdin = process.stdin;
+        if (!stdin.isTTY) return resolve(null);
+        process.stderr.write(label);
+        // Raw mode is what suppresses echo; without it the password would be printed,
+        // so a terminal that cannot do raw mode gets no prompt at all.
+        if (typeof stdin.setRawMode !== 'function') {
+            process.stderr.write('\n(this terminal cannot hide input; log in manually)\n');
+            return resolve(null);
+        }
+        const wasRaw = stdin.isRaw;
+        stdin.setRawMode(true);
+        stdin.resume();
+        // Chunk is a Buffer; for...of yields numeric byte values. Collect bytes
+        // and decode as UTF-8 on submit so non-ASCII characters are preserved.
+        // On backspace/delete, remove the complete final UTF-8 character.
+        // Ignore escape sequences (starting with 0x1B) so arrow keys etc. are not
+        // added to the secret.
+        const bytes = [];
+        let inEscape = false;
+        let escapeBytes = 0;
+        const finish = result => {
+            stdin.removeListener('data', onData);
+            stdin.setRawMode(wasRaw || false);
+            stdin.pause();
+            process.stderr.write('\n');
+            resolve(result);
+        };
+        const onData = chunk => {
+            for (const byte of chunk) {
+                if (inEscape) {
+                    // CSI sequences: ESC [ ... final byte in 0x40-0x7E
+                    // OSC sequences: ESC ] ... ST (0x07) or ESC \
+                    escapeBytes++;
+                    if ((byte >= 0x40 && byte <= 0x7E) || byte === 0x07 || (byte === 0x1B && escapeBytes >= 2)) {
+                        inEscape = false;
+                        escapeBytes = 0;
+                    }
+                    continue;
+                }
+                if (byte === 0x1B) {  // ESC: start of escape sequence
+                    inEscape = true;
+                    escapeBytes = 0;
+                    continue;
+                }
+                if (byte === 13 || byte === 10) return finish(cleanCredential(Buffer.from(bytes).toString('utf8')));
+                if (byte === 3) {  // Ctrl+C: leave cleanly, no stack trace
+                    finish(null);
+                    process.exit(130);
+                }
+                if (byte === 8 || byte === 127) {
+                    // drop one whole UTF-8 character (continuation bytes, then the lead byte)
+                    while (bytes.length && (bytes[bytes.length - 1] & 0xC0) === 0x80) bytes.pop();
+                    bytes.pop();
+                } else if (byte >= 32) bytes.push(byte);
+            }
+        };
+        stdin.on('data', onData);
+    });
+}
+
+// Asks only when a terminal is attached AND the run would otherwise skip auto-login;
+// an empty answer at either prompt means "log in manually".
+async function promptCredentials() {
+    if (!process.stdin.isTTY) {
+        console.log('Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
+        return null;
+    }
+    const email = await promptSecret('EP email (leave empty to log in manually): ');
+    if (email === null) return null;
+    const password = await promptSecret('EP password (input hidden): ');
+    if (password === null) {
+        console.log('No password entered; log in manually in the opened browser window.');
+        return null;
+    }
+    return { email, password };
+}
+
+// Returns { email, password, source } or null. Secrets are only ever held in memory.
+async function resolveCredentials() {
+    const email = cleanCredential(process.env.EP_EMAIL);
+    const password = cleanCredential(process.env.EP_PASSWORD);
+    if (email && password) return { email, password, source: 'EP_EMAIL/EP_PASSWORD' };
+    if (process.env.EP_EMAIL || process.env.EP_PASSWORD) {
+        // Half a configuration is almost always a typo; say so instead of guessing
+        // which half the user meant and prompting for the other.
+        console.warn('Only one of EP_EMAIL / EP_PASSWORD is set (or one of them is empty); not enough for auto-login.');
+    }
+
+    const keychainEmail = await readKeychainCredential('EP_EMAIL');
+    const keychainPassword = await readKeychainCredential('EP_PASSWORD');
+    if (keychainEmail && keychainPassword) {
+        return { email: keychainEmail, password: keychainPassword, source: 'the OS keychain' };
+    }
+
+    const prompted = await promptCredentials();
+    if (prompted) return { ...prompted, source: 'the terminal prompt' };
+    return null;
+}
+
+// ===== Program ===== //
 
 (async () => {
     const DIR = {
-        email: process.env.EP_EMAIL,  // set EP_EMAIL environment variable to your Education Perfect email for auto login
-        password: process.env.EP_PASSWORD,  // set EP_PASSWORD environment variable to your Education Perfect password for auto login
+        // Credentials are resolved at runtime (see resolveCredentials) and never kept
+        // anywhere a commit could pick them up. Email/password are added below.
 
         login_url: 'https://app.educationperfect.com/app/login',
 
@@ -160,6 +311,19 @@ const puppeteer = require('puppeteer');
                 }
             }
 
+            if (loginForm !== null) {
+                // Resolved only once the expected login form is actually in front of us,
+                // so a keychain read or a password prompt never happens for a run that
+                // was going to stop at a lookalike host anyway. Called even when the env
+                // vars are already set: that is where a half-set pair is reported.
+                const credentials = await resolveCredentials();
+                if (credentials !== null) {
+                    console.log(`Auto-login credentials loaded from ${credentials.source}.`);
+                    DIR.email = credentials.email;
+                    DIR.password = credentials.password;
+                }
+            }
+
             if (DIR.email && DIR.password && loginForm !== null) {
                 const { loginButton } = loginForm;
                 // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
@@ -182,6 +346,8 @@ const puppeteer = require('puppeteer');
                     }),
                     loginButton ? loginButton.click() : page.keyboard.press('Enter'),
                 ]);
+                // The submit operation has returned. Clear the field after submission.
+                await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
 
                 console.log('Waiting for home page to load...');
                 // wait for the app shell, so a slow dashboard is reported honestly instead
@@ -192,9 +358,11 @@ const puppeteer = require('puppeteer');
                     ? `EP Home page loaded (${new URL(page.url()).pathname}); Logged in.`
                     : `Login did not reach the app shell (${DIR.home_css}) within 30s (now on ${new URL(page.url()).pathname}); finish signing in manually in the browser window.`);
             } else if (DIR.email && DIR.password) {
-                console.log('Auto-login skipped (see the warning above); finish signing in manually in the browser window.');
+                // a lookalike host (see reachLoginForm): never auto-filled, and no keychain
+                // read or prompt was ever done for it
+                console.log('Auto-login skipped; finish signing in manually in the browser window.');
             } else {
-                console.log('EP_EMAIL and EP_PASSWORD are not set; skipping auto-login. Log in manually in the opened browser window.');
+                console.log('No credentials provided; skipping auto-login. Log in manually in the opened browser window.');
             }
             // Either way, continue once a session is actually running: the manual branch waits
             // without a timeout here, exactly as before, and the auto branch has already been

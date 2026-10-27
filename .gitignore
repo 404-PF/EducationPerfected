@@ -1,2 +1,9 @@
 # Dependencies are installed with `npm ci`, so the lockfile is the tested setup.
 node_modules/
+
+# Credentials are never stored in the repo. These are only the usual local files a
+# secret might end up in by accident; the program itself does not read them, so
+# keeping them out of commits is a safety net, not a supported configuration.
+.env
+.env.*
+credentials.json
