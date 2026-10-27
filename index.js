@@ -1,4 +1,4 @@
-// v1.5
+// v1.6
 
 const puppeteer = require('puppeteer');
 
@@ -85,8 +85,17 @@ const puppeteer = require('puppeteer');
             // round. Keep generous, and retry the round once before giving up.
             const ADVANCE_TIMEOUT = 15000;
 
-            let fullDict = {};
-            let cutDict = {};
+            // question -> ordered candidate answers (most-preferred first), seeded from
+            // the word lists and enriched by what wrong-answer modals prove.
+            let candidatesDict = {};
+            // question -> Set of answers EP has graded wrong this session. Without this,
+            // a rejected answer was "learned" from its own wrong-answer modal and then
+            // resubmitted forever: "io prendo" / "I take" looped incorrect indefinitely
+            // because EP's grading wants the whole "I take, I get", not a comma-cut of it.
+            let rejectedDict = {};
+            // question -> how many rounds in a row the loop has had nothing but rejected
+            // candidates left for it. Feeds the give-up guard in answerQuestions.
+            let futileDict = {};
 
             // Basic answer-parsing
             function cleanString(string) {
@@ -95,6 +104,99 @@ const puppeteer = require('puppeteer');
                     .split(";")[0].trim()
                     .split(",")[0].trim()
                     .split("|")[0].trim();
+            }
+
+            // Builds the ordered candidate answers for one raw word-list/modal answer.
+            // EP's answer fields mix two kinds of separators: "|" separates whole
+            // alternative answers (e.g. "she takes, she gets | she is taking, she is
+            // getting" — either full group is accepted), while "," and ";" inside a
+            // group may be alternatives OR literal parts of the one required string.
+            // Grading evidence (io prendo rejected "I take" while the modal showed
+            // "I take, I get") says the full group is tried first, the comma/semicolon
+            // pieces after — so a strict-grading task succeeds on attempt one and a
+            // lenient one only pays a single wrong round before the pieces are tried.
+            // Parentheses are stripped (EP writes optional parts like "(s)he", which
+            // the grader does not want typed literally).
+            function answerCandidates(rawAnswer) {
+                const text = String(rawAnswer)
+                    .replace(/\([^)]*\)/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (text === '') return [];
+
+                const candidates = [];
+                const seen = new Set();
+                const push = value => {
+                    const trimmed = value.trim();
+                    if (trimmed !== '' && !seen.has(trimmed)) {
+                        seen.add(trimmed);
+                        candidates.push(trimmed);
+                    }
+                };
+
+                const groups = text.split("|").map(group => group.trim()).filter(group => group !== '');
+                for (const group of groups) {
+                    push(group);  // the whole alternative group, commas included
+                    for (const segment of group.split(/[;,]/)) push(segment);
+                }
+                return candidates;
+            }
+
+            // Merges candidate lists, freshest proof first. Wrong-answer modals pass in
+            // freshly-proven candidates, so they lead; a re-refresh of the word lists
+            // re-seeds the same data and stays order-stable thanks to the dedupe.
+            function mergeCandidates(existing, incoming) {
+                const merged = [];
+                const seen = new Set();
+                for (const candidate of [...(incoming || []), ...(existing || [])]) {
+                    if (typeof candidate === 'string' && candidate.trim() !== '' && !seen.has(candidate)) {
+                        seen.add(candidate);
+                        merged.push(candidate);
+                    }
+                }
+                return merged;
+            }
+
+            // Registers the candidate answers for `question` under both key forms the
+            // lookups use: the text as EP displayed it, and its cleaned variant (the
+            // question element sometimes renders the entry with different separators).
+            function learnEntry(question, rawAnswer) {
+                const incoming = answerCandidates(rawAnswer);
+                if (incoming.length === 0) return;
+                for (const key of new Set([String(question).trim(), cleanString(question)])) {
+                    if (key === '') continue;
+                    candidatesDict[key] = mergeCandidates(candidatesDict[key], incoming);
+                }
+            }
+
+            // Both directions of a word-list pair answer each other.
+            function learnPair(first, second) {
+                learnEntry(first, second);
+                learnEntry(second, first);
+            }
+
+            // Records that EP graded `answer` wrong for `question`. Keyed like the
+            // candidates, so a later pass can skip every rejected answer and escalate.
+            function recordRejection(question, answer) {
+                if (typeof answer !== 'string' || answer.trim() === '') return;
+                for (const key of new Set([String(question).trim(), cleanString(question)])) {
+                    if (key === '') continue;
+                    let rejected = rejectedDict[key];
+                    if (!rejected) {
+                        rejected = new Set();
+                        rejectedDict[key] = rejected;
+                    }
+                    rejected.add(answer);
+                }
+            }
+
+            // A detached frame / destroyed execution context means the page navigated
+            // away (task finished, EP moved to another screen, browser closed) — not a
+            // bug in the loop. Those errors must end a run quietly instead of printing
+            // a stack trace, and must never be retried against the dead page.
+            function isPageGoneError(e) {
+                const message = String((e && e.message) || e);
+                return /detached Frame|Execution context was destroyed|Cannot find context|Target closed|Session closed|Browser has been closed|Navigating was not successful/i.test(message);
             }
 
             // Get words from the main task page. innerText (unlike textContent) respects rendering,
@@ -108,7 +210,6 @@ const puppeteer = require('puppeteer');
                 });
             }
 
-            // Refreshes the world lists on the main task page to enhance our vocabulary
             // Reads the question text; null when the element is not currently rendered
             // (task finished, transitional rendering, navigation). $eval throws on a
             // missing node, and the answering loop must treat that as a signal, not a crash.
@@ -120,6 +221,7 @@ const puppeteer = require('puppeteer');
                 }
             }
 
+            // Refreshes the word lists on the main task page to enhance our vocabulary
             async function refreshWords() {
                 const base = await wordList(DIR.baseList_css);
                 const target = await wordList(DIR.targetList_css);
@@ -139,12 +241,7 @@ const puppeteer = require('puppeteer');
 
                 const count = base.length;
                 for (let i = 0; i < count; i++) {
-                    const l1 = base[i];
-                    const l2 = target[i];
-                    fullDict[l2] = cleanString(l1);
-                    fullDict[l1] = cleanString(l2);
-                    cutDict[cleanString(l2)] = cleanString(l1);
-                    cutDict[cleanString(l1)] = cleanString(l2);
+                    learnPair(base[i], target[i]);
                 }
 
                 // report how many entries were scraped so a partial/empty scrape is diagnosable
@@ -225,7 +322,7 @@ const puppeteer = require('puppeteer');
                 }
 
                 // Learn ONLY the pairing the modal proves: EP grades the submission against
-                // ITS question (modalQuestion), so modalQuestion -> modalCutAnswer is the one
+                // ITS question (modalQuestion), so modalQuestion -> modalAnswer is the one
                 // verifiably true mapping. Writing the script-detected `question` here used
                 // to poison the dictionary whenever the round advanced while the answer was
                 // being typed: the detected question then belonged to an item different from
@@ -234,8 +331,15 @@ const puppeteer = require('puppeteer');
                 if (modalQuestion !== question) {
                     console.warn(`Round skew: read question "${question}" but EP graded "${modalQuestion}". Learning only the graded pairing.`);
                 }
-                fullDict[modalQuestion] = modalCutAnswer;
-                cutDict[modalCutQuestion] = modalCutAnswer;
+                // EP just graded `answer` wrong for modalQuestion: that exact pairing must
+                // never be resubmitted for this item. Recording it is what breaks the
+                // infinite loop — the old code instead stored the comma-CUT answer (which
+                // is the very string EP rejected) and resubmitted it forever.
+                recordRejection(modalQuestion, answer);
+                // The full answer EP displayed is canonical: learn it (and its built-in
+                // alternatives) instead of only the cut, so the next pass escalates to the
+                // form EP's grader actually wants.
+                learnEntry(modalQuestion, modalAnswer);
 
                 // logging for debugging if needed
                 let log = "===== Details after Incorrect Answer: =====\n"
@@ -260,18 +364,29 @@ const puppeteer = require('puppeteer');
                 });
             }
 
-            // very advanced logic (ofc) used to find matching answer
+            // very advanced logic (ofc) used to find matching answer.
+            // Walks the question's key variants and returns the first candidate that EP
+            // has not already graded wrong. Returns null when candidates exist but every
+            // one of them was rejected — the caller escalates/bounds that case — and a
+            // random string only when the question is entirely unknown, which feeds the
+            // teach-from-modal loop as before.
             function findAnswer(question) {
-                const candidates = [
-                    fullDict[question],
-                    fullDict[question.replace(",", ";")],
-                    cutDict[cleanString(question)],
-                ];
-                // skip blank entries: a poisoned or half-scraped dictionary value must not be
-                // treated as a hit, otherwise the loop stalls on an unanswerable question
-                for (const answer of candidates) {
-                    if (typeof answer === 'string' && answer.trim() !== '') return answer;
+                const probes = [question, question.replace(/,/g, ";"), cleanString(question)];
+                let hadCandidates = false;
+                const visited = new Set();
+                for (let probe of probes) {
+                    const key = String(probe).trim();
+                    if (key === '' || visited.has(key)) continue;
+                    visited.add(key);
+                    const candidates = candidatesDict[key];
+                    if (!candidates || candidates.length === 0) continue;
+                    hadCandidates = true;
+                    const rejected = rejectedDict[key] || new Set();
+                    for (const candidate of candidates) {
+                        if (!rejected.has(candidate)) return candidate;
+                    }
                 }
+                if (hadCandidates) return null;
                 console.log(`No answer found for ${question}`);
                 return generateRandomString(8, 10);
             }
@@ -500,6 +615,16 @@ const puppeteer = require('puppeteer');
                     // the loop below exits without touching the page.
                     if (CLEANUP !== null) await CLEANUP;
                     await answerQuestions();
+                } catch (e) {
+                    // Navigation mid-run (task completed and EP left the task screen, or
+                    // the user closed the task) detaches the frame; every page call then
+                    // throws "Attempted to use detached Frame". That is the task ending,
+                    // not a bug: end the run quietly. Anything else stays loud.
+                    if (isPageGoneError(e)) {
+                        console.log('The task page navigated away; ending the run.');
+                    } else {
+                        throw e;
+                    }
                 } finally {
                     // Go inert BEFORE the async cleanup runs. deleteModals() costs two
                     // browser round-trips, so clearing the flags first makes the stop
@@ -512,7 +637,12 @@ const puppeteer = require('puppeteer');
                     // always clean up, including on error paths, so a late modal or backdrop
                     // is never left covering the page. CLEANUP is recorded so a run spawned
                     // during this cleanup chains after it instead of overlapping it.
-                    CLEANUP = deleteModals().catch(e => console.error('answerLoop cleanup failed:', e));
+                    // A navigation during cleanup makes deleteModals' $$evals hit a detached
+                    // frame; that used to print a scary stack trace for a harmless skip.
+                    CLEANUP = deleteModals().catch(e => {
+                        if (isPageGoneError(e)) console.log('answerLoop cleanup skipped: the page navigated away.');
+                        else console.error('answerLoop cleanup failed:', e);
+                    });
                     await CLEANUP;
                     console.log('answerLoop Exited.');
                 }
@@ -605,6 +735,27 @@ const puppeteer = require('puppeteer');
                     unstableRounds = 0;
 
                     let answer = findAnswer(question);
+                    if (answer === null) {
+                        // Every candidate this session knows for the question was already
+                        // graded wrong. Feed EP a random string so its wrong-answer modal
+                        // reveals the canonical answer (which then joins the candidates),
+                        // but bound the cycle: an item that stays unanswerable must not
+                        // loop incorrect answers forever.
+                        futileDict[question] = (futileDict[question] || 0) + 1;
+                        const attempt = futileDict[question];
+                        if (attempt >= 4) {
+                            const message = `EP rejected every known answer for "${question}" ${attempt} rounds in a row; stopping the loop. Check that item's entry in the word list.`;
+                            console.error(message);
+                            await alert(message);
+                            break;
+                        }
+                        console.log(`Every known answer for "${question}" was rejected; submitting a random string to make EP reveal its answer (round ${attempt}/4).`);
+                        answer = generateRandomString(8, 10);
+                    } else {
+                        // a real candidate is being tried, so this question's futility
+                        // meter restarts
+                        futileDict[question] = 0;
+                    }
                     if (typeof answer !== 'string' || answer === '') {
                         console.log(`Refusing to type an empty answer for "${question}".`);
                         break;
