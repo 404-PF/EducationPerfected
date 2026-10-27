@@ -53,11 +53,23 @@ assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set
 // The bare field name (email, password, apiKey ...) and the same name behind the
 // repository's environment-variable prefix (EP_EMAIL, EP_PASSWORD). Without the prefix
 // form, `const EP_PASSWORD = 'actual-secret'` — the very spelling this project uses —
-// would pass the scan. The whole name stays anchored, so derived identifiers
-// (`tokenCount`, `password_css`) still do not count.
-const SECRET_NAME = /^(?:(?:[A-Z][A-Z0-9]*_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+// would pass the scan. The prefix is limited to `EP_` on purpose: a general
+// `[A-Z]+_` prefix would flag unrelated selectors such as `button_password`.
+// The whole name stays anchored, so derived identifiers (`tokenCount`, `password_css`)
+// still do not count.
+const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
 // Values a documentation page uses to show *how* to set a variable, never a real secret.
-const PLACEHOLDER_VALUE = /^(?:your[-_ ].*|<.*>|\.\.\.|x{3,}|\*{3,}|you@example\.com|[^@\s]*@example\.(?:com|test))$/i;
+// The accepted words are a closed list, so `your-SecretKey123` is still reported: only a
+// value that reads as an instruction ("your-password") is exempt, and only in docs.
+const PLACEHOLDER_VALUE = new RegExp(
+    '^(?:'
+    + 'your[- _](?:password|passwd|email|username|user|login|token|api[- _]?key|secret|credentials?)'
+    + '|<[^>]*>'
+    + '|\\.\\.\\.'
+    + '|x{3,}|\\*{3,}'
+    + '|you@example\\.com'
+    + '|[^@\\s]*@example\\.(?:com|test)'
+    + ')$', 'i');
 
 /**
  * Decodes a file for scanning, honouring UTF-16 byte-order marks (which contain NUL
@@ -255,10 +267,17 @@ check('no .env is tracked and index.js does not read one');
         ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
         ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
         ['const USERNAME_FIELD = ' + q + '#loginId' + q, 0, 'selector constants are not secrets'],
+        ['button_password = ' + q + '#password' + q, 0, 'only the EP_ prefix is a credential name'],
+        ['foo_token = ' + q + 'not-a-secret' + q, 0, 'unrelated prefixes are not credential names'],
     ];
     for (const [line, expected, label] of cases) {
         assert.equal(scanTextForSecrets(line).length, expected, label);
     }
+    // Documentation placeholders are exempt; a value that merely starts with "your-" is not.
+    assert.equal(scanTextForSecrets('EP_PASSWORD=' + q + 'your-password' + q, true).length, 0,
+        'documented placeholder values are not reported');
+    assert.equal(scanTextForSecrets('EP_PASSWORD=' + q + 'your-SecretKey123' + q, true).length, 1,
+        'a real-looking value in docs is still reported');
     const finding = scanTextForSecrets('{"password": "supersecretvalue"}')[0];
     assert.ok(finding && !finding.redacted.includes('supersecretvalue'),
         'a finding never echoes the value it caught');
