@@ -21,10 +21,14 @@ const puppeteer = require('puppeteer');
         username_css: '#loginId',
         password_css: '#password',
 
-        // the only automatable sign-in method on the iam page. SSO/Google/Microsoft/Clever
-        // hand off to an external provider, and the page also carries reCAPTCHA; this script
-        // never touches any of that. Users signed in through those must log in by hand.
-        login_button_css: 'button[type=submit], form button',
+        // The submit control, matched by its text rather than by position: the iam page
+        // can carry SSO/Google/Microsoft/Clever buttons around the main form, and a
+        // positional selector would risk clicking one of those. Resolved once per page
+        // load and reused, so the button that is readiness-checked is the button clicked.
+        login_button_css: 'button',
+
+        // the login button's label (exact, case-insensitive)
+        login_button_text: 'Log in',
 
         // A logged-in signal, not a page-specific element: the old
         // 'div.view-segment-dashboard' belonged to the pre-single-spa app and no longer
@@ -67,50 +71,89 @@ const puppeteer = require('puppeteer');
         .then(async browser => {
             const page = (await browser.pages())[0];
 
-            // Open EP page and log in
-            console.log('Opening EP page...');
-            await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+            // Resolves the submit control once, by its label, from the <form> itself:
+            // the iam page carries SSO/social buttons near the form, and a positional
+            // selector ('form button', 'button[type=submit]') could resolve to one of
+            // those. The same handle is then readiness-checked and clicked. Returns null
+            // when there is no such button (the caller falls back to Enter).
+            const findLoginButton = async () => {
+                const handles = await page.$$(DIR.login_button_css);
+                for (const handle of handles) {
+                    const label = await handle.evaluate((el, want) => {
+                        if (!el.closest('form')) return null;
+                        const text = (el.innerText || el.value || '').trim().replace(/\s+/g, ' ');
+                        return text.toLowerCase() === want.toLowerCase() ? text : null;
+                    }, DIR.login_button_text).catch(() => null);
+                    if (label !== null) {
+                        for (const other of handles) if (other !== handle) await other.dispose().catch(() => { });
+                        return handle;
+                    }
+                }
+                for (const handle of handles) await handle.dispose().catch(() => { });
+                return null;
+            };
 
-            // /app/login now redirects client-side through several hosts before the form
-            // exists, so wait for the form to APPEAR rather than for it to already be there
-            // after goto. Puppeteer's waitForSelector tracks the current document and keeps
-            // retrying across those navigations, so this covers the SPA bounce even when it
-            // has not started yet. The guard reports the final URL so a changed flow is
-            // diagnosable from the terminal instead of looking like a hang.
-            console.log('Waiting for login page to load...');
-            await page.waitForSelector(DIR.username_css, { timeout: 60000 }).catch(e => {
-                const host = new URL(page.url()).hostname;
-                console.error(`Login form (${DIR.username_css}) did not appear within 60s on ${host}: ${e.message}`);
-                console.error('EP may have changed its login flow; log in manually in the open browser window (' +
-                    'the script cannot continue its startup waiting, but the window stays usable).');
-                throw e;
-            });
-            const loginHost = new URL(page.url()).hostname;
-            console.log(`Login form ready on ${loginHost}.`);
-            if (loginHost !== DIR.login_host) {
-                console.warn(`Expected the login form on ${DIR.login_host}; EP served it from ${loginHost} instead. Manual login recommended.`);
-            }
+            // Opens the login page and resolves the submit button. Returns null instead of
+            // throwing when the form never appears: the browser window must stay usable for
+            // manual login, so a rejected promise here would take the window down with it.
+            const reachLoginForm = async () => {
+                console.log('Opening EP page...');
+                await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+                console.log('Waiting for login page to load...');
+                try {
+                    // No retry loop on purpose: waitForSelector already keeps polling and
+                    // follows the SPA's client-side redirects, so it covers the form appearing
+                    // on a later host. A retry loop here would reload the page each time EP
+                    // is merely slow, which is worse than one honest 60s wait.
+                    await page.waitForSelector(DIR.username_css, { timeout: 60000 });
+                } catch (e) {
+                    console.error(`Login form (${DIR.username_css}) did not appear within 60s on ${new URL(page.url()).hostname || page.url()}: ${e.message}`);
+                    console.error('EP may have changed its login flow. The browser window stays open: log in manually there.');
+                    return null;
+                }
+
+                const loginHost = new URL(page.url()).hostname;
+                console.log(`Login form ready on ${loginHost}.`);
+                if (loginHost !== DIR.login_host) {
+                    // Never type credentials into an origin we did not expect, even if it
+                    // serves elements that look like the login form: a lookalike on another
+                    // host would receive the password. Manual login stays available.
+                    console.warn(`Expected the login form on ${DIR.login_host}, but EP served it from ${loginHost}. ` +
+                        'Not auto-filling credentials; log in manually in the browser window.');
+                    return null;
+                }
+
+                const loginButton = await findLoginButton();
+                if (loginButton === null) {
+                    console.warn(`No "${DIR.login_button_text}" button found inside the login form; auto-login will submit with Enter instead.`);
+                }
+                return { loginButton };
+            };
+
+            const loginForm = await reachLoginForm();
 
             // The form script leaves a loading state behind when it fails (e.g. scripts
-            // blocked): the fields render but the buttons can stay disabled. Report it so a
+            // blocked): the fields render but the button can stay disabled. Report it so a
             // failed auto-login is explained, and leave the window for manual login.
-            const formUsable = await page.evaluate((userCss, passCss, btnCss) => {
-                const field = (css) => {
-                    const el = document.querySelector(css);
-                    return el ? !el.disabled && !el.readOnly : false;
-                };
-                const buttons = [...document.querySelectorAll(btnCss)];
-                const submit = buttons.find(b => /^\s*log in\s*$/i.test(b.innerText || '')) || buttons[0];
-                return {
-                    fieldsEnabled: field(userCss) && field(passCss),
-                    submitEnabled: submit ? !submit.disabled : false,
-                };
-            }, DIR.username_css, DIR.password_css, DIR.login_button_css).catch(() => ({ fieldsEnabled: false, submitEnabled: false }));
-            if (!formUsable.fieldsEnabled || !formUsable.submitEnabled) {
-                console.warn(`Login form looks unusable (fields enabled: ${formUsable.fieldsEnabled}, submit enabled: ${formUsable.submitEnabled}); the login page's scripts may not have finished or are blocked.`);
+            if (loginForm !== null) {
+                const fieldsEnabled = await page.evaluate((userCss, passCss) => {
+                    const field = (css) => {
+                        const el = document.querySelector(css);
+                        return el ? !el.disabled && !el.readOnly : false;
+                    };
+                    return field(userCss) && field(passCss);
+                }, DIR.username_css, DIR.password_css).catch(() => false);
+                // checked on the same handle that will be clicked
+                const submitEnabled = loginForm.loginButton
+                    ? await loginForm.loginButton.evaluate(el => !el.disabled).catch(() => false)
+                    : false;
+                if (!fieldsEnabled || !submitEnabled) {
+                    console.warn(`Login form looks unusable (fields enabled: ${fieldsEnabled}, submit enabled: ${submitEnabled}); the login page's scripts may not have finished or are blocked.`);
+                }
             }
 
-            if (DIR.email && DIR.password) {
+            if (DIR.email && DIR.password && loginForm !== null) {
+                const { loginButton } = loginForm;
                 // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
                 // (username/password only: SSO, Google, Microsoft, Clever and the reCAPTCHA
                 // on this page are left alone - users on those sign-in methods must log in
@@ -118,11 +161,10 @@ const puppeteer = require('puppeteer');
                 console.log('Filling in login details...');
                 await page.type(DIR.username_css, DIR.email);
                 await page.type(DIR.password_css, DIR.password);
-                // Submit through the form rather than a synthetic Enter: the iam page is
-                // an OAuth2 form, and Enter only submits when focus lands in its field.
-                // The button click is a real form submission; fall back to Enter if the
-                // button is not rendered.
-                const submitted = await page.$(DIR.login_button_css);
+                // Submit through the form's own Log in button: the iam page POSTs to
+                // /oauth2/authorize, and a synthetic Enter only submits when focus lands in a
+                // field. The resolved handle is clicked, so an SSO/social button can never be
+                // hit by accident; Enter is the fallback when no such button exists.
                 console.log('Submitting login form...');
                 await Promise.all([
                     page.waitForNavigation({ timeout: 30000 }).catch(() => {
@@ -130,7 +172,7 @@ const puppeteer = require('puppeteer');
                         // so the timeout is not fatal: report it and let the user finish by hand.
                         console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
                     }),
-                    submitted ? page.click(DIR.login_button_css) : page.keyboard.press('Enter'),
+                    loginButton ? loginButton.click() : page.keyboard.press('Enter'),
                 ]);
 
                 console.log('Waiting for home page to load...');
@@ -140,11 +182,16 @@ const puppeteer = require('puppeteer');
                 const homeSeen = await page.waitForSelector(DIR.home_css, { timeout: 30000 }).then(() => true).catch(() => false);
                 console.log(homeSeen
                     ? `EP Home page loaded (${new URL(page.url()).pathname}); Logged in.`
-                    : `Logged in, but the app shell (${DIR.home_css}) was not found within 30s on ${new URL(page.url()).pathname}; check the browser window.`);
+                    : `Login did not reach the app shell (${DIR.home_css}) within 30s (now on ${new URL(page.url()).pathname}); finish signing in manually in the browser window.`);
+            } else if (DIR.email && DIR.password) {
+                console.log('Auto-login skipped (see the warning above); finish signing in manually in the browser window.');
             } else {
                 console.log('EP_EMAIL and EP_PASSWORD are not set; skipping auto-login. Log in manually in the opened browser window.');
-                await page.waitForSelector(DIR.home_css, { timeout: 0 });
             }
+            // Either way, continue once a session is actually running: the manual branch waits
+            // without a timeout here, exactly as before, and the auto branch has already been
+            // given its 30s check above.
+            await page.waitForSelector(DIR.home_css, { timeout: 0 });
 
 
             // ===== Auto-answer code starts here ===== //
