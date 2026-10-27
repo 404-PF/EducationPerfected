@@ -375,10 +375,14 @@ const puppeteer = require('puppeteer');
                     await page.click(DIR.answer_box_css, { clickCount: 3 }).catch(() => { });
                     if (attempt % 2 === 1) {
                         // the mouse triple-click selection can be swallowed by the page;
-                        // select-all via the keyboard is a different code path. The key
-                        // name must be lowercase ("a"), and a failure to send it must not
-                        // kill the run: the triple-click + Backspace still applies.
-                        await page.keyboard.press('Control+a').catch(() => { });
+                        // select-all via the keyboard is a different code path. The chord
+                        // is sent as explicit modifier/key presses, not a "Control+a"
+                        // combo string whose parsing varies between Puppeteer versions,
+                        // and a failure to send it must not kill the run: the
+                        // triple-click + Backspace still applies.
+                        await page.keyboard.down('Control').catch(() => { });
+                        await page.keyboard.press('a').catch(() => { });
+                        await page.keyboard.up('Control').catch(() => { });
                     }
                     await page.keyboard.press('Backspace');
                     const value = await answerBoxValue();
@@ -402,14 +406,22 @@ const puppeteer = require('puppeteer');
             // Reads the box until its value stops changing, so a keystroke still being
             // processed after type() returns is absorbed instead of being read as a
             // mismatch (the old immediate read landed mid-flush: "spicy" got judged as
-            // "spicyy" and every deterministic retry reproduced it). Success is
-            // exclusive; reserves ~6 reads at 25ms of patience.
+            // "spicyy" and every deterministic retry reproduced it). A matching value
+            // must also HOLD across a second sample: a lone exact read could still be
+            // followed by a late keystroke. Reserves ~8 reads at 25ms of patience.
             async function readSettledBox(answer) {
                 let previous = null;
-                for (let i = 0; i < 6; i++) {
+                for (let i = 0; i < 8; i++) {
                     const value = await answerBoxValue();
-                    if (value === answer || value === null) return value;
-                    if (value === previous) return value;
+                    if (value === null) return value;
+                    if (value === previous) return value; // stabilized without matching
+                    if (value === answer) {
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                        const confirm = await answerBoxValue();
+                        if (confirm === answer) return value; // matched and held
+                        previous = confirm; // changed after the match: keep settling
+                        continue;
+                    }
                     previous = value;
                     await new Promise(resolve => setTimeout(resolve, 25));
                 }
@@ -423,18 +435,26 @@ const puppeteer = require('puppeteer');
             // will not ignore the subsequent Enter. Every keystroke is awaited, so the
             // caller cannot read the question while this answer is still arriving.
             // Returns:
-            //   true  — the box contains exactly `answer`
-            //   false — the answer box vanished (transitional render); the caller can
-            //           restart its pass to re-read the question
+            //   true  — the box contains exactly `answer` (held across a second read)
+            //   false — the answer box vanished (transitional render) or the run was
+            //           stopped; the caller can restart its pass to re-read the question
             // Throws after several attempts, escalating the keystroke delay each time;
             // if EP still garbles the stream that badly, failing loudly is the only
             // honest outcome.
             async function enterAnswer(answer) {
                 const delays = [TYPE_DELAY_MS, TYPE_DELAY_MS * 3, TYPE_DELAY_MS * 8];
                 for (let attempt = 0; attempt < delays.length; attempt++) {
-                    await clearAnswerBox();
+                    if (!await clearAnswerBox()) {
+                        // Never type into an uncleared box: EP-restored text would combine
+                        // with the fresh keystrokes. A vanished box is a round transition
+                        // (the caller re-reads it); otherwise clear again on the next attempt.
+                        if (await answerBoxValue() === null) return false;
+                        continue;
+                    }
+                    if (!TOGGLE) return false;
 
                     await page.keyboard.type(answer, { delay: delays[attempt] });
+                    if (!TOGGLE) return false;
                     const typed = await readSettledBox(answer);
                     if (typed === answer) return true;
                     if (typed === null) return false; // box vanished mid-attempt (round transition)
@@ -500,49 +520,88 @@ const puppeteer = require('puppeteer');
 
             // the answering loop itself; separated so answerLoop can always clean up
             async function answerQuestions() {
+                // bounded respawn counters: a page in a dead state must not restart
+                // answer entry forever
+                let boxVanishedRounds = 0;  // answer box missing at answer-entry time
+                let unstableRounds = 0;     // question text never held still in a pass
+
                 while (TOGGLE) {
                     let question = await readQuestionText();
                     if (question === null) {
-                        // the question element is gone: the task finished, the page navigated,
-                        // or EP is mid-transition. The old code crashed here with a bare $eval.
-                        // Give a short transition window, then click the task's exit/continue
-                        // flow if the task has actually ended, and stop this run cleanly.
-                        for (let i = 0; i < 5 && TOGGLE; i++) {
+                        // The question element disappears on round transitions and on the
+                        // task's end screens, but an unconfirmed disappearance must not
+                        // kill a live run or click the wrong control: wait (up to ~20s)
+                        // for the element to return, or for an explicit completion state —
+                        // a modal, or exit/continue controls on the completion screen.
+                        // The old code crashed here with a bare $eval; then it broke out
+                        // of the run on any unconfirmed null question.
+                        let complete = false;   // completion controls were seen on screen
+                        let modalSeen = false;  // a modal is up; route it to its handler
+                        for (let i = 0; i < 80 && TOGGLE; i++) {
                             await new Promise(resolve => setTimeout(resolve, 250));
                             question = await readQuestionText();
                             if (question !== null) break;
+                            if (await page.$(DIR.modal_css) !== null) { modalSeen = true; break; }
+                            complete = await page.evaluate((exitCss, contCss) => {
+                                return document.querySelector(exitCss) !== null
+                                    || document.querySelector(contCss) !== null;
+                            }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
+                            if (complete) break;
                         }
                         if (question === null) {
-                            console.log('Question element gone; stopping answerLoop (task finished or page changed).');
-                            if (TOGGLE) {
+                            if (modalSeen) {
+                                // the completion flow is a modal window: let the modal path
+                                // resolve it (it clicks exit/continue and reports completion)
+                                if (!await handleModalAndContinue(lastSubmitted?.question ?? '', lastSubmitted?.answer ?? '')) break;
+                                continue;
+                            }
+                            console.log(complete
+                                ? 'Question element gone; task completion confirmed. Ending the run.'
+                                : 'Question element never returned within 20s; stopping the run.');
+                            if (complete && TOGGLE) {
                                 const exited = await page.evaluate((exitCss, contCss) => {
                                     const button = document.querySelector(exitCss) || document.querySelector(contCss);
                                     if (!button) return false;
                                     button.click();
                                     return true;
                                 }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
-                                console.log(exited ? 'Clicked the task exit/continue button.' : 'No exit button found.');
+                                console.log(exited ? 'Clicked the task exit/continue button.' : 'The completion controls vanished; stopping the run.');
                             }
                             break;
                         }
+                        // the element came back: fall through to the fresh pass
                     }
                     // EP swaps the question element's text asynchronously after starting a
                     // round; reads taken mid-swap pick up the word EP WAS asking, not the
                     // one it is asking now (the runs watched the text flip between deck
                     // words before any submission). Start every pass from a text that
-                    // holds still: require two reads 120ms apart to agree. Past ~2s of
-                    // churn, type the last stable read rather than spinning forever.
+                    // holds still: require two reads 120ms apart to agree. If the text
+                    // still churned after the window, do NOT type against an unverified
+                    // word — restart the pass, at most three times before giving up.
+                    let unstable = true;
                     for (let i = 0; i < 15 && TOGGLE; i++) {
                         await new Promise(resolve => setTimeout(resolve, 120));
                         const again = await readQuestionText();
                         if (again === null) { question = null; break; }
                         if (again !== question) { question = again; continue; }
+                        unstable = false;
                         break;
                     }
+                    if (!TOGGLE) break;
                     if (question === null) {
                         console.log('Question vanished during stabilization; re-reading it in a fresh pass.');
                         continue;
                     }
+                    if (unstable) {
+                        unstableRounds += 1;
+                        console.log(`Question text churned within a pass; restart ${unstableRounds}/3.`);
+                        if (unstableRounds >= 3) {
+                            console.log('Question text never held still; stopping the run.');
+                            break;
+                        }
+                        continue;
+                    }
+                    unstableRounds = 0;
 
                     let answer = findAnswer(question);
                     if (typeof answer !== 'string' || answer === '') {
@@ -575,8 +634,20 @@ const puppeteer = require('puppeteer');
                     // enterAnswer clears the box, types it as real keystrokes
                     // (spaced out so EP's own input handling can keep up), and verifies
                     // the box before returning. A false return means the box vanished
-                    // during a round transition; re-read the question on the next pass.
-                    if (!await enterAnswer(answer)) continue;
+                    // during a round transition: re-read on the next pass, but only a
+                    // bounded number of times — a box that stays missing while the
+                    // question element remains must not restart forever.
+                    if (!await enterAnswer(answer)) {
+                        boxVanishedRounds += 1;
+                        console.log(`Answer box missing at entry; restart ${boxVanishedRounds}/5.`);
+                        if (boxVanishedRounds >= 5) {
+                            console.log('Answer box never reappeared; stopping the run.');
+                            break;
+                        }
+                        continue;
+                    }
+                    boxVanishedRounds = 0;
+                    if (!TOGGLE) break;
 
                     // The round can advance while the answer is being typed; EP then grades
                     // the submission against a different item than `question` was looked up
@@ -613,6 +684,23 @@ const puppeteer = require('puppeteer');
                             : `Question changed while typing ("${question}" → "${latestQuestion}"); looking the answer up again.`);
                         continue;
                     }
+                    // even with the question text intact, the box content can still change
+                    // during the wait above: submit only what was verified, or not at all.
+                    const boxBeforeEnter = await answerBoxValue();
+                    if (boxBeforeEnter !== answer) {
+                        if (boxBeforeEnter === null) {
+                            boxVanishedRounds += 1;
+                            console.log(`Answer box missing before submission (${boxVanishedRounds}/5); re-reading on a fresh pass.`);
+                            if (boxVanishedRounds >= 5) {
+                                console.log('Answer box never returned; stopping the run.');
+                                break;
+                            }
+                        } else {
+                            console.log(`Answer box changed before submission for "${question}" (now "${boxBeforeEnter}"); entering it again.`);
+                        }
+                        continue;
+                    }
+                    if (!TOGGLE) break;
 
                     if (ENTER) await page.keyboard.press('Enter');
                     lastSubmitted = { question, answer };
