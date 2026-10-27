@@ -106,7 +106,21 @@ function main() {
         return 1;
     }
 
-    if (!dependenciesReady() && !installDependencies()) return 1;
+    if (!dependenciesReady()) {
+        if (!installDependencies()) return 1;
+    } else if (!puppeteerBrowserInstalled()) {
+        // Dependencies are installed but the Chrome build is missing (e.g. npm ci
+        // ran with --ignore-scripts). Install it explicitly.
+        console.log('Installing the Chrome build Puppeteer needs...');
+        try {
+            execFileSync('npm', ['exec', '--', 'puppeteer', 'browsers', 'install', 'chrome'], {
+                cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32',
+            });
+        } catch {
+            console.error('Could not download Chrome. Run `npx puppeteer browsers install chrome` in this folder.');
+            return 1;
+        }
+    }
 
     try {
         require(path.join(ROOT, 'index.js'));

@@ -48,8 +48,8 @@ Either way, I have provided detailed instructions for installation and usage bel
 
 
 ## Installation
-1. download the EducationPerfected program and starter script ([index.js](index.js) and [start.cmd](start.cmd) or [start.sh](start.sh) found above) and place them in the same folder  
-   (the scripts expect [package.json](package.json) and [package-lock.json](package-lock.json) in that same folder - get them from the repo; if you copied the files out of a git checkout, copy those two along with them)
+1. download the EducationPerfected program, starter script, and launcher ([index.js](index.js), [start.cmd](start.cmd) or [start.sh](start.sh), and the [bin/](bin/) folder) and place them in the same folder  
+   (the scripts expect [package.json](package.json) and [package-lock.json](package-lock.json) in that same folder - get them from the repo; if you copied the files out of a git checkout, copy those along with the `bin/` folder)
 2. install [node.js](https://nodejs.org/) - version **22.12 or newer** (that's what the pinned Puppeteer requires)
 3. open Command Prompt/Terminal **in the folder where `index.js` is located** (right click -> open in terminal or use the `cd` command to change the directory)
 4. install the dependencies with `npm ci` in your opened Command Prompt/Terminal window

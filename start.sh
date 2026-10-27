@@ -4,8 +4,8 @@ cd "$(dirname "$0")" || exit 1
 node bin/launch.js
 status=$?
 if [[ "$status" -ne 0 ]]; then
-    echo
-    echo 'The program stopped with an error; the message above says why.'
+    echo >&2
+    echo 'The program stopped with an error; the message above says why.' >&2
     read -r -p 'Press enter to close'
 fi
 exit "$status"

@@ -131,7 +131,8 @@ async function testCompletionExit(page, origin) {
 
 async function testHotkeyPreloadSurvival(page, origin) {
     let refreshed = 0;
-    await page.exposeFunction('refresh', async () => { refreshed += 1; });
+    const doRefresh = async () => { refreshed += 1; };
+    await page.exposeFunction('refresh', doRefresh);
     await page.evaluateOnNewDocument(() => {
         if (window.top !== window || window.__epHotkeysInstalled) return;
         window.__epHotkeysInstalled = true;
@@ -173,6 +174,7 @@ async function main() {
         `${require('puppeteer-core/package.json').version}, Node ${process.version}`);
 
     let browser;
+    let page;
     let launched = false;
     try {
         if (process.env.SMOKE_BROWSER_URL) {
@@ -192,7 +194,7 @@ async function main() {
         check('browser started');
 
         // Always create a dedicated page; don't reuse the browser's first tab.
-        const page = await browser.newPage();
+        page = await browser.newPage();
 
         // Host the mock under the origin index.js expects for the login form, using
         // request interception so the checks run against the same selectors as EP.
@@ -240,6 +242,9 @@ async function main() {
 
         console.log(`\nAll ${CHECKS.length} checks passed.`);
     } finally {
+        if (page) {
+            try { await page.close(); } catch { /* already closed */ }
+        }
         if (browser) {
             try {
                 if (launched) await browser.close();
