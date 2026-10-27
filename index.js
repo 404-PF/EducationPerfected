@@ -87,15 +87,26 @@ const puppeteer = require('puppeteer');
 
             // question -> ordered candidate answers (most-preferred first), seeded from
             // the word lists and enriched by what wrong-answer modals prove.
-            let candidatesDict = {};
+            // Null prototypes: question text is external page content, and inherited
+            // keys ("constructor" is a real Spanish vocab item) must never resolve to
+            // Object.prototype members and masquerade as arrays or Sets.
+            let candidatesDict = Object.create(null);
             // question -> Set of answers EP has graded wrong this session. Without this,
             // a rejected answer was "learned" from its own wrong-answer modal and then
             // resubmitted forever: "io prendo" / "I take" looped incorrect indefinitely
             // because EP's grading wants the whole "I take, I get", not a comma-cut of it.
-            let rejectedDict = {};
-            // question -> how many rounds in a row the loop has had nothing but rejected
-            // candidates left for it. Feeds the give-up guard in answerQuestions.
-            let futileDict = {};
+            let rejectedDict = Object.create(null);
+            // question -> how many rounds in a row the loop has had nothing usable left
+            // for it (all candidates rejected, or the correction modal unreadable).
+            // Feeds the give-up guards in answerQuestions/correctAnswer.
+            let futileDict = Object.create(null);
+            // set when the futility guards trip; answerQuestions breaks on it at the top
+            // of its next pass (correctAnswer cannot break the caller's loop itself)
+            let futileStop = false;
+            // the previous successful refresh's list content, so a refresh of a NEW
+            // task's lists can reset session knowledge instead of carrying stale
+            // rejections/futility across tasks
+            let lastRefreshSignature = null;
 
             // Basic answer-parsing
             function cleanString(string) {
@@ -120,11 +131,15 @@ const puppeteer = require('puppeteer');
             //
             // So the candidates, in order: the ";"/"|" groups re-joined with ", " (only
             // when no group contains a comma — otherwise the modal would have shown a
-            // pipe and that join's shape is implausible), then each whole group (commas
-            // included — the canonical shape for pipe-groups), then the bare pieces
-            // (covers grading that still accepts single alternatives). The full raw
-            // display string is never a candidate: EP never grades its own list-page
-            // "; " formatting, and submitting it wasted every first attempt.
+            // pipe and that join's shape is implausible), then every whole group (commas
+            // included — the canonical shape under per-group grading), then the whole
+            // display string as written (only when it holds several groups — the one
+            // candidate that can match a grader that wants the entire corrected answer
+            // in one string; placed after the groups so the likelier per-group grading
+            // is never spent a guaranteed-wrong first round), then the bare pieces
+            // (covers grading that still accepts single alternatives). The list-page's
+            // raw "; "-joined string alone is never a candidate: EP graded it wrong in
+            // the field on every first attempt.
             function answerCandidates(rawAnswer) {
                 const text = String(rawAnswer)
                     .replace(/\([^)]*\)/g, " ")
@@ -148,20 +163,34 @@ const puppeteer = require('puppeteer');
                 if (groups.length > 1 && groups.every(group => !/[;,]/.test(group))) {
                     push(groups.join(", "));  // EP joins alternative phrases with ", "
                 }
+                // whole alternative answers first (all of them, then all pieces — the
+                // pieces of group one must not be tried before group two's whole answer,
+                // which strict grading is far likelier to accept)
+                for (const group of groups) push(group);
+                // the whole display string as written: the modal's "|" may separate
+                // alternatives (per-group grading) or just join the one required
+                // answer's parts; keeping this AFTER the group-fulls costs nothing when
+                // per-group grading is right, and is the only candidate that can ever
+                // match a whole-display grader
+                if (groups.length > 1) push(text);
+                // bare pieces last: each costs a wrong round under strict grading
                 for (const group of groups) {
-                    push(group);  // the whole alternative answer, commas included
                     for (const piece of group.split(",")) push(piece);
                 }
                 return candidates;
             }
 
-            // Merges candidate lists, freshest proof first. Wrong-answer modals pass in
-            // freshly-proven candidates, so they lead; a re-refresh of the word lists
-            // re-seeds the same data and stays order-stable thanks to the dedupe.
-            function mergeCandidates(existing, incoming) {
+            // Merges candidate lists. Modal-proven candidates pass incoming-first
+            // (freshest proof leads); word-list seeding passes existing-first so a
+            // re-refresh can never demote candidates a wrong-answer modal proved
+            // canonical back behind raw list display forms.
+            function mergeCandidates(existing, incoming, incomingFirst = true) {
                 const merged = [];
                 const seen = new Set();
-                for (const candidate of [...(incoming || []), ...(existing || [])]) {
+                const ordered = incomingFirst
+                    ? [...(incoming || []), ...(existing || [])]
+                    : [...(existing || []), ...(incoming || [])];
+                for (const candidate of ordered) {
                     if (typeof candidate === 'string' && candidate.trim() !== '' && !seen.has(candidate)) {
                         seen.add(candidate);
                         merged.push(candidate);
@@ -170,29 +199,44 @@ const puppeteer = require('puppeteer');
                 return merged;
             }
 
-            // Registers the candidate answers for `question` under both key forms the
-            // lookups use: the text as EP displayed it, and its cleaned variant (the
-            // question element sometimes renders the entry with different separators).
-            function learnEntry(question, rawAnswer) {
+            // Registers the candidate answers for `question` under every key form the
+            // lookups use: the text as displayed, its comma-to-semicolon variant (EP
+            // renders entry separators differently between passes), and the cleaned
+            // variant. A lookup must find the same knowledge under whichever form the
+            // question element shows next.
+            // Returns true when the learn added candidates that were not stored yet —
+            // i.e. EP's modal taught this question something new. A merge can also merely
+            // reorder what is already stored (the modal displays alternatives in its own
+            // order); that is not new knowledge, and restarting the futility meter for it
+            // would let an item whose every candidate is rejected loop on modal reorders
+            // without ever reaching the give-up bound.
+            function learnEntry(question, rawAnswer, incomingFirst = true) {
                 const incoming = answerCandidates(rawAnswer);
-                if (incoming.length === 0) return;
-                for (const key of new Set([String(question).trim(), cleanString(question)])) {
+                if (incoming.length === 0) return false;
+                const q = String(question);
+                let changed = false;
+                for (const key of new Set([q.trim(), q.trim().replace(/,/g, ";"), cleanString(question)])) {
                     if (key === '') continue;
-                    candidatesDict[key] = mergeCandidates(candidatesDict[key], incoming);
+                    const before = candidatesDict[key] || [];
+                    const after = mergeCandidates(before, incoming, incomingFirst);
+                    if (after.length > before.length) changed = true;
+                    candidatesDict[key] = after;
                 }
+                return changed;
             }
 
             // Both directions of a word-list pair answer each other.
             function learnPair(first, second) {
-                learnEntry(first, second);
-                learnEntry(second, first);
+                learnEntry(first, second, false);
+                learnEntry(second, first, false);
             }
 
-            // Records that EP graded `answer` wrong for `question`. Keyed like the
-            // candidates, so a later pass can skip every rejected answer and escalate.
+            // Records that EP graded `answer` wrong for `question`, under the same key
+            // variants the lookups use, so a later pass can skip it and escalate.
             function recordRejection(question, answer) {
                 if (typeof answer !== 'string' || answer.trim() === '') return;
-                for (const key of new Set([String(question).trim(), cleanString(question)])) {
+                const q = String(question);
+                for (const key of new Set([q.trim(), q.trim().replace(/,/g, ";"), cleanString(question)])) {
                     if (key === '') continue;
                     let rejected = rejectedDict[key];
                     if (!rejected) {
@@ -250,6 +294,19 @@ const puppeteer = require('puppeteer');
                     console.warn(empty);
                     await alert(empty);
                     return;
+                }
+
+                // A refresh that brings DIFFERENT lists means a new task: the previous
+                // task's rejections and futility counts would otherwise bleed into it and
+                // exhaust reused questions without ever trying their new answers. Same
+                // content (a re-scrape of the same task) keeps everything learned so far.
+                const signature = JSON.stringify([base, target]);
+                if (signature !== lastRefreshSignature) {
+                    candidatesDict = Object.create(null);
+                    rejectedDict = Object.create(null);
+                    futileDict = Object.create(null);
+                    futileStop = false;
+                    lastRefreshSignature = signature;
                 }
 
                 const count = base.length;
@@ -318,6 +375,20 @@ const puppeteer = require('puppeteer');
                 const modalCutQuestion = cleanString(modalQuestion);
                 if (!loaded || modalsGone || modalCutAnswer === '' || modalCutQuestion === '') {
                     console.log(`Skipping answer correction for "${question}": ${modalsGone ? 'modal disappeared' : 'no usable question/answer'} (raw modal answer: "${modalAnswer}").`);
+                    // The wrong-answer modal on screen DID prove the submission was rejected,
+                    // but it yielded no readable correction — and without one, findAnswer
+                    // would return the same candidate again and again (an unknown question
+                    // would get a fresh random string each time). Count these toward the
+                    // same futility bound so an unreadable modal cannot spin the loop
+                    // forever. No rejection is recorded: keying it to `question` is
+                    // unproven (round skew), and the count alone bounds the spin.
+                    futileDict[question] = (futileDict[question] || 0) + 1;
+                    if (futileDict[question] >= 4) {
+                        futileStop = true;
+                        const message = `EP's correction modal could not be read for "${question}" ${futileDict[question]} rounds in a row; stopping the loop.`;
+                        console.error(message);
+                        await alert(message);
+                    }
                     return false;
                 }
 
@@ -352,7 +423,16 @@ const puppeteer = require('puppeteer');
                 // The full answer EP displayed is canonical: learn it (and its built-in
                 // alternatives) instead of only the cut, so the next pass escalates to the
                 // form EP's grader actually wants.
-                learnEntry(modalQuestion, modalAnswer);
+                const learned = learnEntry(modalQuestion, modalAnswer);
+                // Only a learn that added NEW candidates restarts this item's futility
+                // meter: fresh escalation material is real progress. A readable modal
+                // that repeats what is already stored (and already rejected) must leave
+                // the count alone, or the all-rejected bound below could never be reached.
+                if (learned) {
+                    for (const key of new Set([modalQuestion.trim(), modalQuestion.trim().replace(/,/g, ";"), cleanString(modalQuestion)])) {
+                        delete futileDict[key];
+                    }
+                }
 
                 // logging for debugging if needed
                 let log = "===== Details after Incorrect Answer: =====\n"
@@ -618,6 +698,7 @@ const puppeteer = require('puppeteer');
 
                 TOGGLE = true;
                 lastSubmitted = null;
+                futileStop = false;  // a manual restart after a futility stop gets a fresh bounded run
                 console.log("answerLoop entered.");
 
                 try {
@@ -670,6 +751,11 @@ const puppeteer = require('puppeteer');
                 let boxTamperedRounds = 0;  // answer box rewritten between entry and submission
 
                 while (TOGGLE) {
+                    if (futileStop) {
+                        // correctAnswer tripped a futility guard mid-pass; it cannot break
+                        // this loop itself, so honor it here
+                        break;
+                    }
                     let question = await readQuestionText();
                     if (question === null) {
                         // The question element disappears on round transitions and on the
@@ -764,11 +850,13 @@ const puppeteer = require('puppeteer');
                         }
                         console.log(`Every known answer for "${question}" was rejected; submitting a random string to make EP reveal its answer (round ${attempt}/4).`);
                         answer = generateRandomString(8, 10);
-                    } else {
-                        // a real candidate is being tried, so this question's futility
-                        // meter restarts
-                        futileDict[question] = 0;
                     }
+                    // No reset in the non-null branch: an unknown question falls through
+                    // it with a fresh random string every pass, and resetting there would
+                    // wipe the unreadable-modal count before it could ever reach the
+                    // bound. The meter only restarts on real progress — acceptance, a
+                    // learn that adds new candidates, a changed-list refresh, or a run
+                    // restart.
                     if (typeof answer !== 'string' || answer === '') {
                         console.log(`Refusing to type an empty answer for "${question}".`);
                         break;
@@ -889,6 +977,13 @@ const puppeteer = require('puppeteer');
                     const outcome = await waitForAdvance(question, ENTER ? ADVANCE_TIMEOUT : 0, answer);
 
                     if (outcome === 'aborted') break;
+
+                    if (outcome === 'advanced') {
+                        // the round was graded and moved on: acceptance. Whatever futility
+                        // streak this question had is over.
+                        futileDict[question] = 0;
+                        futileStop = false;
+                    }
 
                     if (outcome === 'modal') {
                         if (!await handleModalAndContinue(question, answer)) break;
