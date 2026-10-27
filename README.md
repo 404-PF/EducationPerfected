@@ -21,6 +21,7 @@ That was never re-verified here, so don't assume this project is fully working.
 - This repo's program is version **v2.2.0**: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
 - That said, the program hasn't been run through the wringer against the live Education Perfect service, so behavior may change or break as the service updates.
+- The task-page and wrong-answer-modal selectors *have* been checked against what EP's live bundles currently ship (2026-10-27), but that is a reading of EP's markup, not a recorded end-to-end run through a real task.
 
 ## Introduction
 This project started as a way to automate tasks on [Education Perfect](https://www.educationperfect.com/) 
