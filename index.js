@@ -9,12 +9,30 @@ const puppeteer = require('puppeteer');
 
         login_url: 'https://app.educationperfect.com/app/login',
 
+        // The login form is no longer served from app.educationperfect.com: that URL
+        // boots the SPA, which bounces /app/login -> / -> authentication.educationperfect.com
+        // -> iam.educationperfect.com (FusionAuth OAuth2). The form there keeps the same
+        // #loginId/#password ids, so the selectors below only need the matching origin -
+        // a same-document selector wait would never match while the page is still on the
+        // first host.
+        login_host: 'iam.educationperfect.com',
+
         // log-in page elements
         username_css: '#loginId',
         password_css: '#password',
 
-        // home page elements
-        home_css: 'div.view-segment-dashboard',
+        // the only automatable sign-in method on the iam page. SSO/Google/Microsoft/Clever
+        // hand off to an external provider, and the page also carries reCAPTCHA; this script
+        // never touches any of that. Users signed in through those must log in by hand.
+        login_button_css: 'button[type=submit], form button',
+
+        // A logged-in signal, not a page-specific element: the old
+        // 'div.view-segment-dashboard' belonged to the pre-single-spa app and no longer
+        // exists anywhere on the current dashboard (verified: /learning/dashboard renders
+        // an mfeAppShell-Scaffold with none of that class). The MFE mount points under
+        // <main> only appear once the app shell is actually running for a session, and
+        // the login page has neither, so its appearance means login succeeded.
+        home_css: 'main #single-spa-application\\:mfeGlobalNavigation\\:Tertiary',
 
         // task-starter page elements
         baseList_css: 'div.baseLanguage',
@@ -51,22 +69,78 @@ const puppeteer = require('puppeteer');
 
             // Open EP page and log in
             console.log('Opening EP page...');
-            await page.goto(DIR.login_url);
+            await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+
+            // /app/login now redirects client-side through several hosts before the form
+            // exists, so wait for the form to APPEAR rather than for it to already be there
+            // after goto. Puppeteer's waitForSelector tracks the current document and keeps
+            // retrying across those navigations, so this covers the SPA bounce even when it
+            // has not started yet. The guard reports the final URL so a changed flow is
+            // diagnosable from the terminal instead of looking like a hang.
             console.log('Waiting for login page to load...');
-            await page.waitForSelector(DIR.username_css);
+            await page.waitForSelector(DIR.username_css, { timeout: 60000 }).catch(e => {
+                const host = new URL(page.url()).hostname;
+                console.error(`Login form (${DIR.username_css}) did not appear within 60s on ${host}: ${e.message}`);
+                console.error('EP may have changed its login flow; log in manually in the open browser window (' +
+                    'the script cannot continue its startup waiting, but the window stays usable).');
+                throw e;
+            });
+            const loginHost = new URL(page.url()).hostname;
+            console.log(`Login form ready on ${loginHost}.`);
+            if (loginHost !== DIR.login_host) {
+                console.warn(`Expected the login form on ${DIR.login_host}; EP served it from ${loginHost} instead. Manual login recommended.`);
+            }
+
+            // The form script leaves a loading state behind when it fails (e.g. scripts
+            // blocked): the fields render but the buttons can stay disabled. Report it so a
+            // failed auto-login is explained, and leave the window for manual login.
+            const formUsable = await page.evaluate((userCss, passCss, btnCss) => {
+                const field = (css) => {
+                    const el = document.querySelector(css);
+                    return el ? !el.disabled && !el.readOnly : false;
+                };
+                const buttons = [...document.querySelectorAll(btnCss)];
+                const submit = buttons.find(b => /^\s*log in\s*$/i.test(b.innerText || '')) || buttons[0];
+                return {
+                    fieldsEnabled: field(userCss) && field(passCss),
+                    submitEnabled: submit ? !submit.disabled : false,
+                };
+            }, DIR.username_css, DIR.password_css, DIR.login_button_css).catch(() => ({ fieldsEnabled: false, submitEnabled: false }));
+            if (!formUsable.fieldsEnabled || !formUsable.submitEnabled) {
+                console.warn(`Login form looks unusable (fields enabled: ${formUsable.fieldsEnabled}, submit enabled: ${formUsable.submitEnabled}); the login page's scripts may not have finished or are blocked.`);
+            }
 
             if (DIR.email && DIR.password) {
                 // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
+                // (username/password only: SSO, Google, Microsoft, Clever and the reCAPTCHA
+                // on this page are left alone - users on those sign-in methods must log in
+                // manually, and no challenge is ever solved or bypassed here.)
                 console.log('Filling in login details...');
                 await page.type(DIR.username_css, DIR.email);
                 await page.type(DIR.password_css, DIR.password);
-                // wait for the redirect to finish before continuing, so the hotkey setup
-                // below runs in the logged-in document instead of racing the navigation
-                await Promise.all([page.waitForNavigation(), page.keyboard.press('Enter')]);
+                // Submit through the form rather than a synthetic Enter: the iam page is
+                // an OAuth2 form, and Enter only submits when focus lands in its field.
+                // The button click is a real form submission; fall back to Enter if the
+                // button is not rendered.
+                const submitted = await page.$(DIR.login_button_css);
+                console.log('Submitting login form...');
+                await Promise.all([
+                    page.waitForNavigation({ timeout: 30000 }).catch(() => {
+                        // a failed login stays on the form (or shows an error/challenge there),
+                        // so the timeout is not fatal: report it and let the user finish by hand.
+                        console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
+                    }),
+                    submitted ? page.click(DIR.login_button_css) : page.keyboard.press('Enter'),
+                ]);
 
                 console.log('Waiting for home page to load...');
-                // await page.waitForSelector(DIR.home_css, { timeout: 0 });
-                console.log('EP Home page loaded; Logged in.');
+                // wait for the app shell, so a slow dashboard is reported honestly instead
+                // of being called loaded the moment the login form disappears. Other routes
+                // (a task opened straight from an assignment link) also carry the shell.
+                const homeSeen = await page.waitForSelector(DIR.home_css, { timeout: 30000 }).then(() => true).catch(() => false);
+                console.log(homeSeen
+                    ? `EP Home page loaded (${new URL(page.url()).pathname}); Logged in.`
+                    : `Logged in, but the app shell (${DIR.home_css}) was not found within 30s on ${new URL(page.url()).pathname}; check the browser window.`);
             } else {
                 console.log('EP_EMAIL and EP_PASSWORD are not set; skipping auto-login. Log in manually in the opened browser window.');
                 await page.waitForSelector(DIR.home_css, { timeout: 0 });
