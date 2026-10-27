@@ -104,7 +104,8 @@ All three functions (**Start Answering**, **Toggle Mode**, and **Refresh Words**
 outlined below.
 
 ### Hotkeys
-Upon starting, the program does not do anything.  
+
+Upon starting, the program opens the browser and gets EP ready (including logging in if credentials are set) - but it does not begin auto-answering until you tell it to.  
 **All functions are triggered via *hotkeys/keybindings* as listed below:**
 
 - **Refresh Words -> <kbd>Opt/Alt</kbd> + <kbd>R</kbd>:**  
@@ -151,6 +152,7 @@ The program also keeps an eye on itself: if the page gets stuck in a state it ca
 _NOTE: If you close the terminal window that pops up when you run the script, the browser window will close too_
 
 ### Feature-Explanation
+
 - **Full Speed Auto Answer:**  
   The speed is a deliberate trade-off: answers are typed as real keystrokes, spaced out and verified against the answer box before submission, because EP's own input handling garbles faster-but-fragile approaches ("I speak" used to land as "I I sI speakeakat").
 
