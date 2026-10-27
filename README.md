@@ -49,17 +49,18 @@ Either way, I have provided detailed instructions for installation and usage bel
 
 
 ## Installation
-1. download the EducationPerfected program and starter script ([index.js](index.js) and [start.cmd](start.cmd) or [start.sh](start.sh) found above) and place them in the same folder
-2. install [node.js](https://nodejs.org/)
-3. open Command Prompt/Terminal **in the folder where `index.js is` located** (right click -> open in terminal or use the `cd` command to change the directory)
-4. install the Puppeteer library by running `npm i puppeteer` in your opened Command Prompt/Terminal window*
+1. download the EducationPerfected program, starter script, launcher, and test scripts ([index.js](index.js), [start.cmd](start.cmd) or [start.sh](start.sh), the [bin/](bin/) folder, and the [scripts/](scripts/) folder) and place them in the same folder  
+   (the scripts expect [package.json](package.json) and [package-lock.json](package-lock.json) in that same folder - get them from the repo; if you copied the files out of a git checkout, copy those along with the `bin/` and `scripts/` folders)
+2. install [node.js](https://nodejs.org/) - version **22.12 or newer** (that's what the pinned Puppeteer requires)
+3. open Command Prompt/Terminal **in the folder where `index.js` is located** (right click -> open in terminal or use the `cd` command to change the directory)
+4. install the dependencies with `npm ci` in your opened Command Prompt/Terminal window
 5. set your **Education Perfect credentials** as environment variables - the program will use them for auto-login  
    - **Windows (Command Prompt):** `set EP_EMAIL=you@example.com` then `set EP_PASSWORD=your-password`  
    - **Windows (PowerShell):** `$env:EP_EMAIL='you@example.com'; $env:EP_PASSWORD='your-password'`  
    - **Linux/macOS (Terminal):** `export EP_EMAIL='you@example.com' EP_PASSWORD='your-password'`  
 
 
-_*...or whatever method is used to install js libraries on your platform... Google it if necessary._  
+_*The starter scripts run `npm ci` for you the first time if `node_modules` is missing, so double-clicking is enough. `npm ci` installs exactly what [package-lock.json](package-lock.json) records, preserving the tested lockfile._  
 _*To enable auto-login, set **both** `EP_EMAIL` and `EP_PASSWORD` before running the script (and keep
 the credential values out of the source file). Forgot to set them? No worries - the browser still opens and you can
 log in manually. Keep credentials out of the source file by using the environment variables above._  
@@ -68,8 +69,8 @@ Microsoft or Clever, log in manually in the browser window; the script never tou
 on EP's login page._
 
 
-*NOTE: `npm i puppeteer` normally downloads a compatible Chrome browser automatically. If the first run complains that it can't find a browser, open up Terminal in the same folder and run 
-`npx puppeteer browsers install chrome` to download it manually.*
+*NOTE: `npm ci` normally downloads a compatible Chrome browser automatically (via Puppeteer's install script). If the first run complains that it can't find a browser, open up Terminal in the same folder and run 
+`npx puppeteer browsers install chrome` to download it manually. If your npm is configured not to run install scripts (for example npm 12's `allowScripts` gate), the download is skipped and this step is required.*
 
 
 ## Usage
@@ -84,6 +85,12 @@ Save the appropriate starter script in the ***same** folder as index.js* and dou
 
 You can close the browser window or the popped-up terminal window whenever you are done.  
 If you run into weird behavior, try restarting the program.
+
+### Dependencies
+The program's only runtime dependency is [Puppeteer](https://github.com/puppeteer/puppeteer), pinned to **25.16.0** in [package.json](package.json) and locked (with its own dependencies) in [package-lock.json](package-lock.json). Each Puppeteer version pairs with a Chrome build that it downloads and launches - Chrome 156 for this one. Install with `npm ci`, or just use one of the starter scripts, which run it for you when needed. To bump Puppeteer, change the version in `package.json`, run `npm install`, and commit the updated lockfile.
+
+That version was exercised by a local smoke test ([scripts/smoke-test.js](scripts/smoke-test.js)) against a mock EP site ([scripts/mock-ep.js](scripts/mock-ep.js)) covering the Puppeteer calls this program makes: login form fill and submit, reading the word lists, typing and submitting answers, reading and dismissing the wrong-answer modal, and the completion screen. Run it yourself with `npm run smoke` (use `SMOKE_HEADFUL=1` to watch a visible window, or `SMOKE_EXECUTABLE_PATH`/`SMOKE_BROWSER_URL` to target a browser you already have).  
+*This proves the dependency setup works, not that EP's live pages behave the same - the live site can still change.*
 
 ### Features
 **Start Answering**: There's one main function - automatically answer questions when you're doing a task.  

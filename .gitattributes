@@ -1,0 +1,3 @@
+# start.sh runs under bash, which fails on CRLF line endings.
+*.sh text eol=lf
+*.cmd text eol=crlf

@@ -1,0 +1,2 @@
+# Dependencies are installed with `npm ci`, so the lockfile is the tested setup.
+node_modules/
