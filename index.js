@@ -1,4 +1,4 @@
-// v2
+// v2.2.0
 
 const puppeteer = require('puppeteer');
 
