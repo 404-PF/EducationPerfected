@@ -62,6 +62,9 @@ _*...or whatever method is used to install js libraries on your platform... Goog
 _*To enable auto-login, set **both** `EP_EMAIL` and `EP_PASSWORD` before running the script (and keep
 the credential values out of the source file). Forgot to set them? No worries - the browser still opens and you can
 log in manually. Keep credentials out of the source file by using the environment variables above._  
+*_Auto-login only fills in EP's own username/password form. If you sign in through your school account (SSO), Google,
+Microsoft or Clever, log in manually in the browser window; the script never touches those flows or the reCAPTCHA
+on EP's login page._
 
 
 *NOTE: `npm i puppeteer` normally downloads a compatible Chrome browser automatically. If the first run complains that it can't find a browser, open up Terminal in the same folder and run 
@@ -131,9 +134,10 @@ it won't be detected. (On macOS, pressing Option + a letter types the special ch
 ### Expected behavior
 When you run the script, it should:  
 * Open a new browser window (that does not have any user data, so you log in to EP manually - or set both the `EP_EMAIL` and `EP_PASSWORD` environment variables for auto-login);  
+* Load EP's login page. It is no longer served from `app.educationperfect.com`: that address redirects to EP's identity provider (`iam.educationperfect.com`), where the same username/password fields live;  
 * Load EP home page;  
 * All auto-answer functionality is loaded in the background, ready to be used whenever;  
-* Log in for you if you provided your credentials.  
+* Log in for you if you provided your credentials (username/password only - SSO, Google, Microsoft, Clever and any CAPTCHA must be completed by hand).  
 
 Then, you can:  
 * Log in manually if you _really_ want to (why?);
