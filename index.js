@@ -1,7 +1,6 @@
 // v2.2.0
 
 const puppeteer = require('puppeteer');
-const crypto = require('crypto');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -14,17 +13,47 @@ const crypto = require('crypto');
 // sign in manually in the browser window.
 const CREDENTIAL_SERVICE = 'EducationPerfected';
 
-// Rejects placeholder/whitespace values so an HTML-quoted or copied env var does not
-// silently count as real, and trims what string env vars often carry around (a
-// PowerShell `export` keeps quotes; a trailing newline is invisible).
+/**
+ * Strips surrounding quotes and normalizes whitespace for credential-like values.
+ * Returns null for empty/placeholder values.
+ * @param {string} value
+ * @returns {string|null}
+ */
 function cleanCredential(value) {
     if (typeof value !== 'string') return null;
+    // Remove surrounding single/double quotes, then trim whitespace.
     const cleaned = value.trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
     return cleaned === '' ? null : cleaned;
 }
 
-// Resolves the optional keytar without letting a missing/broken install stop the
-// program: the user can still use env vars or type the password.
+/**
+ * Normalizes an email address: trims whitespace and strips surrounding quotes.
+ * Unlike passwords, emails never have meaningful leading/trailing spaces.
+ * @param {string} value
+ * @returns {string|null}
+ */
+function cleanEmail(value) {
+    return cleanCredential(value);
+}
+
+/**
+ * Normalizes a password: strips surrounding quotes only, preserving all
+ * leading/trailing/internal whitespace which can be significant.
+ * @param {string} value
+ * @returns {string|null}
+ */
+function cleanPassword(value) {
+    if (typeof value !== 'string') return null;
+    const unquoted = value.replace(/^(['"])(.*)\1$/s, '$2');
+    return unquoted === '' ? null : unquoted;
+}
+
+/**
+ * Attempts to load the optional `keytar` module for OS keychain access.
+ * Returns null if the module is not installed or fails to load, allowing
+ * the program to fall back to environment variables or TTY prompt.
+ * @returns {Object|null} The keytar module or null if unavailable
+ */
 function loadKeytar() {
     try {
         return require('keytar');
@@ -36,11 +65,17 @@ function loadKeytar() {
     }
 }
 
+/**
+ * Reads a credential field from the OS keychain using keytar.
+ * @param {string} field - The field name ('EP_EMAIL' or 'EP_PASSWORD')
+ * @returns {Promise<string|null>} The credential value or null if unavailable
+ */
 async function readKeychainCredential(field) {
     const keytar = loadKeytar();
     if (!keytar) return null;
     try {
-        return cleanCredential(await keytar.getPassword(CREDENTIAL_SERVICE, field));
+        const raw = await keytar.getPassword(CREDENTIAL_SERVICE, field);
+        return field === 'EP_EMAIL' ? cleanEmail(raw) : cleanPassword(raw);
     } catch (e) {
         console.warn(`Could not read the ${field} from the OS keychain (${e.message}); skipping it.`);
         return null;
@@ -50,7 +85,13 @@ async function readKeychainCredential(field) {
 // Secret prompt: no echo, and no copy left in the terminal. Resolves null when stdin
 // is not a terminal (piped input is not trusted with a password) or the user submits
 // nothing, so the manual-login path still works everywhere.
-function promptSecret(label) {
+/**
+ * Prompts for a secret value with hidden input.
+ * @param {string} label
+ * @param {(value: string) => string|null} cleaner - Function to clean the submitted value
+ * @returns {Promise<string|null>}
+ */
+function promptSecret(label, cleaner) {
     return new Promise(resolve => {
         const stdin = process.stdin;
         if (!stdin.isTTY) return resolve(null);
@@ -67,8 +108,8 @@ function promptSecret(label) {
         // Chunk is a Buffer; for...of yields numeric byte values. Collect bytes
         // and decode as UTF-8 on submit so non-ASCII characters are preserved.
         // On backspace/delete, remove the complete final UTF-8 character.
-        // Ignore escape sequences (starting with 0x1B) so arrow keys etc. are not
-        // added to the secret.
+        // Ignore escape sequences (starting with 0x1B) so arrow keys, bracketed paste,
+        // and other control sequences are not added to the secret.
         const bytes = [];
         let inEscape = false;
         let escapeBytes = 0;
@@ -84,6 +125,7 @@ function promptSecret(label) {
                 if (inEscape) {
                     // CSI sequences: ESC [ ... final byte in 0x40-0x7E
                     // OSC sequences: ESC ] ... ST (0x07) or ESC \
+                    // Bracketed paste: ESC [200~ ... ESC [201~ (handled as CSI)
                     escapeBytes++;
                     if ((byte >= 0x40 && byte <= 0x7E) || byte === 0x07 || (byte === 0x1B && escapeBytes >= 2)) {
                         inEscape = false;
@@ -96,7 +138,7 @@ function promptSecret(label) {
                     escapeBytes = 0;
                     continue;
                 }
-                if (byte === 13 || byte === 10) return finish(cleanCredential(Buffer.from(bytes).toString('utf8')));
+                if (byte === 13 || byte === 10) return finish(cleaner(Buffer.from(bytes).toString('utf8')));
                 if (byte === 3) {  // Ctrl+C: leave cleanly, no stack trace
                     finish(null);
                     process.exit(130);
@@ -114,14 +156,18 @@ function promptSecret(label) {
 
 // Asks only when a terminal is attached AND the run would otherwise skip auto-login;
 // an empty answer at either prompt means "log in manually".
+/**
+ * Prompts for email and password credentials interactively.
+ * @returns {Promise<{email: string, password: string}|null>}
+ */
 async function promptCredentials() {
     if (!process.stdin.isTTY) {
         console.log('Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
         return null;
     }
-    const email = await promptSecret('EP email (leave empty to log in manually): ');
+    const email = await promptSecret('EP email (leave empty to log in manually): ', cleanEmail);
     if (email === null) return null;
-    const password = await promptSecret('EP password (input hidden): ');
+    const password = await promptSecret('EP password (input hidden): ', cleanPassword);
     if (password === null) {
         console.log('No password entered; log in manually in the opened browser window.');
         return null;
@@ -129,10 +175,17 @@ async function promptCredentials() {
     return { email, password };
 }
 
-// Returns { email, password, source } or null. Secrets are only ever held in memory.
+/**
+ * Resolves credentials at runtime from the first available source:
+ * 1. EP_EMAIL / EP_PASSWORD environment variables (both must be set)
+ * 2. OS keychain (via keytar, both fields must be present)
+ * 3. Interactive TTY prompt (hidden input)
+ * Returns null if no credentials are available, allowing manual login.
+ * @returns {Promise<{email: string, password: string, source: string}|null>}
+ */
 async function resolveCredentials() {
-    const email = cleanCredential(process.env.EP_EMAIL);
-    const password = cleanCredential(process.env.EP_PASSWORD);
+    const email = cleanEmail(process.env.EP_EMAIL);
+    const password = cleanPassword(process.env.EP_PASSWORD);
     if (email && password) return { email, password, source: 'EP_EMAIL/EP_PASSWORD' };
     if (process.env.EP_EMAIL || process.env.EP_PASSWORD) {
         // Half a configuration is almost always a typo; say so instead of guessing
@@ -230,11 +283,11 @@ async function resolveCredentials() {
         .then(async browser => {
             const page = (await browser.pages())[0];
 
-            // Resolves the submit control once, by its label, from the <form> itself:
-            // the iam page carries SSO/social buttons near the form, and a positional
-            // selector ('form button', 'button[type=submit]') could resolve to one of
-            // those. The same handle is then readiness-checked and clicked. Returns null
-            // when there is no such button (the caller falls back to Enter).
+            /**
+ * Finds the login button by its label text within the login form.
+ * Avoids SSO/social buttons by requiring the button to be inside a <form>.
+ * @returns {Promise<ElementHandle|null>} The login button handle or null if not found
+ */
             const findLoginButton = async () => {
                 const handles = await page.$$(DIR.login_button_css);
                 for (const handle of handles) {
@@ -252,9 +305,12 @@ async function resolveCredentials() {
                 return null;
             };
 
-            // Opens the login page and resolves the submit button. Returns null instead of
-            // throwing when the form never appears: the browser window must stay usable for
-            // manual login, so a rejected promise here would take the window down with it.
+            /**
+ * Navigates to the login page and waits for the login form to appear.
+ * Verifies the form is on the expected host (iam.educationperfect.com) to prevent
+ * credential submission on lookalike pages. Returns the resolved login button.
+ * @returns {Promise<{loginButton: ElementHandle|null}|null>} Login form info or null if form not found/wrong host
+ */
             const reachLoginForm = async () => {
                 console.log('Opening EP page...');
                 await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
@@ -338,16 +394,16 @@ async function resolveCredentials() {
                 // field. The resolved handle is clicked, so an SSO/social button can never be
                 // hit by accident; Enter is the fallback when no such button exists.
                 console.log('Submitting login form...');
-                await Promise.all([
-                    page.waitForNavigation({ timeout: 30000 }).catch(() => {
-                        // a failed login stays on the form (or shows an error/challenge there),
-                        // so the timeout is not fatal: report it and let the user finish by hand.
-                        console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
-                    }),
-                    loginButton ? loginButton.click() : page.keyboard.press('Enter'),
-                ]);
-                // The submit operation has returned. Clear the field after submission.
+                // Dispatch the click/Enter first, then immediately clear the password field
+                // so the secret doesn't linger in the DOM during the navigation wait.
+                await (loginButton ? loginButton.click() : page.keyboard.press('Enter'));
                 await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
+                // Now wait for navigation (up to 30s). A failed login stays on the form
+                // (or shows an error/challenge there), so the timeout is not fatal:
+                // report it and let the user finish by hand.
+                await page.waitForNavigation({ timeout: 30000 }).catch(() => {
+                    console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
+                });
 
                 console.log('Waiting for home page to load...');
                 // wait for the app shell, so a slow dashboard is reported honestly instead
@@ -405,7 +461,12 @@ async function resolveCredentials() {
             // rejections/futility across tasks
             let lastRefreshSignature = null;
 
-            // Basic answer-parsing
+            /**
+ * Normalizes a string by removing parenthetical content and taking the first
+ * segment separated by ; , or |. Used for question dictionary keys.
+ * @param {string} string
+ * @returns {string}
+ */
             function cleanString(string) {
                 return String(string)
                     .replace(/\([^)]*\)/g, "").trim()
@@ -414,29 +475,13 @@ async function resolveCredentials() {
                     .split("|")[0].trim();
             }
 
-            // Builds the ordered candidate answers for one raw word-list/modal answer.
-            //
-            // EP's answer data is a list of phrases, and the two screens join that list
-            // with different separators: the task-starter list joins alternatives with
-            // "; " (e.g. "she reads; she is reading"), while the wrong-answer modal joins
-            // them with ", " — or with " | " when a phrase itself contains a comma
-            // ("she takes, she gets | she is taking, she is getting"). Field evidence:
-            // the grader rejects any submission whose phrases/order don't match its
-            // canonical display — single pieces ("I take") and list-display joins
-            // ("I sell; I am selling") were both graded wrong while the modal's exact
-            // string is the item's canonical answer.
-            //
-            // So the candidates, in order: the ";"/"|" groups re-joined with ", " (only
-            // when no group contains a comma — otherwise the modal would have shown a
-            // pipe and that join's shape is implausible), then every whole group (commas
-            // included — the canonical shape under per-group grading), then the whole
-            // display string as written (only when it holds several groups — the one
-            // candidate that can match a grader that wants the entire corrected answer
-            // in one string; placed after the groups so the likelier per-group grading
-            // is never spent a guaranteed-wrong first round), then the bare pieces
-            // (covers grading that still accepts single alternatives). The list-page's
-            // raw "; "-joined string alone is never a candidate: EP graded it wrong in
-            // the field on every first attempt.
+            /**
+ * Builds an ordered list of candidate answers from a raw answer string.
+ * Handles EP's different join formats (; , |) and produces candidates in priority order:
+ * joined groups, whole groups, full display string, then bare pieces.
+ * @param {string} rawAnswer
+ * @returns {string[]}
+ */
             function answerCandidates(rawAnswer) {
                 const text = String(rawAnswer)
                     .replace(/\([^)]*\)/g, " ")
@@ -477,10 +522,13 @@ async function resolveCredentials() {
                 return candidates;
             }
 
-            // Merges candidate lists. Modal-proven candidates pass incoming-first
-            // (freshest proof leads); word-list seeding passes existing-first so a
-            // re-refresh can never demote candidates a wrong-answer modal proved
-            // canonical back behind raw list display forms.
+            /**
+ * Merges two candidate arrays, preserving order and deduplicating.
+ * @param {string[]} existing
+ * @param {string[]} incoming
+ * @param {boolean} incomingFirst - If true, incoming candidates take priority
+ * @returns {string[]}
+ */
             function mergeCandidates(existing, incoming, incomingFirst = true) {
                 const merged = [];
                 const seen = new Set();
@@ -496,25 +544,24 @@ async function resolveCredentials() {
                 return merged;
             }
 
-            // The single key a question's futility meter lives under. All questions are
-            // normalized to their cleaned form first, so every separator rendering of the
-            // same item ("a, b" / "a; b" / "a;b") shares one count instead of each variant
-            // getting its own — otherwise alternating renderings would bypass the bound.
+            /**
+ * Generates the canonical key for a question's futility counter.
+ * Uses the cleaned question text so all rendering variants share one counter.
+ * @param {string} question
+ * @returns {string}
+ */
             function futileKey(question) {
                 return cleanString(question);
             }
 
-            // Registers the candidate answers for `question` under every key form the
-            // lookups use: the text as displayed, its comma-to-semicolon variant (EP
-            // renders entry separators differently between passes), and the cleaned
-            // variant. A lookup must find the same knowledge under whichever form the
-            // question element shows next.
-            // Returns true when the learn added candidates that were not stored yet —
-            // i.e. EP's modal taught this question something new. A merge can also merely
-            // reorder what is already stored (the modal displays alternatives in its own
-            // order); that is not new knowledge, and restarting the futility meter for it
-            // would let an item whose every candidate is rejected loop on modal reorders
-            // without ever reaching the give-up bound.
+            /**
+ * Registers candidate answers for a question under all key variants.
+ * Returns true if new candidates were added (indicating fresh knowledge from a modal).
+ * @param {string} question
+ * @param {string} rawAnswer
+ * @param {boolean} incomingFirst
+ * @returns {boolean}
+ */
             function learnEntry(question, rawAnswer, incomingFirst = true) {
                 const incoming = answerCandidates(rawAnswer);
                 if (incoming.length === 0) return false;
@@ -530,14 +577,23 @@ async function resolveCredentials() {
                 return changed;
             }
 
-            // Both directions of a word-list pair answer each other.
+            /**
+ * Records a bidirectional word-list pair (both directions answer each other).
+ * Uses existing-first merge so refreshes don't demote modal-proven candidates.
+ * @param {string} first
+ * @param {string} second
+ */
             function learnPair(first, second) {
                 learnEntry(first, second, false);
                 learnEntry(second, first, false);
             }
 
-            // Records that EP graded `answer` wrong for `question`, under the same key
-            // variants the lookups use, so a later pass can skip it and escalate.
+            /**
+ * Records that an answer was graded wrong for a question, under all key variants.
+ * Prevents the same wrong answer from being resubmitted.
+ * @param {string} question
+ * @param {string} answer
+ */
             function recordRejection(question, answer) {
                 if (typeof answer !== 'string' || answer.trim() === '') return;
                 const q = String(question);
@@ -552,18 +608,24 @@ async function resolveCredentials() {
                 }
             }
 
-            // A detached frame / destroyed execution context means the page navigated
-            // away (task finished, EP moved to another screen, browser closed) — not a
-            // bug in the loop. Those errors must end a run quietly instead of printing
-            // a stack trace, and must never be retried against the dead page.
+            /**
+ * Checks if an error indicates the page/frame has been destroyed or navigated away.
+ * These errors are expected during normal operation (task completion, browser close)
+ * and should be handled quietly rather than as crashes.
+ * @param {Error|any} e
+ * @returns {boolean}
+ */
             function isPageGoneError(e) {
                 const message = String((e && e.message) || e);
                 return /detached Frame|Execution context was destroyed|Cannot find context|Target closed|Session closed|Browser has been closed|Navigating was not successful/i.test(message);
             }
 
-            // Get words from the main task page. innerText (unlike textContent) respects rendering,
-            // so lists that are visually split one-per-line are read as separate entries instead of
-            // as a single run-together string.
+            /**
+ * Scrapes word list entries from the task-starter page.
+ * Uses innerText to respect visual rendering (one entry per line).
+ * @param {string} selector
+ * @returns {Promise<string[]>}
+ */
             async function wordList(selector) {
                 return await page.$$eval(selector, els => {
                     let words = [];
@@ -572,9 +634,12 @@ async function resolveCredentials() {
                 });
             }
 
-            // Reads the question text; null when the element is not currently rendered
-            // (task finished, transitional rendering, navigation). $eval throws on a
-            // missing node, and the answering loop must treat that as a signal, not a crash.
+            /**
+ * Reads the current question text from the task page.
+ * Returns null if the element is missing (round transition, navigation, task end).
+ * Does not throw on missing elements.
+ * @returns {Promise<string|null>}
+ */
             async function readQuestionText() {
                 try {
                     return await page.$eval(DIR.question_css, el => el.textContent);
@@ -583,7 +648,12 @@ async function resolveCredentials() {
                 }
             }
 
-            // Refreshes the word lists on the main task page to enhance our vocabulary
+            /**
+ * Scrapes and learns word pairs from the task-starter page.
+ * Resets dictionaries if the lists have changed (new task), otherwise merges.
+ * Reports the entry count via console and toast.
+ * @returns {Promise<void>}
+ */
             async function refreshWords() {
                 const base = await wordList(DIR.baseList_css);
                 const target = await wordList(DIR.targetList_css);
@@ -626,8 +696,11 @@ async function resolveCredentials() {
             }
 
 
-            // extracts what EP detected as the user's answer, reading the per-word segments of the
-            // fancy multicoloured display. Reads only, so a missing field is an empty string, not a throw.
+            /**
+ * Extracts the user's submitted answer from the wrong-answer modal.
+ * Reads per-word segments, skipping greyed-out (unanswered) portions.
+ * @returns {Promise<string>}
+ */
             async function getModalAnswered() {
                 return await page.evaluate(() => {
                     const field = document.querySelector('td#users-answer-field');
@@ -640,11 +713,14 @@ async function resolveCredentials() {
                 });
             }
 
-            // Learn from the mistakes :)
-            // Returns true if the dictionary was updated, false if there was no usable correction.
-            // `randomRound` means this pass already counted the round in the all-rejected
-            // branch (the submission was a random string), so an unreadable modal here must
-            // not count the same round a second time.
+            /**
+ * Handles a wrong-answer modal: waits for it to load, learns the correct answer,
+ * records the rejection, dismisses the modal, and updates futility counters.
+ * @param {string} question - The question text as detected before submission
+ * @param {string} answer - The answer that was submitted and graded wrong
+ * @param {boolean} randomRound - Whether this round used a random string (affects futility counting)
+ * @returns {Promise<boolean>} True if a correction was learned, false otherwise
+ */
             async function correctAnswer(question, answer, randomRound = false) {
                 // wait until the modal's question and correct answer have actually been
                 // filled in. Both start as "&nbsp;" placeholders, which trim() to '', so
@@ -759,7 +835,11 @@ async function resolveCredentials() {
                 return true;
             }
 
-            // deletes all existing modals and backdrops. Used to force-speed things up
+            /**
+ * Removes all modal windows and backdrops from the page.
+ * Used to dismiss modals without waiting for EP's cooldown animations.
+ * @returns {Promise<void>}
+ */
             async function deleteModals() {
                 await page.$$eval(DIR.modal_css, el => {
                     el.forEach(i => i.remove())
@@ -769,12 +849,14 @@ async function resolveCredentials() {
                 });
             }
 
-            // very advanced logic (ofc) used to find matching answer.
-            // Walks the question's key variants and returns the first candidate that EP
-            // has not already graded wrong. Returns null when candidates exist but every
-            // one of them was rejected — the caller escalates/bounds that case — and a
-            // random string only when the question is entirely unknown, which feeds the
-            // teach-from-modal loop as before.
+            /**
+ * Finds the best candidate answer for a question.
+ * Checks all key variants, returns the first non-rejected candidate.
+ * Returns null if candidates exist but all were rejected (caller escalates).
+ * Returns a random string if the question is completely unknown.
+ * @param {string} question
+ * @returns {string|null}
+ */
             function findAnswer(question) {
                 const probes = [question, question.replace(/,/g, ";"), cleanString(question)];
                 let hadCandidates = false;
@@ -796,8 +878,12 @@ async function resolveCredentials() {
                 return generateRandomString(8, 10);
             }
 
-            // i love creating functions so here's one for the random string instead of just returning idk answer 
-            // -joshatticus
+            /**
+ * Generates a random alphanumeric string for probing unknown questions.
+ * @param {number} minLength
+ * @param {number} maxLength
+ * @returns {string}
+ */
             function generateRandomString(minLength, maxLength) {
                 const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
                 const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -808,8 +894,15 @@ async function resolveCredentials() {
                 return result;
             }
 
-            // Handles whatever modal is on screen after an answer was submitted.
-            // Returns false when the loop should stop (task complete), true to keep answering.
+            /**
+ * Handles whatever modal is on screen after an answer submission.
+ * Routes to correctAnswer for wrong-answer modals, clicks exit/continue for completion,
+ * or deletes unknown modals.
+ * @param {string} question
+ * @param {string} answer
+ * @param {boolean} randomRound
+ * @returns {Promise<boolean>} False if task is complete, true to continue answering
+ */
             async function handleModal(question, answer, randomRound = false) {
                 // allow the modal a moment to render before deciding what it is
                 await page.waitForSelector(DIR.modal_css, { timeout: 2000 }).catch(() => { });
@@ -832,16 +925,15 @@ async function resolveCredentials() {
                 return true;
             }
 
-            // Waits until the round moves on past `previous`, or a modal becomes visible.
-            // "Moved on" is not just a question-text change: dictionary tasks can redraw
-            // the exact same question, so the answer box is watched too — EP clearing it
-            // for the next round means the round resolved even though the text repeats.
-            // Only a present, empty box counts: a transiently missing box is not progress,
-            // and a box holding new text (e.g. the user editing the proposed answer in
-            // semi-auto) must keep the loop waiting. Polls instead of using
-            // waitForFunction so the wait is abortable: TOGGLE can go false at any time
-            // (Alt+S, or a restart) and must not leave a stray loop running. Resolves
-            // early with status 'timeout' rather than throwing.
+            /**
+ * Waits for the round to advance past the previous question, or for a modal to appear.
+ * Polls the question text and answer box value; treats a cleared box as advancement.
+ * Aborts cleanly if TOGGLE becomes false. Returns a status string.
+ * @param {string} previous - The previous question text
+ * @param {number} timeout - Timeout in ms (0 = no timeout)
+ * @param {string} submitted - The answer that was submitted
+ * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
+ */
             async function waitForAdvance(previous, timeout, submitted) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
@@ -863,9 +955,12 @@ async function resolveCredentials() {
                 return TOGGLE ? 'timeout' : 'aborted';
             }
 
-            // Reads the answer box's value; null when the box is not currently rendered
-            // (transitional render between rounds). $eval throws on a missing node, and
-            // that must never crash the loop.
+            /**
+ * Reads the answer box's current value.
+ * Returns null if the box is not rendered (transitional state between rounds).
+ * Does not throw on missing elements.
+ * @returns {Promise<string|null>}
+ */
             async function answerBoxValue() {
                 try {
                     return await page.$eval(DIR.answer_box_css, el => el.value);
@@ -874,20 +969,12 @@ async function resolveCredentials() {
                 }
             }
 
-            // Pause between keystrokes when typing an answer. Zero-gap keystrokes race
-            // EP's own input handling, which re-applies the value it last committed to
-            // the box at unpredictable moments — grafting snapshots of old text into the
-            // middle of the fresh one, so "I speak" arrived as "I I sI speakeakat".
-            // Spacing the keystrokes gives EP's handling time to keep up, the way it
-            // does for human typing. 20ms keeps a 7-character word under 0.2s, and any
-            // attempt that still garbles is caught by enterAnswer's verification and
-            // retried with an escalated delay.
-            const TYPE_DELAY_MS = 20;
-
-            // Focuses and empties the answer box, verifying emptiness before returning
-            // (true = box is empty, false = box missing or content kept surviving the
-            // clear). The old blind click+Backspace could leave EP-restored content
-            // behind, and the subsequent type then interleaved old and new text.
+            /**
+ * Focuses and clears the answer box, verifying it's empty before returning.
+ * Retries up to 5 times with alternating triple-click and Ctrl+A to handle
+ * EP's asynchronous content restoration.
+ * @returns {Promise<boolean>} True if box is empty, false if box missing or content persisted
+ */
             async function clearAnswerBox() {
                 for (let attempt = 0; attempt < 5; attempt++) {
                     const before = await answerBoxValue();
@@ -923,12 +1010,12 @@ async function resolveCredentials() {
                 return false;
             }
 
-            // Reads the box until its value stops changing, so a keystroke still being
-            // processed after type() returns is absorbed instead of being read as a
-            // mismatch (the old immediate read landed mid-flush: "spicy" got judged as
-            // "spicyy" and every deterministic retry reproduced it). A matching value
-            // must also HOLD across a second sample: a lone exact read could still be
-            // followed by a late keystroke. Reserves ~8 reads at 25ms of patience.
+            /**
+ * Reads the answer box until its value stabilizes (two consecutive reads match).
+ * Handles EP's late keystroke processing by confirming the value holds.
+ * @param {string} answer - The expected answer
+ * @returns {Promise<string|null>} The settled value, or null if box vanished
+ */
             async function readSettledBox(answer) {
                 let previous = null;
                 for (let i = 0; i < 8; i++) {
@@ -948,19 +1035,13 @@ async function resolveCredentials() {
                 return previous;
             }
 
-            // Types `answer` into the answer box and verifies the box really contains it.
-            // The typing uses real key events (page.keyboard.type dispatches
-            // keydown/keypress/keyup for every character, unlike sendCharacter which
-            // only fires an input event), so EP's answer box observes genuine input and
-            // will not ignore the subsequent Enter. Every keystroke is awaited, so the
-            // caller cannot read the question while this answer is still arriving.
-            // Returns:
-            //   true  — the box contains exactly `answer` (held across a second read)
-            //   false — the answer box vanished (transitional render) or the run was
-            //           stopped; the caller can restart its pass to re-read the question
-            // Throws after several attempts, escalating the keystroke delay each time;
-            // if EP still garbles the stream that badly, failing loudly is the only
-            // honest outcome.
+            /**
+ * Types an answer into the answer box and verifies it was entered correctly.
+ * Uses real keyboard events with spaced keystrokes. Escalates delay on retries.
+ * @param {string} answer
+ * @returns {Promise<boolean>} True if answer was entered and verified, false if box vanished
+ * @throws {Error} If answer could not be entered after all retries
+ */
             async function enterAnswer(answer) {
                 const delays = [TYPE_DELAY_MS, TYPE_DELAY_MS * 3, TYPE_DELAY_MS * 8];
                 for (let attempt = 0; attempt < delays.length; attempt++) {
@@ -989,10 +1070,15 @@ async function resolveCredentials() {
             // since that means the round resolved.
             let lastSubmitted = null;
 
-            // Resolves whatever modal is on screen.
-            // Never assigns its result to TOGGLE: the user may have pressed Alt+S while the modal
-            // was being handled, and that stop request must survive. Returns false only when the
-            // task is complete (the exit buttons were clicked).
+            /**
+ * Resolves the current modal and prepares for the next round.
+ * Clears the lastSubmitted tracker on modal resolution so a repeated question
+ * isn't treated as a resubmission stall.
+ * @param {string} question
+ * @param {string} answer
+ * @param {boolean} randomRound
+ * @returns {Promise<boolean>} False if task completed, true to continue
+ */
             async function handleModalAndContinue(question, answer, randomRound = false) {
                 const keepGoing = await handleModal(question, answer, randomRound);
                 if (!keepGoing) return false;
@@ -1004,7 +1090,11 @@ async function resolveCredentials() {
                 return TOGGLE;
             }
 
-            // main function that continually answers questions until completion modal pops up or hotkey pressed again
+            /**
+ * Main answer loop: runs until TOGGLE is false, task completes, or an error occurs.
+ * Handles cleanup, modal resolution, and page-gone errors. Restart-safe.
+ * @returns {Promise<void>}
+ */
             async function answerLoop() {
                 if (RUNNING !== null) throw Error("Tried to initiate answerLoop while it is already running");
 
@@ -1054,7 +1144,11 @@ async function resolveCredentials() {
                 }
             }
 
-            // the answering loop itself; separated so answerLoop can always clean up
+            /**
+ * Core answering logic: reads questions, finds/enters answers, handles submissions.
+ * Bounded respawn counters prevent infinite loops on dead/stale pages.
+ * @returns {Promise<void>}
+ */
             async function answerQuestions() {
                 // bounded respawn counters: a page in a dead state must not restart
                 // answer entry forever
@@ -1351,11 +1445,12 @@ async function resolveCredentials() {
                 }
             }
 
-            // takes care of answerLoop toggling logic.
-            // Start/stop is decided from the RUNNING handle (the actually executing run),
-            // not from the TOGGLE flag: TOGGLE used to stay true for a while after a run
-            // had already stopped (cleanup still in flight), so gating on it made a
-            // restart press be consumed as a phantom second stop with no work done.
+            /**
+ * Starts a new answerLoop run, managing the RUNNING handle for restart safety.
+ * The RUNNING promise identity ensures a cleanup from an old run doesn't
+ * cancel a newer run that started during cleanup.
+ * @returns {void}
+ */
             function startLoop() {
                 TOGGLE = true;
                 const myRun = answerLoop()
@@ -1377,6 +1472,11 @@ async function resolveCredentials() {
                 RUNNING = myRun;
             }
 
+            /**
+ * Toggles the answer loop on/off (Alt+S hotkey).
+ * If running, signals stop by setting TOGGLE=false. If stopped, starts a new run.
+ * @returns {Promise<void>}
+ */
             async function toggleLoop() {
                 if (RUNNING) {
                     TOGGLE = false;
@@ -1387,6 +1487,10 @@ async function resolveCredentials() {
                 }
             }
 
+            /**
+ * Toggles between auto mode (auto-submit Enter) and semi-auto mode (user presses Enter).
+ * @returns {Promise<void>}
+ */
             async function toggleAuto() {
                 if (ENTER) {
                     ENTER = false;
@@ -1399,12 +1503,12 @@ async function resolveCredentials() {
                 }
             }
 
-            // Non-blocking feedback.
-            // The old implementation used the native window.alert(), which is modal: it freezes
-            // the page's JS (including the answer loop and hotkey handler) until it is dismissed.
-            // Instead we render a small toast in the page and let it fade out on its own.
-            // The toast is a persistent live region (role="status"), so screen readers announce
-            // each message the way they would have announced the native alert.
+            /**
+ * Shows a non-blocking toast message in the page (replaces native alert).
+ * Persists across navigation via evaluateOnNewDocument.
+ * @param {string} msg
+ * @returns {Promise<void>}
+ */
             async function alert(msg) {
                 await page.evaluate((m, id) => {
                     let toast = document.getElementById(id);
@@ -1451,15 +1555,12 @@ async function resolveCredentials() {
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
 
-            // Add event listeners for hotkeys ON the page.
-            // A document-level listener is destroyed by every navigation (login redirect,
-            // moving between SPA routes that trigger a full load, etc.), which used to leave
-            // the hotkeys dead afterwards.
-            //
-            // The browser-side install is registered as a preload script, so it re-runs on every
-            // new document at parse time and does not depend on the host noticing the navigation.
-            // It is also run once now, to cover the document that is already loaded. The window
-            // guard keeps it idempotent, so re-running it never stacks duplicate listeners.
+            /**
+             * Installs the hotkey keyup listener on the page document.
+             * Registered via evaluateOnNewDocument to survive navigations.
+             * Idempotent: guarded by window.__epHotkeysInstalled.
+             * @returns {void}
+             */
             const installHotkeysInPage = () => {
                 if (window.top !== window || window.__epHotkeysInstalled) return;
                 window.__epHotkeysInstalled = true;
