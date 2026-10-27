@@ -18,7 +18,7 @@ The original's README used to claim its status was: **_CURRECT STATUS: ALL inten
 _*Last time they checked... which was... two years ago???*_  
 That was never re-verified here, so don't assume this project is fully working.
 
-- This repo's program is version **V1.4** of the V2 approach: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
+- This repo's program is version **v2.2.0**: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
 - That said, the program hasn't been run through the wringer against the live Education Perfect service, so behavior may change or break as the service updates.
 
@@ -64,8 +64,8 @@ the credential values out of the source file). Forgot to set them? No worries - 
 log in manually. Keep credentials out of the source file by using the environment variables above._  
 
 
-*NOTE: if Puppeteer complains about the lack of a Chromium browser the first time you run it, open up Terminal and run 
-`node node_modules/puppeteer/install.js` to manually install the browser that is supposed to be bundled with Puppeteer.*
+*NOTE: `npm i puppeteer` normally downloads a compatible Chrome browser automatically. If the first run complains that it can't find a browser, open up Terminal in the same folder and run 
+`npx puppeteer browsers install chrome` to download it manually.*
 
 
 ## Usage
@@ -97,22 +97,25 @@ pages. (Where the words and translations are laid out.)
 This function must be manually triggered for each new task with new words, otherwise you will get a lot of questions
 wrong when the program doesn't know the answers. (It will learn all of them eventually, thanks to error-correction
 features, but it is a lot slower.)
+Note that the learned dictionary lives only in the running program's memory - restart the program and you'll need
+to press Refresh Words again for the task's word list.
 
 All three functions (**Start Answering**, **Toggle Mode**, and **Refresh Words**) are triggered by keyboard shortcuts
 outlined below.
 
 ### Hotkeys
-Upon loading/injecting, the script does not do anything.  
+
+Upon starting, the program opens the browser and gets EP ready (including logging in if credentials are set) - but it does not begin auto-answering until you tell it to.  
 **All functions are triggered via *hotkeys/keybindings* as listed below:**
 
 - **Refresh Words -> <kbd>Opt/Alt</kbd> + <kbd>R</kbd>:**  
   *To be used on task-starter page with list of words and translations*  
-  Will alert you when successfully triggered.
+  Confirms with a small toast at the top of the page - including how many entries were scraped (and a warning if the two word lists didn't line up).
 
 - **Mode Toggle -> <kbd>Opt/Alt</kbd> + <kbd>A</kbd>:**  
   *Can be used whenever*  
   Can toggle answering mode on-the-fly even with Auto Answering active.  
-  Will alert you when successfully triggered.
+  Confirms with a toast on the page which mode is now active.
 
 - **Start Answering -> <kbd>Opt/Alt</kbd> + <kbd>S</kbd>:**  
   *To be used on a running task's page (after clicking start)*  
@@ -121,7 +124,7 @@ Upon loading/injecting, the script does not do anything.
 
 *NOTE: due to how key combination detection works, the sequence you press the keys must be precise to trigger the
 functions; PRESS Alt, PRESS & RELEASE letter key, RELEASE Alt... If you release Alt before releasing the letter key,
-it won't be detected.*
+it won't be detected. (On macOS, pressing Option + a letter types the special characters ®/ß/å - those are accepted too.)*
 
 
 ## Details
@@ -134,20 +137,24 @@ When you run the script, it should:
 
 Then, you can:  
 * Log in manually if you _really_ want to (why?);
-* Navigate through or use EP as normal;  
+* Navigate through or use EP as normal - the hotkeys keep working across page loads (they get re-installed on every new page);  
 * At appropriate pages (task starter, task page), use the hotkeys to answer questions.
 
 When auto-answering is triggered, it should:
-* Immediately start grinding through tasks at speeds of 5-20+ questions per second
+* Immediately start grinding through the task at several questions per second - each answer is typed out as real keystrokes and only submitted once the answer box is verified to contain it
 * Stop when it finishes the task
 * Stop when you press the same hotkeys again
 * Quickly _delete_ the popup modals should it get any questions wrong
+* Retry the occasional slow round instead of aborting the whole task
+
+The program also keeps an eye on itself: if the page gets stuck in a state it can't make progress from (question text that never settles, an answer box that keeps vanishing, rounds that never advance), it stops the run and logs the reason in the terminal instead of hanging around or submitting garbage. Press the Start Answering hotkey again to start a fresh run.
 
 _NOTE: If you close the terminal window that pops up when you run the script, the browser window will close too_
 
 ### Feature-Explanation
+
 - **Full Speed Auto Answer:**  
-  The current speed is the maximum achievable so far. It will probably not be possible to go faster without a different concept.
+  The speed is a deliberate trade-off: answers are typed as real keystrokes, spaced out and verified against the answer box before submission, because EP's own input handling garbles faster-but-fragile approaches ("I speak" used to land as "I I sI speakeakat").
 
 - **Self-Learning/Error Correction:**  
   When an error is made (due to bad question/answer parsing, lag, or missing word list), the script handles the popup and extracts the correct answer information to stop making the same mistake again (hopefully).  

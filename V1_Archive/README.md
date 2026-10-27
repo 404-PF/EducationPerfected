@@ -5,7 +5,7 @@ Works for word-word (translation) tasks and Dash mode.
 
 ### **Read this, then read the [main README of this repository](../README.md) (the V2 program is the [index.js](../index.js) in the root)**
 
-![example image](result.png)
+![example image](../result.png)
 
 
 ## Usage  
