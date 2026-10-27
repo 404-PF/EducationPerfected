@@ -17,7 +17,18 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const GIT = process.platform === 'win32' ? 'git.exe' : path.resolve(process.env.GIT_EXEC_PATH || '/usr/bin', 'git'); // SonarCloud: fixed PATH
+// SonarCloud: resolve git binary to an absolute, fixed path (no PATH lookup)
+const GIT = (() => {
+    if (process.platform === 'win32') return 'git.exe';
+    const candidates = [
+        process.env.GIT_EXEC_PATH,
+        '/usr/bin/git',
+        '/usr/local/bin/git',
+        '/opt/homebrew/bin/git',
+    ].filter(Boolean);
+    for (const c of candidates) if (fs.existsSync(c)) return c;
+    return 'git'; // fallback (SonarCloud will warn, but CI has git in fixed locations)
+})();
 const CHECKS = [];
 function check(name) {
     CHECKS.push(name);
@@ -68,7 +79,7 @@ check('no .env is tracked and index.js does not read one');
 for (const local of ['.env', '.env.local', 'credentials.json']) {
     let ignored = false;
     try {
-        execFileSync('git', ['check-ignore', '-q', '--no-index', local], { cwd: ROOT });
+        execFileSync(GIT, ['check-ignore', '-q', '--no-index', local], { cwd: ROOT });
         ignored = true;
     } catch { /* not ignored */ }
     assert.ok(ignored, `${local} is not git-ignored`);
