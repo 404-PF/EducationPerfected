@@ -50,7 +50,14 @@ const committable = [...new Set([...tracked, ...untracked])]
     .filter(f => fs.existsSync(path.join(ROOT, f))); // skip tracked-but-deleted files
 assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set');
 
-const SECRET_NAME = /^(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?)$/i;
+// The bare field name (email, password, apiKey ...) and the same name behind the
+// repository's environment-variable prefix (EP_EMAIL, EP_PASSWORD). Without the prefix
+// form, `const EP_PASSWORD = 'actual-secret'` — the very spelling this project uses —
+// would pass the scan. The whole name stays anchored, so derived identifiers
+// (`tokenCount`, `password_css`) still do not count.
+const SECRET_NAME = /^(?:(?:[A-Z][A-Z0-9]*_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+// Values a documentation page uses to show *how* to set a variable, never a real secret.
+const PLACEHOLDER_VALUE = /^(?:your[-_ ].*|<.*>|\.\.\.|x{3,}|\*{3,}|you@example\.com|[^@\s]*@example\.(?:com|test))$/i;
 
 /**
  * Decodes a file for scanning, honouring UTF-16 byte-order marks (which contain NUL
@@ -167,9 +174,10 @@ function redactLiterals(snippet, name) {
  * honouring backslash escapes, so a value containing the other quote characters (or an
  * escaped delimiter) is read whole rather than truncated mid-secret.
  * @param {string} text
+ * @param {boolean} [isDoc] - true for prose docs, where sample placeholder values are expected
  * @returns {Array<{line: number, name: string, redacted: string}>}
  */
-function scanTextForSecrets(text) {
+function scanTextForSecrets(text, isDoc = false) {
     const findings = [];
     text.split(/\r?\n/).forEach((rawLine, i) => {
         const line = stripComments(rawLine);
@@ -186,6 +194,11 @@ function scanTextForSecrets(text) {
             const value = match.groups.val;
             // Empty values, interpolation and env reads are not literals to report.
             if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
+            // Documentation hands users placeholders (`set EP_PASSWORD=your-password`,
+            // `$env:EP_EMAIL='you@example.com'`). Those are instructions, not secrets, so
+            // a markdown file may use a clearly-placeholder value; anything that does not
+            // look like one is still reported, including in docs.
+            if (isDoc && PLACEHOLDER_VALUE.test(value)) continue;
             findings.push({
                 line: i + 1,
                 name,
@@ -213,7 +226,8 @@ for (const file of committable) {
     }
     const { text } = decodeFile(fs.readFileSync(fullPath));
     scannedCount++;
-    for (const finding of scanTextForSecrets(text)) {
+    const isDoc = /\.(?:md|markdown|rst|txt)$/i.test(file);
+    for (const finding of scanTextForSecrets(text, isDoc)) {
         assert.fail(`${file}:${finding.line} assigns a literal to "${finding.name}": ${finding.redacted}`);
     }
 }
@@ -236,8 +250,11 @@ check('no .env is tracked and index.js does not read one');
         ['{"password": "it' + q + 's-secret", "email": "x@y.z"}', 2, 'quoted JSON keys'],
         ['const password = ' + q + 'say "hi" now' + q, 1, 'apostrophes around double quotes'],
         ['{"password": "a\\"b\\"c"}', 1, 'escaped delimiter inside the value'],
+        ['const EP_PASSWORD = ' + q + 'actual-secret' + q, 1, 'EP_-prefixed env names'],
+        ['{"EP_EMAIL": ' + q + 'a@b.co' + q + '}', 1, 'EP_-prefixed quoted key'],
         ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
         ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
+        ['const USERNAME_FIELD = ' + q + '#loginId' + q, 0, 'selector constants are not secrets'],
     ];
     for (const [line, expected, label] of cases) {
         assert.equal(scanTextForSecrets(line).length, expected, label);
