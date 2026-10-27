@@ -17,6 +17,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+const GIT = process.platform === 'win32' ? 'git.exe' : path.resolve(process.env.GIT_EXEC_PATH || '/usr/bin', 'git'); // SonarCloud: fixed PATH
 const CHECKS = [];
 function check(name) {
     CHECKS.push(name);
@@ -24,7 +25,7 @@ function check(name) {
 }
 
 function git(...args) {
-    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+    return execFileSync(GIT, args, { cwd: ROOT, encoding: 'utf8' });
 }
 
 // --- 1. nothing commit-able holds a credential -------------------------------------
@@ -32,7 +33,8 @@ function git(...args) {
 const tracked = git('ls-files', '-z').split('\0').filter(Boolean);
 // Untracked-but-not-ignored files are what `git add -A` would commit next.
 const untracked = git('ls-files', '-z', '--others', '--exclude-standard').split('\0').filter(Boolean);
-const committable = [...new Set([...tracked, ...untracked])];
+const committable = [...new Set([...tracked, ...untracked])]
+    .filter(f => fs.existsSync(path.join(ROOT, f))); // skip tracked-but-deleted files
 assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set');
 
 const TEXT = /\.(js|mjs|cjs|json|md|cmd|sh|txt|yml|yaml)$/i;
@@ -108,7 +110,15 @@ function loadBlock(dir, name, exports, entries) {
         fs.writeFileSync(path.join(pkg, 'index.js'), `const entries = ${JSON.stringify(entries)};
 module.exports = { getPassword: (service, account) => Promise.resolve(entries[service + '/' + account] || null) };
 `);
+    } else {
+        // remove keytar stub if present
+        const pkg = path.join(dir, 'node_modules', 'keytar');
+        if (fs.existsSync(pkg)) fs.rmSync(pkg, { recursive: true, force: true });
     }
+    // clear require cache for this file and keytar so each load is fresh
+    delete require.cache[require.resolve(file)];
+    const keytarPath = path.join(dir, 'node_modules', 'keytar', 'index.js');
+    if (fs.existsSync(keytarPath)) delete require.cache[require.resolve(keytarPath)];
     return require(file);
 }
 
@@ -171,6 +181,25 @@ async function runtime() {
         process.env.EP_PASSWORD = "''";
         assert.equal((await keychain.resolveCredentials()).source, 'the OS keychain');
         check('quoted-empty env values do not count as credentials');
+
+        // Simulated TTY check for the terminal prompt branch
+        delete process.env.EP_EMAIL;
+        delete process.env.EP_PASSWORD;
+        const { PassThrough } = require('stream');
+        const stdin = new PassThrough();
+        stdin.isTTY = true; stdin.raw = false;
+        stdin.setRawMode = m => { stdin.raw = m; };
+        Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+        // fresh block without any keychain entries
+        const prompt = loadBlock(dir, 'prompt.js', ['resolveCredentials'], {});
+        const p = prompt.resolveCredentials();
+        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        stdin.push('typed@example.test\r');
+        await new Promise(r => setTimeout(r, 50));
+        stdin.push('s3cr3t\r');
+        const r = await p;
+        assert.deepEqual(r, { email: 'typed@example.test', password: 's3cr3t', source: 'the terminal prompt' });
+        check('interactive TTY prompt resolves credentials with hidden input');
     });
 }
 

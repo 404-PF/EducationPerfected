@@ -64,7 +64,14 @@ function promptSecret(label) {
         const wasRaw = stdin.isRaw;
         stdin.setRawMode(true);
         stdin.resume();
-        let value = '';
+        // Chunk is a Buffer; for...of yields numeric byte values. Collect bytes
+        // and decode as UTF-8 on submit so non-ASCII characters are preserved.
+        // On backspace/delete, remove the complete final UTF-8 character.
+        // Ignore escape sequences (starting with 0x1B) so arrow keys etc. are not
+        // added to the secret.
+        const bytes = [];
+        let inEscape = false;
+        let escapeBytes = 0;
         const finish = result => {
             stdin.removeListener('data', onData);
             stdin.setRawMode(wasRaw || false);
@@ -72,17 +79,33 @@ function promptSecret(label) {
             process.stderr.write('\n');
             resolve(result);
         };
-        // Chunk is a Buffer; for...of yields numeric byte values. Compare against
-        // char codes (13 = \r, 10 = \n, 8 = backspace, 127 = delete, 3 = Ctrl+C).
         const onData = chunk => {
             for (const byte of chunk) {
-                if (byte === 13 || byte === 10) return finish(cleanCredential(value));
+                if (inEscape) {
+                    // CSI sequences: ESC [ ... final byte in 0x40-0x7E
+                    // OSC sequences: ESC ] ... ST (0x07) or ESC \
+                    escapeBytes++;
+                    if ((byte >= 0x40 && byte <= 0x7E) || byte === 0x07 || (byte === 0x1B && escapeBytes >= 2)) {
+                        inEscape = false;
+                        escapeBytes = 0;
+                    }
+                    continue;
+                }
+                if (byte === 0x1B) {  // ESC: start of escape sequence
+                    inEscape = true;
+                    escapeBytes = 0;
+                    continue;
+                }
+                if (byte === 13 || byte === 10) return finish(cleanCredential(Buffer.from(bytes).toString('utf8')));
                 if (byte === 3) {  // Ctrl+C: leave cleanly, no stack trace
                     finish(null);
                     process.exit(130);
                 }
-                if (byte === 8 || byte === 127) value = value.slice(0, -1);
-                else if (byte >= 32) value += String.fromCharCode(byte);
+                if (byte === 8 || byte === 127) {
+                    // drop one whole UTF-8 character (continuation bytes, then the lead byte)
+                    while (bytes.length && (bytes[bytes.length - 1] & 0xC0) === 0x80) bytes.pop();
+                    bytes.pop();
+                } else if (byte >= 32) bytes.push(byte);
             }
         };
         stdin.on('data', onData);
@@ -310,11 +333,6 @@ async function resolveCredentials() {
                 console.log('Filling in login details...');
                 await page.type(DIR.username_css, DIR.email);
                 await page.type(DIR.password_css, DIR.password);
-                // The password is now in the DOM (and in whatever the page logs). Clear it
-                // as soon as it is submitted: the submit reads the field synchronously, so
-                // a successful login has already sent it, and a failed one only needs the
-                // page's error message - not the secret sitting in a screenshot or devtools.
-                const scrubPassword = page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
                 // Submit through the form's own Log in button: the iam page POSTs to
                 // /oauth2/authorize, and a synthetic Enter only submits when focus lands in a
                 // field. The resolved handle is clicked, so an SSO/social button can never be
@@ -328,7 +346,8 @@ async function resolveCredentials() {
                     }),
                     loginButton ? loginButton.click() : page.keyboard.press('Enter'),
                 ]);
-                await scrubPassword;  // cleared whether or not the submit navigated
+                // The submit operation has returned. Clear the field after submission.
+                await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
 
                 console.log('Waiting for home page to load...');
                 // wait for the app shell, so a slow dashboard is reported honestly instead
