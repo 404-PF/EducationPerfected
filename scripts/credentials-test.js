@@ -63,7 +63,10 @@ function decodeFile(buffer) {
         return { text: buffer.subarray(2).toString('utf16le'), utf16: true };
     }
     if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) {
-        const swapped = Buffer.from(buffer.subarray(2));
+        // Big-endian UTF-16: swap to little-endian. swap16() throws on an odd length, so
+        // drop a stray trailing byte first (a truncated file must not crash the scan).
+        const body = buffer.subarray(2);
+        const swapped = Buffer.from(body.subarray(0, body.length - (body.length % 2)));
         swapped.swap16();
         return { text: swapped.toString('utf16le'), utf16: true };
     }
@@ -144,9 +147,25 @@ function stripComments(line) {
 }
 
 /**
+ * Replaces every quoted run in a snippet with a placeholder, leaving the field name so a
+ * finding still says which field was flagged. Redacting each literal rather than only
+ * the matched one means no suffix of a secret can survive into the log.
+ * @param {string} snippet
+ * @param {string} name
+ * @returns {string}
+ */
+function redactLiterals(snippet, name) {
+    const redacted = snippet.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, '"[REDACTED]"');
+    // Restore the field name for the value's own placeholder (the first one is the key).
+    return redacted.replace(/"[^"]*"\s*[:=]/, `"${name}":`);
+}
+
+/**
  * Scans a file's text for credential-like literal assignments.
  * Matches `name = "literal"` and `name: "literal"`, including quoted keys (JSON) and
- * nested assignments inside object literals.
+ * nested assignments inside object literals. A value runs to its own closing delimiter,
+ * honouring backslash escapes, so a value containing the other quote characters (or an
+ * escaped delimiter) is read whole rather than truncated mid-secret.
  * @param {string} text
  * @returns {Array<{line: number, name: string, redacted: string}>}
  */
@@ -155,7 +174,9 @@ function scanTextForSecrets(text) {
     text.split(/\r?\n/).forEach((rawLine, i) => {
         const line = stripComments(rawLine);
         // A quoted or bare field name, followed by : or =, then a quoted literal.
-        const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>[^"'`\n]*?)\k<q>/g;
+        //   key  : "..." | '...' | `...` (the non-active delimiters are plain characters)
+        //   value: \\ . | [^ <delimiter> \\] repeated, so only the active delimiter ends it
+        const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>(?:\\[\s\S]|(?!\k<q>)[^\\])*)\k<q>/g;
         let match;
         while ((match = assignment.exec(line)) !== null) {
             const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
@@ -163,14 +184,14 @@ function scanTextForSecrets(text) {
             // `tokenCount` or `password_css`: only the bare field name counts as a value.
             if (!SECRET_NAME.test(name)) continue;
             const value = match.groups.val;
-            // Short/empty values, interpolation and env reads are not literals to report.
+            // Empty values, interpolation and env reads are not literals to report.
             if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
             findings.push({
                 line: i + 1,
                 name,
-                // Only the field name goes to the log: the value is never echoed, so a
-                // caught secret cannot leak into CI output.
-                redacted: line.trim().replace(match[0], `${name}: "[REDACTED]"`),
+                // Report the whole matched assignment with every quoted run replaced, so
+                // neither the secret nor a suffix of it can survive into the log.
+                redacted: redactLiterals(line.slice(match.index, match.index + match[0].length), name),
             });
         }
     });
@@ -206,6 +227,36 @@ assert.ok(!tracked.some(f => /(^|\/)\.env/.test(f)), '.env files are not tracked
 assert.ok(!/require\(['"]dotenv['"]\)|from ['"]dotenv['"]/.test(indexSource), 'index.js does not load a .env file');
 check('no .env is tracked and index.js does not read one');
 
+// The scanner is a safety net, so the net itself is checked: values containing the other
+// quote character or an escaped delimiter must still match, and a finding must never
+// carry the value into the log.
+{
+    const q = String.fromCharCode(39);   // '
+    const cases = [
+        ['{"password": "it' + q + 's-secret", "email": "x@y.z"}', 2, 'quoted JSON keys'],
+        ['const password = ' + q + 'say "hi" now' + q, 1, 'apostrophes around double quotes'],
+        ['{"password": "a\\"b\\"c"}', 1, 'escaped delimiter inside the value'],
+        ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
+        ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
+    ];
+    for (const [line, expected, label] of cases) {
+        assert.equal(scanTextForSecrets(line).length, expected, label);
+    }
+    const finding = scanTextForSecrets('{"password": "supersecretvalue"}')[0];
+    assert.ok(finding && !finding.redacted.includes('supersecretvalue'),
+        'a finding never echoes the value it caught');
+    check('credential scan matches quoted/escaped values and redacts what it finds');
+
+    // A truncated big-endian file must not crash the scan (swap16 needs even length).
+    const odd = Buffer.concat([
+        Buffer.from([0xFE, 0xFF]),
+        Buffer.from('pass', 'utf16le').swap16(),
+        Buffer.from([0x41]),
+    ]);
+    assert.equal(decodeFile(odd).utf16, true);
+    check('a big-endian UTF-16 file with a trailing byte still decodes');
+}
+
 // A local secret file dropped in the working tree must stay out of commits, even if
 // someone runs `git add -A` or `git commit -a`.
 for (const local of ['.env', '.env.local', 'credentials.json']) {
@@ -233,12 +284,18 @@ const block = indexSource.slice(start, end);
 // stripped) for SCREAMING_CASE names that are used but never declared.
 // Comments first: an apostrophe in prose ("EP's") would otherwise open a bogus string
 // literal below and swallow the code that follows it.
+// Templates keep their text: the backticks and the literal prose go, but `${...}`
+// expressions are code and must stay visible, or an undeclared constant used only
+// inside an interpolation would be invisible to this check.
 const codeOnly = indexSource
     .replace(/\/\*[\s\S]*?\*\//g, ' ')                  // block comments
     .replace(/(^|[^:\\])\/\/.*$/gm, '$1')               // line comments (not "https://")
+    .replace(/`(\\.|[^`\\])*`/g, template => {          // template literals
+        const expressions = [...template.matchAll(/\$\{([^}]*)\}/g)].map(m => m[1]);
+        return expressions.length ? ` ${expressions.join(' ; ')} ` : '""';
+    })
     .replace(/'(?:\\.|[^'\\\n])*'/g, "''")              // single-quoted strings
-    .replace(/"(?:\\.|[^"\\\n])*"/g, '""')              // double-quoted strings
-    .replace(/`(?:\\.|[^`\\])*`/g, '""');               // template literals
+    .replace(/"(?:\\.|[^"\\\n])*"/g, '""');             // double-quoted strings
 const declared = new Set(
     [...codeOnly.matchAll(/\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/g)].map(m => m[1]));
 // Property reads (`process.env.EP_EMAIL`) and globals are not constants of this file:

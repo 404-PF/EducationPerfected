@@ -413,8 +413,9 @@ async function resolveCredentials() {
                 // The navigation waiter must exist BEFORE the click is dispatched: a fast
                 // successful redirect would otherwise happen before waitForNavigation
                 // starts observing, and the login would sit out the full 30s timeout.
-                // Attaching the catch here means the promise is already settled-elsewhere
-                // safe while the password field is cleared in between.
+                // The catch is attached now rather than at the await so that a rejection
+                // during the password-field clear below is already handled and cannot
+                // surface as an unhandled rejection.
                 const navigation = page.waitForNavigation({ timeout: 30000 }).catch(() => {
                     // a failed login stays on the form (or shows an error/challenge there),
                     // so the timeout is not fatal: report it and let the user finish by hand.
