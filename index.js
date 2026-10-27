@@ -111,8 +111,16 @@ function promptSecret(label, cleaner) {
         // Ignore escape sequences (starting with 0x1B) so arrow keys, bracketed paste,
         // and other control sequences are not added to the secret.
         const bytes = [];
-        let inEscape = false;
-        let escapeBytes = 0;
+        // Escape-sequence state machine. ESC starts a sequence, then:
+        //   'kind' none   -> the next byte is the introducer ('[' CSI, ']' OSC,
+        //                    anything else for a two-byte sequence such as Alt+key)
+        //   'kind' csi    -> body until a final byte 0x40-0x7E. Covers arrow/function
+        //                    keys and bracketed paste (ESC [200~ ... ESC [201~).
+        //   'kind' osc    -> body until BEL or ST (ESC \). Covers colour/title replies.
+        // None of these bytes may reach the secret: `[` is itself in the final-byte
+        // range, so without the explicit introducer step the parser would end on it and
+        // feed the rest back as input ("A" from an arrow key, "200~" from a paste).
+        let escapeKind = null;  // null | 'introducer' | 'csi' | 'osc' | 'oscEsc'
         const finish = result => {
             stdin.removeListener('data', onData);
             stdin.setRawMode(wasRaw || false);
@@ -122,20 +130,28 @@ function promptSecret(label, cleaner) {
         };
         const onData = chunk => {
             for (const byte of chunk) {
-                if (inEscape) {
-                    // CSI sequences: ESC [ ... final byte in 0x40-0x7E
-                    // OSC sequences: ESC ] ... ST (0x07) or ESC \
-                    // Bracketed paste: ESC [200~ ... ESC [201~ (handled as CSI)
-                    escapeBytes++;
-                    if ((byte >= 0x40 && byte <= 0x7E) || byte === 0x07 || (byte === 0x1B && escapeBytes >= 2)) {
-                        inEscape = false;
-                        escapeBytes = 0;
+                if (escapeKind !== null) {
+                    if (escapeKind === 'introducer') {
+                        if (byte === 0x5B /* [ */) escapeKind = 'csi';
+                        else if (byte === 0x5D /* ] */) escapeKind = 'osc';
+                        else escapeKind = null;  // two-byte sequence (Alt+key) is complete
+                        continue;
                     }
+                    if (escapeKind === 'osc') {
+                        if (byte === 0x07) escapeKind = null;          // BEL terminates OSC
+                        else if (byte === 0x1B) escapeKind = 'oscEsc';  // maybe ST (ESC \)
+                        continue;
+                    }
+                    if (escapeKind === 'oscEsc') {
+                        escapeKind = null;  // ST if '\', otherwise the sequence just ended
+                        continue;
+                    }
+                    // csi: ends on a final byte; parameters are 0x30-0x3F, intermediates 0x20-0x2F
+                    if (byte >= 0x40 && byte <= 0x7E) escapeKind = null;
                     continue;
                 }
                 if (byte === 0x1B) {  // ESC: start of escape sequence
-                    inEscape = true;
-                    escapeBytes = 0;
+                    escapeKind = 'introducer';
                     continue;
                 }
                 if (byte === 13 || byte === 10) return finish(cleaner(Buffer.from(bytes).toString('utf8')));
@@ -394,16 +410,21 @@ async function resolveCredentials() {
                 // field. The resolved handle is clicked, so an SSO/social button can never be
                 // hit by accident; Enter is the fallback when no such button exists.
                 console.log('Submitting login form...');
-                // Dispatch the click/Enter first, then immediately clear the password field
-                // so the secret doesn't linger in the DOM during the navigation wait.
-                await (loginButton ? loginButton.click() : page.keyboard.press('Enter'));
-                await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
-                // Now wait for navigation (up to 30s). A failed login stays on the form
-                // (or shows an error/challenge there), so the timeout is not fatal:
-                // report it and let the user finish by hand.
-                await page.waitForNavigation({ timeout: 30000 }).catch(() => {
+                // The navigation waiter must exist BEFORE the click is dispatched: a fast
+                // successful redirect would otherwise happen before waitForNavigation
+                // starts observing, and the login would sit out the full 30s timeout.
+                // Attaching the catch here means the promise is already settled-elsewhere
+                // safe while the password field is cleared in between.
+                const navigation = page.waitForNavigation({ timeout: 30000 }).catch(() => {
+                    // a failed login stays on the form (or shows an error/challenge there),
+                    // so the timeout is not fatal: report it and let the user finish by hand.
                     console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
                 });
+                // Dispatch the click/Enter, then immediately clear the password field so the
+                // secret doesn't linger in the DOM during the navigation wait.
+                await (loginButton ? loginButton.click() : page.keyboard.press('Enter'));
+                await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
+                await navigation;
 
                 console.log('Waiting for home page to load...');
                 // wait for the app shell, so a slow dashboard is reported honestly instead
@@ -1034,6 +1055,17 @@ async function resolveCredentials() {
                 }
                 return previous;
             }
+
+            /**
+ * Per-keystroke pause when typing an answer. Zero-gap keystrokes race EP's own
+ * input handling, which re-applies the value it last committed to the box at
+ * unpredictable moments — grafting snapshots of old text into the middle of the
+ * fresh one, so "I speak" arrived as "I I sI speakeakat". Spacing the keystrokes
+ * gives EP's handling time to keep up, the way it does for human typing. 20ms
+ * keeps a 7-character word under 0.2s, and any attempt that still garbles is
+ * caught by enterAnswer's verification and retried with an escalated delay.
+ */
+            const TYPE_DELAY_MS = 20;
 
             /**
  * Types an answer into the answer box and verifies it was entered correctly.

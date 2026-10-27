@@ -50,101 +50,154 @@ const committable = [...new Set([...tracked, ...untracked])]
     .filter(f => fs.existsSync(path.join(ROOT, f))); // skip tracked-but-deleted files
 assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set');
 
+const SECRET_NAME = /^(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?)$/i;
+
 /**
- * Checks if a file is likely text (non-binary) by reading a small sample.
- * @param {string} filePath
- * @returns {boolean}
+ * Decodes a file for scanning, honouring UTF-16 byte-order marks (which contain NUL
+ * bytes and would otherwise look binary) and falling back to strict UTF-8.
+ * @param {Buffer} buffer
+ * @returns {{text: string, utf16: boolean}}
  */
-function isTextFile(filePath) {
-    try {
-        const fd = fs.openSync(filePath, 'r');
-        const buffer = Buffer.alloc(512);
-        const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
-        fs.closeSync(fd);
-        if (bytesRead === 0) return true; // empty file is text
-        // Heuristic: binary if contains null byte or high ratio of non-printable chars
-        const sample = buffer.subarray(0, bytesRead);
-        if (sample.includes(0)) return false;
-        let nonPrintable = 0;
-        for (const byte of sample) {
-            // Allow printable ASCII (32-126), newline, tab, carriage return
-            if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) nonPrintable++;
-        }
-        return nonPrintable / bytesRead < 0.3;
-    } catch {
-        return false;
+function decodeFile(buffer) {
+    if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+        return { text: buffer.subarray(2).toString('utf16le'), utf16: true };
     }
+    if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) {
+        const swapped = Buffer.from(buffer.subarray(2));
+        swapped.swap16();
+        return { text: swapped.toString('utf16le'), utf16: true };
+    }
+    return { text: buffer.toString('utf8'), utf16: false };
 }
 
 /**
- * Redacts the RHS of an assignment for safe logging.
+ * Classifies a file as text or binary from its first bytes.
+ * UTF-16 (NUL-heavy) text is recognised by its BOM before the binary heuristic runs.
+ * @param {string} filePath
+ * @returns {'text'|'binary'|'unreadable'}
+ */
+function fileKind(filePath) {
+    let buffer;
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        const sample = Buffer.alloc(512);
+        const bytesRead = fs.readSync(fd, sample, 0, sample.length, 0);
+        fs.closeSync(fd);
+        buffer = sample.subarray(0, bytesRead);
+    } catch {
+        return 'unreadable';
+    }
+    if (buffer.length === 0) return 'text';
+    // A BOM means text even though UTF-16 is full of NUL bytes.
+    if (buffer[0] === 0xFF && buffer[1] === 0xFE) return 'text';
+    if (buffer[0] === 0xFE && buffer[1] === 0xFF) return 'text';
+    if (buffer.includes(0)) return 'binary';
+    let nonPrintable = 0;
+    for (const byte of buffer) {
+        // Allow printable ASCII, newline, tab, carriage return and UTF-8 continuation bytes
+        const printable = (byte >= 32 && byte !== 127) || byte === 9 || byte === 10 || byte === 13 || byte >= 128;
+        if (!printable) nonPrintable++;
+    }
+    return nonPrintable / buffer.length < 0.3 ? 'text' : 'binary';
+}
+
+/**
+ * Finds every quoted string literal in a line, skipping quoted spans so that a `//`
+ * inside a value (a URL, a password) is not mistaken for a comment.
+ * @param {string} line
+ * @returns {Array<{index: number, quote: string, value: string, end: number}>}
+ */
+function quotedLiterals(line) {
+    const literals = [];
+    for (let i = 0; i < line.length; i++) {
+        const quote = line[i];
+        if (quote !== '"' && quote !== "'" && quote !== '`') continue;
+        let j = i + 1;
+        let value = '';
+        for (; j < line.length; j++) {
+            if (line[j] === '\\') { value += line[j + 1] ?? ''; j++; continue; }
+            if (line[j] === quote) break;
+            value += line[j];
+        }
+        if (j >= line.length) break; // unterminated on this line: nothing safe to report
+        literals.push({ index: i, quote, value, end: j });
+        i = j;
+    }
+    return literals;
+}
+
+/**
+ * Removes comments from a line without touching text inside quoted literals.
  * @param {string} line
  * @returns {string}
  */
-function redactLine(line) {
-    return line.replace(/(=|:)\s*(["'`])([^"'`\n]*?)\2/, '$1 $2[REDACTED]$2');
+function stripComments(line) {
+    const literals = quotedLiterals(line);
+    const inLiteral = index => literals.some(l => index > l.index && index <= l.end);
+    for (let i = 0; i < line.length - 1; i++) {
+        if (line[i] === '/' && line[i + 1] === '/') {
+            if (!inLiteral(i)) return line.slice(0, i);
+            i++;
+        }
+    }
+    return line;
 }
 
 /**
- * Scans a file for credential-like literal assignments using token-aware matching.
- * Catches both top-level and nested assignments (e.g., `const cfg = { password: 'x' }`).
- * @param {string} filePath
- * @returns {Array<{line: number, name: string, redactedLine: string}>}
+ * Scans a file's text for credential-like literal assignments.
+ * Matches `name = "literal"` and `name: "literal"`, including quoted keys (JSON) and
+ * nested assignments inside object literals.
+ * @param {string} text
+ * @returns {Array<{line: number, name: string, redacted: string}>}
  */
-function scanFileForSecrets(filePath) {
-    const content = fs.readFileSync(filePath, 'utf8');
+function scanTextForSecrets(text) {
     const findings = [];
-    const lines = content.split(/\r?\n/);
-
-    for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i];
-        // Strip single-line comments
-        const line = rawLine.replace(/\/\/.*$/, '');
-
-        // Match assignments: name = 'literal' or name: 'literal' (including nested in objects)
-        // This regex finds all occurrences in the line, not just at the start
-        const assignmentRegex = /([A-Za-z_$][\w$]*)\s*[:=]\s*(["'`])([^"'`\n]{3,})\2/g;
+    text.split(/\r?\n/).forEach((rawLine, i) => {
+        const line = stripComments(rawLine);
+        // A quoted or bare field name, followed by : or =, then a quoted literal.
+        const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>[^"'`\n]*?)\k<q>/g;
         let match;
-        while ((match = assignmentRegex.exec(line)) !== null) {
-            const name = match[1];
-            const quote = match[2];
-            const value = match[3];
-
-            // Skip if name is a selector/css reference
-            if (/css|selector/i.test(name)) continue;
-
-            // Check if name looks like a secret field
-            if (!/^(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?)$/i.test(name)) {
-                continue;
-            }
-
-            // Skip if value looks like a variable reference or function call (no quotes inside)
-            // The regex already ensures it's a quoted literal
-
+        while ((match = assignment.exec(line)) !== null) {
+            const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
+            // The anchored SECRET_NAME already excludes derived identifiers such as
+            // `tokenCount` or `password_css`: only the bare field name counts as a value.
+            if (!SECRET_NAME.test(name)) continue;
+            const value = match.groups.val;
+            // Short/empty values, interpolation and env reads are not literals to report.
+            if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
             findings.push({
                 line: i + 1,
                 name,
-                redactedLine: redactLine(rawLine),
+                // Only the field name goes to the log: the value is never echoed, so a
+                // caught secret cannot leak into CI output.
+                redacted: line.trim().replace(match[0], `${name}: "[REDACTED]"`),
             });
         }
-    }
+    });
     return findings;
 }
 
 let scannedCount = 0;
+const skipped = [];
 for (const file of committable) {
     // Skip the test file itself (it contains fake credentials for testing)
     if (file === 'scripts/credentials-test.js') continue;
     const fullPath = path.join(ROOT, file);
-    // Scan all non-binary committable files, not just an extension allowlist
-    if (isTextFile(fullPath)) {
-        scannedCount++;
-        const findings = scanFileForSecrets(fullPath);
-        for (const finding of findings) {
-            assert.fail(`${file}:${finding.line} assigns a literal to "${finding.name}": ${finding.redactedLine}`);
-        }
+    // Scan every committable file by content, not by an extension allowlist
+    const kind = fileKind(fullPath);
+    if (kind === 'binary') continue;
+    if (kind === 'unreadable') {
+        skipped.push(file);
+        continue;
+    }
+    const { text } = decodeFile(fs.readFileSync(fullPath));
+    scannedCount++;
+    for (const finding of scanTextForSecrets(text)) {
+        assert.fail(`${file}:${finding.line} assigns a literal to "${finding.name}": ${finding.redacted}`);
     }
 }
+// An unreadable file cannot be proven clean, so say so rather than passing silently.
+if (skipped.length > 0) console.warn(`  note: ${skipped.length} unreadable file(s) not scanned: ${skipped.join(', ')}`);
 check(`no commit-able file assigns a literal credential (${scannedCount} text files scanned)`);
 
 const indexSource = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
@@ -172,6 +225,32 @@ const end = indexSource.indexOf('// ===== Program ===== //');
 assert.ok(start >= 0 && end > start, 'the credential block is delimited in index.js');
 // Only the block is loaded: importing all of index.js would launch a browser.
 const block = indexSource.slice(start, end);
+
+// index.js cannot be `require`d (it launches a browser), and a bare `new Function()`
+// only compiles — it does not resolve identifiers — so neither catches a constant whose
+// declaration was dropped while its comment was edited. An undeclared identifier leaves
+// no other trace in a lint-free repo, so check the code (comments and string literals
+// stripped) for SCREAMING_CASE names that are used but never declared.
+// Comments first: an apostrophe in prose ("EP's") would otherwise open a bogus string
+// literal below and swallow the code that follows it.
+const codeOnly = indexSource
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')                  // block comments
+    .replace(/(^|[^:\\])\/\/.*$/gm, '$1')               // line comments (not "https://")
+    .replace(/'(?:\\.|[^'\\\n])*'/g, "''")              // single-quoted strings
+    .replace(/"(?:\\.|[^"\\\n])*"/g, '""')              // double-quoted strings
+    .replace(/`(?:\\.|[^`\\])*`/g, '""');               // template literals
+const declared = new Set(
+    [...codeOnly.matchAll(/\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/g)].map(m => m[1]));
+// Property reads (`process.env.EP_EMAIL`) and globals are not constants of this file:
+// only identifiers in a naked position count, so skip anything preceded by a dot.
+const identifiers = [...codeOnly.matchAll(/(^|[^.\w$])([A-Z][A-Z0-9_]{2,})\b/g)]
+    .map(m => m[2]);
+const GLOBALS = new Set(['URL', 'JSON', 'NaN', 'Infinity']);
+const undeclared = [...new Set(identifiers)]
+    .filter(name => !declared.has(name) && !GLOBALS.has(name));
+assert.deepEqual(undeclared, [],
+    `index.js uses upper-case constants it never declares: ${undeclared.join(', ')}`);
+check('every SCREAMING_CASE constant used in index.js is declared');
 
 /**
  * Runs a test with isolated environment and temp directory.
@@ -318,6 +397,17 @@ async function runtime() {
         const r = await p;
         assert.deepEqual(r, { email: 'typed@example.test', password: 's3cr3t', source: 'the terminal prompt' });
         check('interactive TTY prompt resolves credentials with hidden input and asserts raw mode');
+
+        // Control sequences must be swallowed whole. `[` is itself a CSI final byte, so a
+        // parser that ends there appends "A" from an arrow key or "200~"/"201~" from a
+        // bracketed paste to the secret. The password here types past both.
+        const escaped = loadBlock(dir, 'escaped.js', ['promptSecret'], null);
+        stdin.raw = false;
+        const escapedPrompt = escaped.promptSecret('', v => v);
+        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        stdin.push(Buffer.from('typed\x1b[A\x1b[200~\x1b[201~pass\r', 'binary'));
+        assert.equal(await escapedPrompt, 'typedpass');
+        check('arrow keys and bracketed paste markers never enter the secret');
     });
 }
 
