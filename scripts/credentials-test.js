@@ -407,6 +407,24 @@ async function runtime() {
         env: { user: ['env', suffix].join('@'), secret: ['env', 'value'].join('-') },
     };
 
+    // Both fixture roots are removed however the run ends (a failed check included):
+    // the credential block's, and the one the watcher helper is loaded from below.
+    const watcherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-watcher-'));
+    try {
+        await withCredentialsFixtures(watcherDir, suffix, fake);
+    } finally {
+        fs.rmSync(watcherDir, { recursive: true, force: true });
+    }
+}
+
+/**
+ * Runs the runtime checks with isolated environment and temp directories.
+ * @param {string} watcherDir - Fixture directory for the watcher helper (owned by the caller)
+ * @param {string} suffix - The fake domain suffix the fixture values are built from
+ * @param {{keychain: {user: string, secret: string}, env: {user: string, secret: string}}} fake
+ * @returns {Promise<void>}
+ */
+async function withCredentialsFixtures(watcherDir, suffix, fake) {
     await withFixtures(fs.mkdtempSync(path.join(os.tmpdir(), 'ep-credentials-')), async dir => {
         const { cleanCredential, cleanEmail, cleanPassword } = loadBlock(dir, 'clean.js', ['cleanCredential', 'cleanEmail', 'cleanPassword']);
 
@@ -575,7 +593,6 @@ async function runtime() {
         assert.ok(helperStart > programStart, 'sessionAppeared is declared in the program block');
         const helperSource = indexSource.slice(helperStart);
         const helperEnd = helperSource.indexOf('\n            }') + '\n            }'.length;
-        const watcherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-watcher-'));
         const watcher = loadBlock(watcherDir, 'watcher.js',
             ['sessionAppeared'], null, `const DIR = { home_css: '#home' };\n${helperSource.slice(0, helperEnd)}`);
         const goneError = message => new Error(message);
