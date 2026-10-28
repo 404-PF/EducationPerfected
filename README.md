@@ -12,7 +12,7 @@ Works for word-to-word (translation) tasks and Dash mode.
 > [!WARNING]
 > **Heads up:** this repository continues the original EducationPerfected project. It is *not* the original, actively maintained project.
 
-The original was started by [akioweh](https://github.com/KEN-2000l) and is now **[archived](https://github.com/KEN-2000l/EducationPerfected)**. This repo is a loving continuation of that work.
+The original was started by [akioweh](https://github.com/akioweh) and is now **[archived](https://github.com/akioweh/EducationPerfected)**. This repo is a loving continuation of that work.
 
 The original's README used to claim its status was: **_CURRECT STATUS: ALL intended features functional._**  
 _*Last time they checked... which was... two years ago???*_  
