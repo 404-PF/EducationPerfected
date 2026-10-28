@@ -63,7 +63,9 @@ Either way, I have provided detailed instructions for installation and usage bel
 _*The starter scripts run `npm ci` for you the first time if `node_modules` is missing, so double-clicking is enough. `npm ci` installs exactly what [package-lock.json](package-lock.json) records, preserving the tested lockfile._  
 _*To enable auto-login, set **both** `EP_EMAIL` and `EP_PASSWORD` before running the script (and keep
 the credential values out of the source file). Forgot to set them? No worries - the browser still opens and you can
-log in manually. Keep credentials out of the source file by using the environment variables above._  
+log in manually. If the terminal then asks for your credentials, you can also just ignore it and sign in in the
+browser: a login that completes there cancels the prompt by itself (school SSO, Google, Microsoft or Clever too).
+Keep credentials out of the source file by using the environment variables above._  
 *_Auto-login only fills in EP's own username/password form. If you sign in through your school account (SSO), Google,
 Microsoft or Clever, log in manually in the browser window; the script never touches those flows or the reCAPTCHA
 on EP's login page._
@@ -145,7 +147,8 @@ When you run the script, it should:
 * Load EP's login page. It is no longer served from `app.educationperfect.com`: that address redirects to EP's identity provider (`iam.educationperfect.com`), where the same username/password fields live;  
 * Load EP home page;  
 * All auto-answer functionality is loaded in the background, ready to be used whenever;  
-* Log in for you if you provided your credentials (username/password only - SSO, Google, Microsoft, Clever and any CAPTCHA must be completed by hand).  
+* Log in for you if you provided your credentials (username/password only - SSO, Google, Microsoft, Clever and any CAPTCHA must be completed by hand);  
+* Cancel the terminal credential prompt by itself when the login completes in the browser first - so signing in by hand requires no terminal interaction at all, and answering the prompt after a completed login can no longer crash the run.  
 
 Then, you can:  
 * Log in manually if you _really_ want to (why?);

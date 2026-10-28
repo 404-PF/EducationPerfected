@@ -1,4 +1,5 @@
-// Guards the credential handling from issue #6: credentials live at runtime only.
+// Guards the credential handling from issues #6 and #27: credentials live at runtime
+// only, and a manual browser login outraces (and cancels) the terminal prompt.
 //
 //   node scripts/credentials-test.js
 //
@@ -372,11 +373,12 @@ async function withFixtures(dir, run) {
  * @param {string} name
  * @param {string[]} exports
  * @param {Record<string, string>|null} entries
+ * @param {string} [source] - the block to write instead of index.js's credential block
  * @returns {Record<string, Function>}
  */
-function loadBlock(dir, name, exports, entries) {
+function loadBlock(dir, name, exports, entries, source = block) {
     const file = path.join(dir, name);
-    fs.writeFileSync(file, `${block}\nmodule.exports = { ${exports.join(', ')} };\n`);
+    fs.writeFileSync(file, `${source}\nmodule.exports = { ${exports.join(', ')} };\n`);
     if (entries) {
         const pkg = path.join(dir, 'node_modules', 'keytar');
         fs.mkdirSync(pkg, { recursive: true });
@@ -405,6 +407,24 @@ async function runtime() {
         env: { user: ['env', suffix].join('@'), secret: ['env', 'value'].join('-') },
     };
 
+    // Both fixture roots are removed however the run ends (a failed check included):
+    // the credential block's, and the one the watcher helper is loaded from below.
+    const watcherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-watcher-'));
+    try {
+        await withCredentialsFixtures(watcherDir, suffix, fake);
+    } finally {
+        fs.rmSync(watcherDir, { recursive: true, force: true });
+    }
+}
+
+/**
+ * Runs the runtime checks with isolated environment and temp directories.
+ * @param {string} watcherDir - Fixture directory for the watcher helper (owned by the caller)
+ * @param {string} suffix - The fake domain suffix the fixture values are built from
+ * @param {{keychain: {user: string, secret: string}, env: {user: string, secret: string}}} fake
+ * @returns {Promise<void>}
+ */
+async function withCredentialsFixtures(watcherDir, suffix, fake) {
     await withFixtures(fs.mkdtempSync(path.join(os.tmpdir(), 'ep-credentials-')), async dir => {
         const { cleanCredential, cleanEmail, cleanPassword } = loadBlock(dir, 'clean.js', ['cleanCredential', 'cleanEmail', 'cleanPassword']);
 
@@ -476,16 +496,36 @@ async function runtime() {
         const stdin = new PassThrough();
         stdin.isTTY = true;
         stdin.raw = false;
-        stdin.setRawMode = m => { stdin.raw = m; };
+        stdin.setRawMode = m => { stdin.raw = m; stdin.emit('raw'); };
         Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+        // Pushes must wait until the prompt has attached its data listener: a chunk
+        // pushed earlier is dropped (push() forgets chunks with no listener attached),
+        // and waiting on a 'data' listener of our own would consume the chunk before
+        // promptSecret's handler and hang it. Neither promptsOn nor released() listens
+        // on stdin - both only count listeners - so they cannot take input either.
+        // The first prompt opens some time after the call: immediately when the login
+        // watcher is absent, but after the caller's watcher has settled when one is
+        // given (up to 50ms here) - so neither one immediate nor raw mode (which also
+        // fires when an already-detected session cancels the prompt) marks the prompt
+        // opening. Poll for its data listener instead, which nothing else attaches.
+        const promptListeners = () => stdin.listenerCount('data');
+        const promptsOn = async () => {
+            for (let i = 0; i < 1000 && promptListeners() === 0; i++) await new Promise(r => setTimeout(r, 5));
+            assert.equal(promptListeners(), 1, 'the prompt has attached its data listener');
+        };
+        // Waits until the previous prompt has let go of stdin (its data listener is
+        // gone), which is also when its promise settles.
+        const released = async () => {
+            while (promptListeners() !== 0) await new Promise(r => setTimeout(r, 5));
+        };
+
         // fresh block without any keychain entries
         const prompt = loadBlock(dir, 'prompt.js', ['resolveCredentials'], {});
         const p = prompt.resolveCredentials();
-        // Wait for raw mode to be enabled, then assert it
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
-        assert.ok(stdin.raw === true, 'stdin raw mode was enabled for hidden input');
+        await promptsOn();
+        assert.equal(stdin.raw, true, 'raw mode was enabled for hidden input');
         stdin.push('typed@example.test\r');
-        await new Promise(r => setTimeout(r, 50));
+        await released();   // the email is in; the password prompt takes over stdin
         stdin.push('s3cr3t\r');
         const r = await p;
         assert.deepEqual(r, { email: 'typed@example.test', password: 's3cr3t', source: 'the terminal prompt' });
@@ -493,14 +533,101 @@ async function runtime() {
 
         // Control sequences must be swallowed whole. `[` is itself a CSI final byte, so a
         // parser that ends there appends "A" from an arrow key or "200~"/"201~" from a
-        // bracketed paste to the secret. The password here types past both.
+        // bracketed paste to the secret. The password here types past both. promptSecret
+        // returns { promise, cancel }: the promise resolves the submitted value.
         const escaped = loadBlock(dir, 'escaped.js', ['promptSecret'], null);
         stdin.raw = false;
         const escapedPrompt = escaped.promptSecret('', v => v);
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        await promptsOn();
         stdin.push(Buffer.from('typed\x1b[A\x1b[200~\x1b[201~pass\r', 'binary'));
-        assert.equal(await escapedPrompt, 'typedpass');
+        assert.equal(await escapedPrompt.promise, 'typedpass');
         check('arrow keys and bracketed paste markers never enter the secret');
+
+        // Cancelling an open prompt from outside (a completed manual login won the race,
+        // issue #27) must leave the terminal as it was and resolve null: the same
+        // cleanup path Ctrl+C takes, minus process.exit.
+        const cancellable = loadBlock(dir, 'cancel.js', ['promptSecret'], null);
+        stdin.raw = false;
+        const cancelled = cancellable.promptSecret('', v => v);
+        await promptsOn();
+        cancelled.cancel();
+        cancelled.cancel();   // a second cancel must be a no-op, not a second newline/restore
+        assert.equal(await cancelled.promise, null);
+        assert.equal(stdin.raw, false, 'raw mode is restored after a cancel');
+        assert.equal(stdin.listenerCount('data'), 0, 'the prompt data listener is dropped after a cancel');
+        check('a cancelled prompt resolves null and restores the terminal (raw off, listener dropped)');
+
+        // The prompt raced against the login watcher (issue #27): when the watcher sees
+        // the session first, the prompt is cancelled invisibly and resolveCredentials
+        // reports the session as detected; when the prompt is answered first, nothing
+        // changes.
+        const raced = loadBlock(dir, 'raced.js', ['resolveCredentials'], null);
+        stdin.raw = false;
+        const lost = raced.resolveCredentials(async () => {   // the login completes first
+            await new Promise(r => setTimeout(r, 50));
+            return true;
+        });
+        await promptsOn();
+        assert.deepEqual(await lost, { sessionDetected: true });
+        assert.equal(stdin.raw, false, 'raw mode is restored when the prompt loses the race');
+        assert.equal(stdin.listenerCount('data'), 0, 'the prompt data listener is dropped when the race is lost');
+        check('a manual login completing first cancels the prompt and reports the session as detected');
+
+        // The same watcher, but no session ever arrives: the prompt is answered first.
+        stdin.raw = false;
+        const won = raced.resolveCredentials(() => new Promise(() => { }));   // no session ever arrives
+        await promptsOn();
+        const racedSecret = ['raced', 'value'].join('-');   // not credential-shaped, same as `fake`
+        stdin.push(`raced@${suffix}\r`);
+        await released();   // the email is in; the password prompt takes over stdin
+        stdin.push(`${racedSecret}\r`);
+        assert.deepEqual(await won, { email: `raced@${suffix}`, password: racedSecret, source: 'the terminal prompt' });
+        check('a prompt answered first is unaffected by the login watcher');
+
+        // The watcher the prompt is raced against: sessionAppeared, the body of the
+        // startup flow's watchForSession. It sits in the program block, which launches a
+        // browser if loaded, so it is sliced out and loaded as a fresh block against a
+        // fake page (loadBlock, like the credential block above - nothing is eval'd).
+        const programStart = indexSource.indexOf('// ===== Program ===== //');
+        const helperStart = indexSource.indexOf('async function sessionAppeared(', programStart);
+        assert.ok(helperStart > programStart, 'sessionAppeared is declared in the program block');
+        const helperSource = indexSource.slice(helperStart);
+        const helperEnd = helperSource.indexOf('\n            }') + '\n            }'.length;
+        const watcher = loadBlock(watcherDir, 'watcher.js',
+            ['sessionAppeared'], null, `const DIR = { home_css: '#home' };\n${helperSource.slice(0, helperEnd)}`);
+        const goneError = message => new Error(message);
+
+        /**
+         * A fake page whose successive waits fail, then resolve, as scripted.
+         * @param {Array<string|'seen'>} outcomes - an error message per wait, or 'seen'
+         * @returns {{page: {waitForSelector: Function, calls: number}}}
+         */
+        const fakePage = outcomes => {
+            const page = {
+                calls: 0,
+                waitForSelector: () => {
+                    const next = outcomes[Math.min(page.calls++, outcomes.length - 1)];
+                    return next === 'seen' ? Promise.resolve({}) : Promise.reject(goneError(next));
+                },
+            };
+            return page;
+        };
+        const isGone = e => e.message === 'detached Frame';   // stands in for isPageGoneError
+
+        const navigated = fakePage(['Execution context was destroyed, most likely because of a navigation', 'seen']);
+        const rearmed = watcher.sessionAppeared(navigated, undefined, isGone, 1);   // DIR.home_css by default
+        assert.ok(rearmed instanceof Promise, 'the watcher returns a promise');
+        assert.equal(await rearmed, true);
+        assert.equal(navigated.calls, 2, 'a navigation re-arms the watch instead of ending it');
+        check('the login watcher re-arms after a navigation and reports the session');
+
+        // The regression this guards: returning undefined (no value) from one path made
+        // resolveCredentials await an undefined watcher and fail the whole startup.
+        const gone = fakePage(['detached Frame']);
+        const ended = watcher.sessionAppeared(gone, undefined, isGone, 1);
+        assert.ok(ended instanceof Promise, 'the watcher returns a promise even when the page is gone');
+        assert.equal(await ended, false, 'a page that is gone resolves false, never undefined');
+        check('the login watcher ends with false (a promise) once the page is gone');
     });
 }
 

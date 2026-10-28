@@ -8,7 +8,11 @@ const puppeteer = require('puppeteer');
 //   1. the EP_EMAIL / EP_PASSWORD environment variables
 //   2. the OS keychain (macOS Keychain, Windows Credential Manager, libsecret), under
 //      the service name below, when the optional `keytar` module is installed
-//   3. an interactive prompt on the terminal, when run attached to a TTY
+//   3. an interactive prompt on the terminal, when run attached to a TTY. The browser
+//      window is already sitting on EP's login page then, so the prompt is raced
+//      against the logged-in signal on the page: a manual login that completes first
+//      (the password form, or an SSO/social flow this script can never touch)
+//      cancels the prompt instead of outliving it.
 // Nothing is ever written to disk. Leave the sources unset to skip auto-login and
 // sign in manually in the browser window.
 const CREDENTIAL_SERVICE = 'EducationPerfected';
@@ -85,26 +89,51 @@ async function readKeychainCredential(field) {
 // Secret prompt: no echo, and no copy left in the terminal. Resolves null when stdin
 // is not a terminal (piped input is not trusted with a password) or the user submits
 // nothing, so the manual-login path still works everywhere.
+//
+// An open prompt can also be closed from OUTSIDE (see racePromptAgainstLogin): when a
+// manual login completes in the browser while the prompt is waiting on the terminal,
+// it is closed the way a real keystroke would close it - finish(): restore raw mode,
+// drop the data listener, write the terminating newline - but WITHOUT process.exit,
+// so the program keeps running after the cancelled prompt. finish() is guarded to run
+// exactly once, which also covers a cancel landing in the same tick as a submit: no
+// second newline, no double restore. The early exits (no TTY, no raw mode) resolve
+// before anything was armed and mark themselves finished, so a later cancel() on them
+// is a no-op rather than an extra newline.
 /**
  * Prompts for a secret value with hidden input.
  * @param {string} label
  * @param {(value: string) => string|null} cleaner - Function to clean the submitted value
- * @returns {Promise<string|null>}
+ * @returns {{promise: Promise<string|null>, cancel: () => void}} promise resolves to the
+ *   cleaned answer, or null when nothing valid was submitted, stdin is not a terminal,
+ *   or the prompt was cancelled; cancel() closes an open prompt through the same
+ *   finish() path Ctrl+C takes, minus process.exit
  */
 function promptSecret(label, cleaner) {
-    return new Promise(resolve => {
+    let finish = null;
+    const promise = new Promise(resolve => {
         const stdin = process.stdin;
-        if (!stdin.isTTY) return resolve(null);
+        let finished = false;   // finish() has run: no more cleanup or newline is due
+        let armed = false;      // stdin was switched to raw with onData attached
+        let wasRaw = false;
+        finish = result => {
+            if (finished) return;
+            finished = true;
+            if (armed) {
+                stdin.removeListener('data', onData);
+                stdin.setRawMode(wasRaw || false);
+                stdin.pause();
+                process.stderr.write('\n');
+            }
+            resolve(result);
+        };
+        if (!stdin.isTTY) return finish(null);
         process.stderr.write(label);
         // Raw mode is what suppresses echo; without it the password would be printed,
         // so a terminal that cannot do raw mode gets no prompt at all.
         if (typeof stdin.setRawMode !== 'function') {
             process.stderr.write('\n(this terminal cannot hide input; log in manually)\n');
-            return resolve(null);
+            return finish(null);
         }
-        const wasRaw = stdin.isRaw;
-        stdin.setRawMode(true);
-        stdin.resume();
         // Chunk is a Buffer; for...of yields numeric byte values. Collect bytes
         // and decode as UTF-8 on submit so non-ASCII characters are preserved.
         // On backspace/delete, remove the complete final UTF-8 character.
@@ -121,13 +150,6 @@ function promptSecret(label, cleaner) {
         // range, so without the explicit introducer step the parser would end on it and
         // feed the rest back as input ("A" from an arrow key, "200~" from a paste).
         let escapeKind = null;  // null | 'introducer' | 'csi' | 'osc' | 'oscEsc'
-        const finish = result => {
-            stdin.removeListener('data', onData);
-            stdin.setRawMode(wasRaw || false);
-            stdin.pause();
-            process.stderr.write('\n');
-            resolve(result);
-        };
         const onData = chunk => {
             for (const byte of chunk) {
                 if (escapeKind !== null) {
@@ -166,24 +188,107 @@ function promptSecret(label, cleaner) {
                 } else if (byte >= 32) bytes.push(byte);
             }
         };
+        wasRaw = stdin.isRaw;
+        stdin.setRawMode(true);
+        stdin.resume();
         stdin.on('data', onData);
+        armed = true;   // listener attached: finish() now owns the full undo
     });
+    // Cancelling from outside takes finish()'s cleanup path but never process.exit:
+    // the run continues on the normal post-login wait (see racePromptAgainstLogin).
+    return { promise, cancel: () => finish(null) };
+}
+
+// The marker racePromptAgainstLogin returns when the run's login watcher saw a
+// completed session before the prompt was answered - the exact moment the user
+// finished signing in by hand. It is threaded through promptCredentials and
+// resolveCredentials so the program block can skip auto-login and the "no
+// credentials" message for it. A Symbol, so it can never collide with a value the
+// user actually submitted at the prompt.
+const PROMPT_CANCELLED_BY_LOGIN = Symbol('a completed browser login cancelled the terminal prompt');
+
+/**
+ * Races an open prompt against the run's login watcher (see watchForSession in the
+ * program block). The browser window is already sitting on EP's login page while the
+ * prompt waits on the terminal, and a manual sign-in that completes first - the
+ * password form, or an SSO/Google/Microsoft/Clever flow the auto-login can never
+ * touch - cancels the prompt instead of outliving it: the prompt is closed through
+ * promptSecret's cancel() (finish()'s cleanup, minus process.exit) and
+ * PROMPT_CANCELLED_BY_LOGIN is returned. When the prompt is answered first, the
+ * cleaned answer is returned untouched.
+ * The watcher is started BEFORE the prompt, by promptCredentials, and the
+ * already-running promise is what gets raced: starting it inside the race would leave
+ * the race observing a wait that re-arms after every navigation for as long as the
+ * run goes on, so the event loop would tick with closed stdin on the very page the
+ * login belongs to until the prompt was answered. Awaiting it first instead would
+ * hold the prompt back until a login that might never come: the prompt must be on
+ * screen from the moment it is created.
+ * @param {{promise: Promise<string|null>, cancel: () => void}} prompt - An open promptSecret
+ * @param {Promise<boolean>} sessionWatch - The run's login watcher, already running
+ * @returns {Promise<string|null|symbol>} The submitted answer, or
+ *   PROMPT_CANCELLED_BY_LOGIN when the watcher saw the session first.
+ */
+async function racePromptAgainstLogin(prompt, sessionWatch) {
+    const winner = await Promise.race([
+        // A submitted answer settles the race with its value. A prompt promise that
+        // rejects is not expected (every finish path resolves), so it degrades to an
+        // empty answer rather than rejecting the run's credential resolution.
+        prompt.promise.then(
+            answer => ({ answer: answer }),
+            () => ({ answer: null }),
+        ),
+        // Only a logged-in session wins the race. A dead one - the wait killed by a
+        // navigation (EP's login bounces hosts before the session arrives) or left
+        // false with the page gone - must neither win nor reject the race: it maps
+        // to a never-settling promise, which is the equivalent of no watcher, and
+        // the prompt stays open as before.
+        sessionWatch.then(
+            seen => (seen ? { login: true } : new Promise(() => { })),
+            () => new Promise(() => { }),
+        ),
+    ]);
+    if (!winner.login) return winner.answer;
+    prompt.cancel();
+    return PROMPT_CANCELLED_BY_LOGIN;
 }
 
 // Asks only when a terminal is attached AND the run would otherwise skip auto-login;
-// an empty answer at either prompt means "log in manually".
+// an empty answer at either prompt means "log in manually". The browser window is
+// already sitting on EP's login page while the prompts wait on the terminal, so each
+// prompt is raced against the login watcher (watchForSession): a manual sign-in that
+// completes first cancels the prompt invisibly.
 /**
  * Prompts for email and password credentials interactively.
- * @returns {Promise<{email: string, password: string}|null>}
+ * @param {() => Promise<boolean>} [watchForSession] - Starts the run's login-success
+ *   watcher; absent (or not a function) when no race is wanted. Created once, before
+ *   the first prompt, and raced against both.
+ * @returns {Promise<{email: string, password: string}|PROMPT_CANCELLED_BY_LOGIN|null>}
  */
-async function promptCredentials() {
+async function promptCredentials(watchForSession) {
     if (!process.stdin.isTTY) {
         console.log('Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
         return null;
     }
-    const email = await promptSecret('EP email (leave empty to log in manually): ', cleanEmail);
+    // The watcher is started, not tested: watchForSession() hands back a Promise, which
+    // is always truthy, so a `watcher ? race : plain` split would never take the plain
+    // branch anyway. Null (no watcher was given) means no race. One is started just
+    // before each prompt - so the prompt opens at once, without waiting on a login that
+    // might never come - and the running promise is handed to the race.
+    const startWatch = () => typeof watchForSession === 'function' ? watchForSession() : null;
+    const race = (prompt) => {
+        const sessionWatch = startWatch();
+        return sessionWatch === null
+            ? prompt.promise
+            : racePromptAgainstLogin(prompt, sessionWatch);
+    };
+
+    const emailPrompt = promptSecret('EP email (leave empty to log in manually): ', cleanEmail);
+    const email = await race(emailPrompt);
+    if (email === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (email === null) return null;
-    const password = await promptSecret('EP password (input hidden): ', cleanPassword);
+    const passwordPrompt = promptSecret('EP password (input hidden): ', cleanPassword);
+    const password = await race(passwordPrompt);
+    if (password === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (password === null) {
         console.log('No password entered; log in manually in the opened browser window.');
         return null;
@@ -195,11 +300,14 @@ async function promptCredentials() {
  * Resolves credentials at runtime from the first available source:
  * 1. EP_EMAIL / EP_PASSWORD environment variables (both must be set)
  * 2. OS keychain (via keytar, both fields must be present)
- * 3. Interactive TTY prompt (hidden input)
- * Returns null if no credentials are available, allowing manual login.
- * @returns {Promise<{email: string, password: string, source: string}|null>}
+ * 3. Interactive TTY prompt (hidden input), raced against watchForSession so a manual
+ *    browser login that completes while it is open cancels it
+ * Returns null if no credentials are available, allowing manual login, or an object
+ * with sessionDetected true when the login watcher saw a completed login first.
+ * @param {() => Promise<boolean>} [watchForSession]
+ * @returns {Promise<{email: string, password: string, source: string}|{sessionDetected: true}|null>}
  */
-async function resolveCredentials() {
+async function resolveCredentials(watchForSession) {
     const email = cleanEmail(process.env.EP_EMAIL);
     const password = cleanPassword(process.env.EP_PASSWORD);
     if (email && password) return { email, password, source: 'EP_EMAIL/EP_PASSWORD' };
@@ -215,7 +323,12 @@ async function resolveCredentials() {
         return { email: keychainEmail, password: keychainPassword, source: 'the OS keychain' };
     }
 
-    const prompted = await promptCredentials();
+    const prompted = await promptCredentials(watchForSession);
+    if (prompted === PROMPT_CANCELLED_BY_LOGIN) {
+        // The session is already running; the program block reports it as such and
+        // falls straight through to the normal post-login wait.
+        return { sessionDetected: true };
+    }
     if (prompted) return { ...prompted, source: 'the terminal prompt' };
     return null;
 }
@@ -361,7 +474,122 @@ async function resolveCredentials() {
                 return { loginButton };
             };
 
+            /**
+ * Fills in the loaded credentials and submits the login form currently on screen.
+ * Whether the form is still there is confirmed just before typing: a manual sign-in
+ * can complete while the credentials were being resolved (env vars and the keychain
+ * involve no prompt; a terminal prompt is cancelled by a completed login), or in the
+ * beat before the first keystroke lands, and page.type into the page a completed
+ * login leaves behind has no login form to match - the throw that used to kill the
+ * whole run (issue #27). One DOM read confirms form present, no session signal
+ * (DIR.home_css) and the expected login host, right before the typing begins.
+ *
+ * The read and the typing are separate round trips to the browser, so a manual login
+ * is still free to navigate between them: the typing is wrapped as a unit and a
+ * navigation/detached-frame failure inside it abandons auto-login for the manual-login
+ * path instead of rejecting the startup chain. A keystroke that did get through into a
+ * page that then navigated is harmless - the document it landed in is gone.
+ * @param {{loginButton: ElementHandle|null}} loginForm - From reachLoginForm
+ * @returns {Promise<void>}
+ */
+            const attemptAutoLogin = async (loginForm) => {
+                const fillGuard = await page.evaluate((userCss, homeCss) => ({
+                    form: document.querySelector(userCss) !== null,
+                    session: document.querySelector(homeCss) !== null,
+                    host: location.hostname,
+                }), DIR.username_css, DIR.home_css).catch(() => null);
+
+                if (fillGuard === null) {
+                    // The page state could not even be read: a navigation (e.g. a manual
+                    // login just landing) is mid-flight. Nothing may be typed until it
+                    // settles, and the user's login is already taking care of itself.
+                    console.log('The login page state could not be verified before auto-login; skipping it. Log in manually in the browser window.');
+                } else if (fillGuard.session) {
+                    // A manual login got in first and the logged-in signal is already on
+                    // screen: nothing to fill, the post-login wait below resolves at once.
+                    console.log('The browser is already logged in; skipping auto-login.');
+                } else if (!fillGuard.form) {
+                    console.log('The login form is gone; skipping auto-login. If the session is not open yet, log in manually in the browser window.');
+                } else if (fillGuard.host !== DIR.login_host) {
+                    // The same oath reachLoginForm took: never type credentials into an
+                    // origin EP did not serve this login form from - a lookalike there
+                    // would receive the password.
+                    console.log(`Expected the login form on ${DIR.login_host}, but EP served it from ${fillGuard.host}. Not auto-filling credentials there; log in manually in the browser window.`);
+                } else {
+                    const { loginButton } = loginForm;
+                    // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
+                    // (username/password only: SSO, Google, Microsoft, Clever and the reCAPTCHA
+                    // on this page are left alone - users on those sign-in methods must log in
+                    // manually, and no challenge is ever solved or bypassed here.)
+                    console.log('Filling in login details...');
+                    try {
+                        await page.type(DIR.username_css, DIR.email);
+                        await page.type(DIR.password_css, DIR.password);
+                    } catch (e) {
+                        // The form went away between the guard read above and the typing:
+                        // a manual login navigated the page (Puppeteer reports this as a
+                        // detached frame / destroyed execution context). That is the
+                        // manual-login path, not a failure - report it and let the
+                        // post-login wait below settle on whichever page is left.
+                        console.log(`The login page changed while auto-login was filling it (${e.message}); leaving it to the manual login.`);
+                        return;
+                    }
+                    // Submit through the form's own Log in button: the iam page POSTs to
+                    // /oauth2/authorize, and a synthetic Enter only submits when focus lands in a
+                    // field. The resolved handle is clicked, so an SSO/social button can never be
+                    // hit by accident; Enter is the fallback when no such button exists.
+                    console.log('Submitting login form...');
+                    // The navigation waiter must exist BEFORE the click is dispatched: a fast
+                    // successful redirect would otherwise happen before waitForNavigation
+                    // starts observing, and the login would sit out the full 30s timeout.
+                    // The catch is attached now rather than at the await so that a rejection
+                    // during the password-field clear below is already handled and cannot
+                    // surface as an unhandled rejection.
+                    const navigation = page.waitForNavigation({ timeout: 30000 }).catch(() => {
+                        // a failed login stays on the form (or shows an error/challenge there),
+                        // so the timeout is not fatal: report it and let the user finish by hand.
+                        console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
+                    });
+                    // Dispatch the click/Enter, then immediately clear the password field so the
+                    // secret doesn't linger in the DOM during the navigation wait.
+                    await (loginButton ? loginButton.click() : page.keyboard.press('Enter'));
+                    await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
+                    await navigation;
+
+                    console.log('Waiting for home page to load...');
+                    // wait for the app shell, so a slow dashboard is reported honestly instead
+                    // of being called loaded the moment the login form disappears. Other routes
+                    // (a task opened straight from an assignment link) also carry the shell.
+                    const homeSeen = await page.waitForSelector(DIR.home_css, { timeout: 30000 }).then(() => true).catch(() => false);
+                    console.log(homeSeen
+                        ? `EP Home page loaded (${new URL(page.url()).pathname}); Logged in.`
+                        : `Login did not reach the app shell (${DIR.home_css}) within 30s (now on ${new URL(page.url()).pathname}); finish signing in manually in the browser window.`);
+                }
+            };
+
             const loginForm = await reachLoginForm();
+
+            // Whether the logged-in signal was already seen on the page before auto-login
+            // could fill anything: a manual login raced the credential prompt (the prompt
+            // is cancelled for exactly that) or arrived while the loaded credentials were
+            // being put to use (the pre-type guard covers that). It steers the messages
+            // below - an already-open session is reported ready, not as "no credentials" -
+            // and joins the auto-login guard.
+            let sessionDetected = false;
+
+            // The login watcher the credential prompt is raced against: resolves true the
+            // moment the app shell mounts - DIR.home_css, the same signal the
+            // end-of-startup wait below uses, and the one every manual login path (the
+            // password form as well as school SSO, Google, Microsoft, Clever) produces.
+            // EP's login bounces through several hosts before the session arrives, so a
+            // wait killed by one of those navigations is re-armed rather than ending the
+            // watch; the watch only stops for good when the page itself is gone.
+            // @returns {Promise<boolean>}
+            function watchForSession() {
+                // Always a promise of a boolean: it is raced (racePromptAgainstLogin) or
+                // awaited, never tested for truthiness.
+                return sessionAppeared(page).then(seen => seen === true);
+            }
 
             // The form script leaves a loading state behind when it fails (e.g. scripts
             // blocked): the fields render but the button can stay disabled. Report it so a
@@ -387,64 +615,42 @@ async function resolveCredentials() {
                 // Resolved only once the expected login form is actually in front of us,
                 // so a keychain read or a password prompt never happens for a run that
                 // was going to stop at a lookalike host anyway. Called even when the env
-                // vars are already set: that is where a half-set pair is reported.
-                const credentials = await resolveCredentials();
-                if (credentials !== null) {
+                // vars are already set: that is where a half-set pair is reported. The
+                // login watcher is passed along so the prompt is raced against a manual
+                // login (see racePromptAgainstLogin).
+                const credentials = await resolveCredentials(watchForSession);
+                if (credentials !== null && !credentials.sessionDetected) {
                     console.log(`Auto-login credentials loaded from ${credentials.source}.`);
                     DIR.email = credentials.email;
                     DIR.password = credentials.password;
+                } else if (credentials !== null) {
+                    // The manual login won the race while the prompt was open: the prompt
+                    // was cancelled invisibly (finish()'s cleanup, minus process.exit) and
+                    // the run falls through to the normal post-login wait below.
+                    sessionDetected = true;
+                    console.log('Logged in manually in the browser; skipping the terminal prompt and auto-login.');
                 }
             }
 
             if (DIR.email && DIR.password && loginForm !== null) {
-                const { loginButton } = loginForm;
-                // THIS FILLS IN YOUR DETAILS TO LOG IN AUTOMATICALLY
-                // (username/password only: SSO, Google, Microsoft, Clever and the reCAPTCHA
-                // on this page are left alone - users on those sign-in methods must log in
-                // manually, and no challenge is ever solved or bypassed here.)
-                console.log('Filling in login details...');
-                await page.type(DIR.username_css, DIR.email);
-                await page.type(DIR.password_css, DIR.password);
-                // Submit through the form's own Log in button: the iam page POSTs to
-                // /oauth2/authorize, and a synthetic Enter only submits when focus lands in a
-                // field. The resolved handle is clicked, so an SSO/social button can never be
-                // hit by accident; Enter is the fallback when no such button exists.
-                console.log('Submitting login form...');
-                // The navigation waiter must exist BEFORE the click is dispatched: a fast
-                // successful redirect would otherwise happen before waitForNavigation
-                // starts observing, and the login would sit out the full 30s timeout.
-                // The catch is attached now rather than at the await so that a rejection
-                // during the password-field clear below is already handled and cannot
-                // surface as an unhandled rejection.
-                const navigation = page.waitForNavigation({ timeout: 30000 }).catch(() => {
-                    // a failed login stays on the form (or shows an error/challenge there),
-                    // so the timeout is not fatal: report it and let the user finish by hand.
-                    console.warn('No navigation after submitting the login form; check the open browser window for an error or challenge.');
-                });
-                // Dispatch the click/Enter, then immediately clear the password field so the
-                // secret doesn't linger in the DOM during the navigation wait.
-                await (loginButton ? loginButton.click() : page.keyboard.press('Enter'));
-                await page.$eval(DIR.password_css, el => { el.value = ''; }).catch(() => { });
-                await navigation;
-
-                console.log('Waiting for home page to load...');
-                // wait for the app shell, so a slow dashboard is reported honestly instead
-                // of being called loaded the moment the login form disappears. Other routes
-                // (a task opened straight from an assignment link) also carry the shell.
-                const homeSeen = await page.waitForSelector(DIR.home_css, { timeout: 30000 }).then(() => true).catch(() => false);
-                console.log(homeSeen
-                    ? `EP Home page loaded (${new URL(page.url()).pathname}); Logged in.`
-                    : `Login did not reach the app shell (${DIR.home_css}) within 30s (now on ${new URL(page.url()).pathname}); finish signing in manually in the browser window.`);
+                await attemptAutoLogin(loginForm);
             } else if (DIR.email && DIR.password) {
                 // a lookalike host (see reachLoginForm): never auto-filled, and no keychain
                 // read or prompt was ever done for it
                 console.log('Auto-login skipped; finish signing in manually in the browser window.');
+            } else if (sessionDetected) {
+                // The login completed in the browser while the credential prompt was open
+                // (or by the time resolved credentials were being put to use): report the
+                // session as ready instead of claiming no credentials were given.
+                console.log('Session ready: a login has already completed in the browser; continuing.');
             } else {
                 console.log('No credentials provided; skipping auto-login. Log in manually in the opened browser window.');
             }
             // Either way, continue once a session is actually running: the manual branch waits
             // without a timeout here, exactly as before, and the auto branch has already been
-            // given its 30s check above.
+            // given its 30s check above. When the session was detected already (the manual
+            // login won its race), the element is on screen: this resolves at once and the
+            // run proceeds.
             await page.waitForSelector(DIR.home_css, { timeout: 0 });
 
 
@@ -640,6 +846,26 @@ async function resolveCredentials() {
             function isPageGoneError(e) {
                 const message = String((e && e.message) || e);
                 return /detached Frame|Execution context was destroyed|Cannot find context|Target closed|Session closed|Browser has been closed|Navigating was not successful/i.test(message);
+            }
+
+            // The login watcher's body (see watchForSession in the startup flow, which
+            // passes `page`): waits for the shell on `page`, re-arming after navigations.
+            // It takes its signals as arguments so it can be tested without a browser.
+            /**
+     * Resolves true once the logged-in app shell is on the page, false once the page is gone.
+     * @param {Page} page - The browser page to watch
+     * @param {string} homeCss - The logged-in app-shell selector
+     * @param {(e: any) => boolean} isGone - Page-closed test (isPageGoneError)
+     * @param {number} retryDelayMs - Delay before re-arming after a navigation
+     * @returns {Promise<boolean>}
+     */
+            async function sessionAppeared(page, homeCss = DIR.home_css, isGone = isPageGoneError, retryDelayMs = 100) {
+                while (true) {
+                    const seen = await page.waitForSelector(homeCss, { timeout: 0 }).then(() => true, e => e);
+                    if (seen === true) return true;   // the app shell mounted: logged in
+                    if (isGone(seen)) return false;   // no page left to watch
+                    await new Promise(r => setTimeout(r, retryDelayMs));   // a navigation: re-arm
+                }
             }
 
             /**
