@@ -1,4 +1,5 @@
-// Guards the credential handling from issue #6: credentials live at runtime only.
+// Guards the credential handling from issues #6 and #27: credentials live at runtime
+// only, and a manual browser login outraces (and cancels) the terminal prompt.
 //
 //   node scripts/credentials-test.js
 //
@@ -493,14 +494,55 @@ async function runtime() {
 
         // Control sequences must be swallowed whole. `[` is itself a CSI final byte, so a
         // parser that ends there appends "A" from an arrow key or "200~"/"201~" from a
-        // bracketed paste to the secret. The password here types past both.
+        // bracketed paste to the secret. The password here types past both. promptSecret
+        // returns { promise, cancel }: the promise resolves the submitted value.
         const escaped = loadBlock(dir, 'escaped.js', ['promptSecret'], null);
         stdin.raw = false;
         const escapedPrompt = escaped.promptSecret('', v => v);
         for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
         stdin.push(Buffer.from('typed\x1b[A\x1b[200~\x1b[201~pass\r', 'binary'));
-        assert.equal(await escapedPrompt, 'typedpass');
+        assert.equal(await escapedPrompt.promise, 'typedpass');
         check('arrow keys and bracketed paste markers never enter the secret');
+
+        // Cancelling an open prompt from outside (a completed manual login won the race,
+        // issue #27) must leave the terminal as it was and resolve null: the same
+        // cleanup path Ctrl+C takes, minus process.exit.
+        const cancellable = loadBlock(dir, 'cancel.js', ['promptSecret'], null);
+        stdin.raw = false;
+        const cancelled = cancellable.promptSecret('', v => v);
+        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        assert.equal(stdin.listenerCount('data'), 1, 'the prompt owns exactly one data listener while open');
+        cancelled.cancel();
+        cancelled.cancel();   // a second cancel must be a no-op, not a second newline/restore
+        assert.equal(await cancelled.promise, null);
+        assert.equal(stdin.raw, false, 'raw mode is restored after a cancel');
+        assert.equal(stdin.listenerCount('data'), 0, 'the prompt data listener is dropped after a cancel');
+        check('a cancelled prompt resolves null and restores the terminal (raw off, listener dropped)');
+
+        // The prompt raced against the login watcher (issue #27): when the watcher sees
+        // the session first, the prompt is cancelled invisibly and resolveCredentials
+        // reports the session as detected; when the prompt is answered first, nothing
+        // changes.
+        const raced = loadBlock(dir, 'raced.js', ['resolveCredentials'], null);
+        stdin.raw = false;
+        const lost = raced.resolveCredentials(async () => {   // the login completes first
+            await new Promise(r => setTimeout(r, 50));
+            return true;
+        });
+        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        assert.deepEqual(await lost, { sessionDetected: true });
+        assert.equal(stdin.raw, false, 'raw mode is restored when the prompt loses the race');
+        assert.equal(stdin.listenerCount('data'), 0, 'the prompt data listener is dropped when the race is lost');
+        check('a manual login completing first cancels the prompt and reports the session as detected');
+
+        stdin.raw = false;
+        const won = raced.resolveCredentials(() => new Promise(() => { }));   // no session ever arrives
+        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        stdin.push('raced@example.test\r');
+        await new Promise(r => setTimeout(r, 50));
+        stdin.push('raced-secret\r');
+        assert.deepEqual(await won, { email: 'raced@example.test', password: 'raced-secret', source: 'the terminal prompt' });
+        check('a prompt answered first is unaffected by the login watcher');
     });
 }
 
