@@ -477,16 +477,36 @@ async function runtime() {
         const stdin = new PassThrough();
         stdin.isTTY = true;
         stdin.raw = false;
-        stdin.setRawMode = m => { stdin.raw = m; };
+        stdin.setRawMode = m => { stdin.raw = m; stdin.emit('raw'); };
         Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+        // Pushes must wait until the prompt has attached its data listener: a chunk
+        // pushed earlier is dropped (push() forgets chunks with no listener attached),
+        // and waiting on a 'data' listener of our own would consume the chunk before
+        // promptSecret's handler and hang it. Neither promptsOn nor released() listens
+        // on stdin - both only count listeners - so they cannot take input either.
+        // The first prompt opens some time after the call: immediately when the login
+        // watcher is absent, but after the caller's watcher has settled when one is
+        // given (up to 50ms here) - so neither one immediate nor raw mode (which also
+        // fires when an already-detected session cancels the prompt) marks the prompt
+        // opening. Poll for its data listener instead, which nothing else attaches.
+        const promptListeners = () => stdin.listenerCount('data');
+        const promptsOn = async () => {
+            for (let i = 0; i < 1000 && promptListeners() === 0; i++) await new Promise(r => setTimeout(r, 5));
+            assert.equal(promptListeners(), 1, 'the prompt has attached its data listener');
+        };
+        // Waits until the previous prompt has let go of stdin (its data listener is
+        // gone), which is also when its promise settles.
+        const released = async () => {
+            while (promptListeners() !== 0) await new Promise(r => setTimeout(r, 5));
+        };
+
         // fresh block without any keychain entries
         const prompt = loadBlock(dir, 'prompt.js', ['resolveCredentials'], {});
         const p = prompt.resolveCredentials();
-        // Wait for raw mode to be enabled, then assert it
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
-        assert.ok(stdin.raw === true, 'stdin raw mode was enabled for hidden input');
+        await promptsOn();
+        assert.equal(stdin.raw, true, 'raw mode was enabled for hidden input');
         stdin.push('typed@example.test\r');
-        await new Promise(r => setTimeout(r, 50));
+        await released();   // the email is in; the password prompt takes over stdin
         stdin.push('s3cr3t\r');
         const r = await p;
         assert.deepEqual(r, { email: 'typed@example.test', password: 's3cr3t', source: 'the terminal prompt' });
@@ -499,7 +519,7 @@ async function runtime() {
         const escaped = loadBlock(dir, 'escaped.js', ['promptSecret'], null);
         stdin.raw = false;
         const escapedPrompt = escaped.promptSecret('', v => v);
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        await promptsOn();
         stdin.push(Buffer.from('typed\x1b[A\x1b[200~\x1b[201~pass\r', 'binary'));
         assert.equal(await escapedPrompt.promise, 'typedpass');
         check('arrow keys and bracketed paste markers never enter the secret');
@@ -510,8 +530,7 @@ async function runtime() {
         const cancellable = loadBlock(dir, 'cancel.js', ['promptSecret'], null);
         stdin.raw = false;
         const cancelled = cancellable.promptSecret('', v => v);
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
-        assert.equal(stdin.listenerCount('data'), 1, 'the prompt owns exactly one data listener while open');
+        await promptsOn();
         cancelled.cancel();
         cancelled.cancel();   // a second cancel must be a no-op, not a second newline/restore
         assert.equal(await cancelled.promise, null);
@@ -529,20 +548,66 @@ async function runtime() {
             await new Promise(r => setTimeout(r, 50));
             return true;
         });
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
+        await promptsOn();
         assert.deepEqual(await lost, { sessionDetected: true });
         assert.equal(stdin.raw, false, 'raw mode is restored when the prompt loses the race');
         assert.equal(stdin.listenerCount('data'), 0, 'the prompt data listener is dropped when the race is lost');
         check('a manual login completing first cancels the prompt and reports the session as detected');
 
+        // The same watcher, but no session ever arrives: the prompt is answered first.
         stdin.raw = false;
         const won = raced.resolveCredentials(() => new Promise(() => { }));   // no session ever arrives
-        for (let i = 0; i < 100 && stdin.raw !== true; i++) await new Promise(r => setTimeout(r, 10));
-        stdin.push('raced@example.test\r');
-        await new Promise(r => setTimeout(r, 50));
-        stdin.push('raced-secret\r');
-        assert.deepEqual(await won, { email: 'raced@example.test', password: 'raced-secret', source: 'the terminal prompt' });
+        await promptsOn();
+        stdin.push(`raced@${suffix}\r`);
+        await released();   // the email is in; the password prompt takes over stdin
+        stdin.push('raced-value\r');
+        assert.deepEqual(await won, { email: `raced@${suffix}`, password: 'raced-value', source: 'the terminal prompt' });
         check('a prompt answered first is unaffected by the login watcher');
+
+        // The watcher the prompt is raced against: sessionAppeared, the body of the
+        // startup flow's watchForSession. It sits in the program block, which launches a
+        // browser if loaded, so its source is extracted and run against a fake page.
+        const programStart = indexSource.indexOf('// ===== Program ===== //');
+        const helperStart = indexSource.indexOf('async function sessionAppeared(', programStart);
+        assert.ok(helperStart > programStart, 'sessionAppeared is declared in the program block');
+        const helperSource = indexSource.slice(helperStart);
+        const helperEnd = helperSource.indexOf('\n            }') + '\n            }'.length;
+        const helperBody = helperSource.slice(0, helperEnd);
+        // eslint-disable-next-line no-new-func -- executing the extracted source is the point
+        const watcher = { sessionAppeared: new Function('DIR', `${helperBody}\nreturn sessionAppeared;`)({ home_css: '#home' }) };
+        const goneError = message => new Error(message);
+
+        /**
+         * A fake page whose successive waits fail, then resolve, as scripted.
+         * @param {Array<string|'seen'>} outcomes - an error message per wait, or 'seen'
+         * @returns {{page: {waitForSelector: Function, calls: number}}}
+         */
+        const fakePage = outcomes => {
+            const page = {
+                calls: 0,
+                waitForSelector: () => {
+                    const next = outcomes[Math.min(page.calls++, outcomes.length - 1)];
+                    return next === 'seen' ? Promise.resolve({}) : Promise.reject(goneError(next));
+                },
+            };
+            return page;
+        };
+        const isGone = e => e.message === 'detached Frame';   // stands in for isPageGoneError
+
+        const navigated = fakePage(['Execution context was destroyed, most likely because of a navigation', 'seen']);
+        const rearmed = watcher.sessionAppeared(navigated, undefined, isGone, 1);   // DIR.home_css by default
+        assert.ok(rearmed instanceof Promise, 'the watcher returns a promise');
+        assert.equal(await rearmed, true);
+        assert.equal(navigated.calls, 2, 'a navigation re-arms the watch instead of ending it');
+        check('the login watcher re-arms after a navigation and reports the session');
+
+        // The regression this guards: returning undefined (no value) from one path made
+        // resolveCredentials await an undefined watcher and fail the whole startup.
+        const gone = fakePage(['detached Frame']);
+        const ended = watcher.sessionAppeared(gone, undefined, isGone, 1);
+        assert.ok(ended instanceof Promise, 'the watcher returns a promise even when the page is gone');
+        assert.equal(await ended, false, 'a page that is gone resolves false, never undefined');
+        check('the login watcher ends with false (a promise) once the page is gone');
     });
 }
 

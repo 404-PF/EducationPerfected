@@ -216,8 +216,15 @@ const PROMPT_CANCELLED_BY_LOGIN = Symbol('a completed browser login cancelled th
  * promptSecret's cancel() (finish()'s cleanup, minus process.exit) and
  * PROMPT_CANCELLED_BY_LOGIN is returned. When the prompt is answered first, the
  * cleaned answer is returned untouched.
+ * The watcher is started BEFORE the prompt, by promptCredentials, and the
+ * already-running promise is what gets raced: starting it inside the race would leave
+ * the race observing a wait that re-arms after every navigation for as long as the
+ * run goes on, so the event loop would tick with closed stdin on the very page the
+ * login belongs to until the prompt was answered. Awaiting it first instead would
+ * hold the prompt back until a login that might never come: the prompt must be on
+ * screen from the moment it is created.
  * @param {{promise: Promise<string|null>, cancel: () => void}} prompt - An open promptSecret
- * @param {Promise<boolean>} sessionWatch - The login-success watcher of the run
+ * @param {Promise<boolean>} sessionWatch - The run's login watcher, already running
  * @returns {Promise<string|null|symbol>} The submitted answer, or
  *   PROMPT_CANCELLED_BY_LOGIN when the watcher saw the session first.
  */
@@ -262,17 +269,25 @@ async function promptCredentials(watchForSession) {
         console.log('Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
         return null;
     }
-    const sessionWatch = typeof watchForSession === 'function' ? watchForSession() : null;
+    // The watcher is started, not tested: watchForSession() hands back a Promise, which
+    // is always truthy, so a `watcher ? race : plain` split would never take the plain
+    // branch anyway. Null (no watcher was given) means no race. One is started just
+    // before each prompt - so the prompt opens at once, without waiting on a login that
+    // might never come - and the running promise is handed to the race.
+    const startWatch = () => typeof watchForSession === 'function' ? watchForSession() : null;
+    const race = (prompt) => {
+        const sessionWatch = startWatch();
+        return sessionWatch === null
+            ? prompt.promise
+            : racePromptAgainstLogin(prompt, sessionWatch);
+    };
+
     const emailPrompt = promptSecret('EP email (leave empty to log in manually): ', cleanEmail);
-    const email = sessionWatch
-        ? await racePromptAgainstLogin(emailPrompt, sessionWatch)
-        : await emailPrompt.promise;
+    const email = await race(emailPrompt);
     if (email === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (email === null) return null;
     const passwordPrompt = promptSecret('EP password (input hidden): ', cleanPassword);
-    const password = sessionWatch
-        ? await racePromptAgainstLogin(passwordPrompt, sessionWatch)
-        : await passwordPrompt.promise;
+    const password = await race(passwordPrompt);
     if (password === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (password === null) {
         console.log('No password entered; log in manually in the opened browser window.');
@@ -468,6 +483,12 @@ async function resolveCredentials(watchForSession) {
  * login leaves behind has no login form to match - the throw that used to kill the
  * whole run (issue #27). One DOM read confirms form present, no session signal
  * (DIR.home_css) and the expected login host, right before the typing begins.
+ *
+ * The read and the typing are separate round trips to the browser, so a manual login
+ * is still free to navigate between them: the typing is wrapped as a unit and a
+ * navigation/detached-frame failure inside it abandons auto-login for the manual-login
+ * path instead of rejecting the startup chain. A keystroke that did get through into a
+ * page that then navigated is harmless - the document it landed in is gone.
  * @param {{loginButton: ElementHandle|null}} loginForm - From reachLoginForm
  * @returns {Promise<void>}
  */
@@ -501,8 +522,18 @@ async function resolveCredentials(watchForSession) {
                     // on this page are left alone - users on those sign-in methods must log in
                     // manually, and no challenge is ever solved or bypassed here.)
                     console.log('Filling in login details...');
-                    await page.type(DIR.username_css, DIR.email);
-                    await page.type(DIR.password_css, DIR.password);
+                    try {
+                        await page.type(DIR.username_css, DIR.email);
+                        await page.type(DIR.password_css, DIR.password);
+                    } catch (e) {
+                        // The form went away between the guard read above and the typing:
+                        // a manual login navigated the page (Puppeteer reports this as a
+                        // detached frame / destroyed execution context). That is the
+                        // manual-login path, not a failure - report it and let the
+                        // post-login wait below settle on whichever page is left.
+                        console.log(`The login page changed while auto-login was filling it (${e.message}); leaving it to the manual login.`);
+                        return;
+                    }
                     // Submit through the form's own Log in button: the iam page POSTs to
                     // /oauth2/authorize, and a synthetic Enter only submits when focus lands in a
                     // field. The resolved handle is clicked, so an SSO/social button can never be
@@ -553,15 +584,12 @@ async function resolveCredentials(watchForSession) {
             // EP's login bounces through several hosts before the session arrives, so a
             // wait killed by one of those navigations is re-armed rather than ending the
             // watch; the watch only stops for good when the page itself is gone.
-            const watchForSession = () => {
-                const arm = () => page.waitForSelector(DIR.home_css, { timeout: 0 })
-                    .then(() => true)
-                    .catch(e => {
-                        if (isPageGoneError(e)) return false;   // no page left to watch
-                        return new Promise(recheck => setTimeout(() => recheck(arm()), 100));
-                    });
-                return arm();
-            };
+            // @returns {Promise<boolean>}
+            function watchForSession() {
+                // Always a promise of a boolean: it is raced (racePromptAgainstLogin) or
+                // awaited, never tested for truthiness.
+                return sessionAppeared(page).then(seen => seen === true);
+            }
 
             // The form script leaves a loading state behind when it fails (e.g. scripts
             // blocked): the fields render but the button can stay disabled. Report it so a
@@ -818,6 +846,26 @@ async function resolveCredentials(watchForSession) {
             function isPageGoneError(e) {
                 const message = String((e && e.message) || e);
                 return /detached Frame|Execution context was destroyed|Cannot find context|Target closed|Session closed|Browser has been closed|Navigating was not successful/i.test(message);
+            }
+
+            // The login watcher's body (see watchForSession in the startup flow, which
+            // passes `page`): waits for the shell on `page`, re-arming after navigations.
+            // It takes its signals as arguments so it can be tested without a browser.
+            /**
+     * Resolves true once the logged-in app shell is on the page, false once the page is gone.
+     * @param {Page} page - The browser page to watch
+     * @param {string} homeCss - The logged-in app-shell selector
+     * @param {(e: any) => boolean} isGone - Page-closed test (isPageGoneError)
+     * @param {number} retryDelayMs - Delay before re-arming after a navigation
+     * @returns {Promise<boolean>}
+     */
+            async function sessionAppeared(page, homeCss = DIR.home_css, isGone = isPageGoneError, retryDelayMs = 100) {
+                while (true) {
+                    const seen = await page.waitForSelector(homeCss, { timeout: 0 }).then(() => true, e => e);
+                    if (seen === true) return true;   // the app shell mounted: logged in
+                    if (isGone(seen)) return false;   // no page left to watch
+                    await new Promise(r => setTimeout(r, retryDelayMs));   // a navigation: re-arm
+                }
             }
 
             /**
