@@ -16,12 +16,12 @@ The original was started by [akioweh](https://github.com/KEN-2000l) and is now *
 
 The original's README used to claim its status was: **_CURRECT STATUS: ALL intended features functional._**  
 _*Last time they checked... which was... two years ago???*_  
-That was never re-verified here, so don't assume this project is fully working.
+That has since been re-verified here: **the program has been run against the live Education Perfect service and confirmed working** for the supported (word-to-word / Dash) tasks. Don't assume it stays working forever, though - EP can still change.
 
 - This repo's program is version **v2.2.0**: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
-- That said, the program hasn't been run through the wringer against the live Education Perfect service, so behavior may change or break as the service updates.
-- The task-page and wrong-answer-modal selectors *have* been checked against what EP's live bundles currently ship (2026-10-27), but that is a reading of EP's markup, not a recorded end-to-end run through a real task.
+- The program has been run against the live Education Perfect service and confirmed working for the supported (word-to-word / Dash) tasks.
+- The task-page and wrong-answer-modal selectors were checked against what EP's live bundles currently ship, and an end-to-end run through a real task on the live service confirmed the markup reading was correct.
 
 ## Introduction
 This project started as a way to automate tasks on [Education Perfect](https://www.educationperfect.com/) 
@@ -92,7 +92,7 @@ If you run into weird behavior, try restarting the program.
 The program's only runtime dependency is [Puppeteer](https://github.com/puppeteer/puppeteer), pinned to **25.16.0** in [package.json](package.json) and locked (with its own dependencies) in [package-lock.json](package-lock.json). Each Puppeteer version pairs with a Chrome build that it downloads and launches - Chrome 156 for this one. Install with `npm ci`, or just use one of the starter scripts, which run it for you when needed. To bump Puppeteer, change the version in `package.json`, run `npm install`, and commit the updated lockfile.
 
 That version was exercised by a local smoke test ([scripts/smoke-test.js](scripts/smoke-test.js)) against a mock EP site ([scripts/mock-ep.js](scripts/mock-ep.js)) covering the Puppeteer calls this program makes: login form fill and submit, reading the word lists, typing and submitting answers, reading and dismissing the wrong-answer modal, and the completion screen. Run it yourself with `npm run smoke` (use `SMOKE_HEADFUL=1` to watch a visible window, or `SMOKE_EXECUTABLE_PATH`/`SMOKE_BROWSER_URL` to target a browser you already have).  
-*This proves the dependency setup works, not that EP's live pages behave the same - the live site can still change.*
+*This smoke test proves the dependency setup works. An end-to-end run against EP's live service (not just the mock) has since confirmed the live pages behave the same - though the live site can still change, so re-verify if you suspect breakage.*
 
 ### Features
 **Start Answering**: There's one main function - automatically answer questions when you're doing a task.  
