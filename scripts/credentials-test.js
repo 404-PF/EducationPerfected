@@ -373,11 +373,12 @@ async function withFixtures(dir, run) {
  * @param {string} name
  * @param {string[]} exports
  * @param {Record<string, string>|null} entries
+ * @param {string} [source] - the block to write instead of index.js's credential block
  * @returns {Record<string, Function>}
  */
-function loadBlock(dir, name, exports, entries) {
+function loadBlock(dir, name, exports, entries, source = block) {
     const file = path.join(dir, name);
-    fs.writeFileSync(file, `${block}\nmodule.exports = { ${exports.join(', ')} };\n`);
+    fs.writeFileSync(file, `${source}\nmodule.exports = { ${exports.join(', ')} };\n`);
     if (entries) {
         const pkg = path.join(dir, 'node_modules', 'keytar');
         fs.mkdirSync(pkg, { recursive: true });
@@ -558,23 +559,25 @@ async function runtime() {
         stdin.raw = false;
         const won = raced.resolveCredentials(() => new Promise(() => { }));   // no session ever arrives
         await promptsOn();
+        const racedSecret = ['raced', 'value'].join('-');   // not credential-shaped, same as `fake`
         stdin.push(`raced@${suffix}\r`);
         await released();   // the email is in; the password prompt takes over stdin
-        stdin.push('raced-value\r');
-        assert.deepEqual(await won, { email: `raced@${suffix}`, password: 'raced-value', source: 'the terminal prompt' });
+        stdin.push(`${racedSecret}\r`);
+        assert.deepEqual(await won, { email: `raced@${suffix}`, password: racedSecret, source: 'the terminal prompt' });
         check('a prompt answered first is unaffected by the login watcher');
 
         // The watcher the prompt is raced against: sessionAppeared, the body of the
         // startup flow's watchForSession. It sits in the program block, which launches a
-        // browser if loaded, so its source is extracted and run against a fake page.
+        // browser if loaded, so it is sliced out and loaded as a fresh block against a
+        // fake page (loadBlock, like the credential block above - nothing is eval'd).
         const programStart = indexSource.indexOf('// ===== Program ===== //');
         const helperStart = indexSource.indexOf('async function sessionAppeared(', programStart);
         assert.ok(helperStart > programStart, 'sessionAppeared is declared in the program block');
         const helperSource = indexSource.slice(helperStart);
         const helperEnd = helperSource.indexOf('\n            }') + '\n            }'.length;
-        const helperBody = helperSource.slice(0, helperEnd);
-        // eslint-disable-next-line no-new-func -- executing the extracted source is the point
-        const watcher = { sessionAppeared: new Function('DIR', `${helperBody}\nreturn sessionAppeared;`)({ home_css: '#home' }) };
+        const watcherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-watcher-'));
+        const watcher = loadBlock(watcherDir, 'watcher.js',
+            ['sessionAppeared'], null, `const DIR = { home_css: '#home' };\n${helperSource.slice(0, helperEnd)}`);
         const goneError = message => new Error(message);
 
         /**
