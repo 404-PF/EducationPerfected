@@ -117,6 +117,23 @@ jobs:
             echo 'enabled=true' >> "$GITHUB_OUTPUT"
           fi
 
+      # A disabled run is silent for issues.opened (no noise on new issues),
+      # but a /label comment or a dispatch was an explicit request: say why
+      # nothing happened instead of finishing green with no labels.
+      - name: Report labeling disabled on issue
+        if: >-
+          steps.config.outputs.enabled == 'false' &&
+          (github.event_name == 'workflow_dispatch' ||
+           (github.event_name == 'issue_comment' && steps.gate.outputs.proceed == 'true'))
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE_NUMBER" --repo "$GH_REPO" \
+            --body "Issue labeling is disabled because the OPENCODE_API_KEY secret is not configured for this repository."
+
       # Check out only the reviewed, pinned OpenCode install so the workflow
       # runs a fixed version instead of whatever the registry publishes next.
       - name: Check out the pinned OpenCode install

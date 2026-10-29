@@ -76,7 +76,6 @@ concurrency:
 
 jobs:
   assign:
-    # Name pinned so the single-entry matrix below doesn't rename the job.
     name: assign
     runs-on: ubuntu-latest
     timeout-minutes: 5
