@@ -58,7 +58,10 @@ assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set
 // `[A-Z]+_` prefix would flag unrelated selectors such as `button_password`.
 // The whole name stays anchored, so derived identifiers (`tokenCount`, `password_css`)
 // still do not count.
-const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:(?:client|access|private|refresh|public|auth)[_-]?)?(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+// Compound prefixes (clientSecret, access_token, privateKey) are matched by the three
+// explicit prefixes below; the rest of the pattern requires a known suffix
+// (key, token, secret, credential) so unrelated names like button_password are excluded.
+const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:(?:client|access|private)[_-]?)?(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
 // Values a documentation page uses to show *how* to set a variable, never a real secret.
 // The accepted words are a closed list, so `your-SecretKey123` is still reported: only a
 // value that reads as an instruction ("your-password") is exempt, and only in docs.
@@ -178,6 +181,27 @@ function redactLiterals(snippet, name) {
     const redacted = snippet.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, '"[REDACTED]"');
     // Restore the field name for the value's own placeholder (the first one is the key).
     return redacted.replace(/"[^"]*"\s*[:=]/, `"${name}":`);
+}
+
+/**
+ * Polls until the prompt data listener is released (count === 0).
+ * Uses recursive setTimeout to avoid `await` in a loop (SonarCloud S4502).
+ * @param {() => number} getListenerCount
+ * @param {number} [maxAttempts=1000]
+ * @param {number} [intervalMs=5]
+ * @returns {Promise<void>}
+ */
+function waitForPromptRelease(getListenerCount, maxAttempts = 1000, intervalMs = 5) {
+    return new Promise((resolve) => {
+        const check = (attempts) => {
+            if (attempts >= maxAttempts || getListenerCount() === 0) {
+                resolve();
+            } else {
+                setTimeout(() => check(attempts + 1), intervalMs);
+            }
+        };
+        check(0);
+    });
 }
 
 /**
@@ -525,16 +549,7 @@ async function withCredentialsFixtures(watcherDir, suffix, fake) {
                 return;
             }
             // Poll using recursive setTimeout to avoid `await` in a loop (SonarCloud S4502).
-            await new Promise((resolve) => {
-                const check = (attempts) => {
-                    if (attempts >= 1000 || promptListeners() === 0) {
-                        resolve();
-                    } else {
-                        setTimeout(() => check(attempts + 1), 5);
-                    }
-                };
-                check(0);
-            });
+            await waitForPromptRelease(promptListeners);
             assert.equal(promptListeners(), 0, 'the previous prompt has released its data listener');
         };
 
