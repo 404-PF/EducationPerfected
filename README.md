@@ -47,6 +47,11 @@ as V1 and the functionality is largely the same. Unfortunately, the standalone s
 more complicated, but it is currently the only way to enable full anti-cheat bypass.  
 Either way, I have provided detailed instructions for installation and usage below.
 
+A snapshot of V2 exactly as it stands - version **v2.2.0** - is frozen in [V2_Archive/](V2_Archive), alongside the
+[V1](V1_Archive) snapshot. Unlike V1, V2 is not being replaced: the files at this root are the live V2 codebase and
+V3 is being built **on top of** them, so all fixes and new work happen here, and the copy in [V2_Archive](V2_Archive)
+stays read-only (see [V2_Archive/README.md](V2_Archive/README.md) for exactly what was frozen).
+
 
 ## Installation
 1. download the EducationPerfected program, starter script, launcher, and test scripts ([index.js](index.js), [start.cmd](start.cmd) or [start.sh](start.sh), the [bin/](bin/) folder, and the [scripts/](scripts/) folder) and place them in the same folder  
