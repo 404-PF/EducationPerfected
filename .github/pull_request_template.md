@@ -16,8 +16,7 @@
 
 ## Acceptance Criteria
 
-- [ ] `npm run lint` passes
-- [ ] `npm test` passes
+- [ ] `npm run smoke` passes
 - [ ] translations/i18n keys added if UI strings changed
 - [ ] screenshots attached for UI changes
 

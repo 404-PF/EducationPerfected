@@ -62,10 +62,12 @@ env:
 # Assignment is check-then-write against the assignee list, so two runs on
 # the same issue can race on stale state. Serialize per issue instead of
 # trusting each read: group per issue number, never cancel
-# (cancel-in-progress: false), and queue: max keeps every queued run waiting
-# instead of letting a newer event replace the only pending one, so no
-# assignment is lost and each run decides on the state the previous one left
-# behind (same pattern as issue-milestone).
+# (cancel-in-progress: false), and queue: max keeps up to 100 runs pending
+# instead of letting a newer event replace the only pending one, so each run
+# decides on the state the previous one left behind (same pattern as
+# issue-milestone). A burst past 100 queued runs for one issue is not
+# realistic for issue opening, and a lost run can be replayed with
+# workflow_dispatch.
 concurrency:
   group: >-
     ${{ format('issue-assign-{0}', github.event.issue.number || github.event.inputs.issue_number) }}
@@ -76,13 +78,8 @@ jobs:
   assign:
     # Name pinned so the single-entry matrix below doesn't rename the job.
     name: assign
-    # Single source for the job timeout: timeout-minutes cannot read env,
-    # but it can read matrix, and the failure report reads the same value.
-    strategy:
-      matrix:
-        job-timeout-minutes: [5]
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.job-timeout-minutes }}
+    timeout-minutes: 5
     # issues: write is the narrowest Actions permission that can add or
     # remove assignees on an issue. contents: read matches the other issue
     # workflows; no checkout or agent runs here.
@@ -95,16 +92,15 @@ jobs:
     # the run log always explains why nothing happened.
 
     steps:
-      # Record when the job started so the failure report can tell a
-      # job-level timeout apart from a run cancelled manually (both show
-      # up as cancelled()).
-      - name: Record job start time
-        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-
       # The single apply step: policy checks, the assignee mutation, and
       # verification all happen against a freshly re-read issue so the run
       # decides on state as of execution, not the event payload.
       - name: Auto-assign the issue to the maintainer
+        # Below the 5-minute job timeout so a hung API call fails this step
+        # (and reaches the failure report) instead of being cancelled with
+        # the job, where GitHub cannot distinguish a timeout from a manual
+        # cancel.
+        timeout-minutes: 4
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -229,9 +225,11 @@ jobs:
           # that just ran, and the endpoint would happily create a
           # co-assignee. The guard promised an existing claim is never
           # joined, so the post-write list must be the target and nothing
-          # else; a co-assignee means the promise was broken, so undo our
-          # half of the write and fail loudly instead of announcing a
-          # "preserved" claim that is now a shared one.
+          # else; a co-assignee means the promise was broken. Do NOT remove
+          # our assignment here: a human may have added the target during
+          # the same window, so a rollback cannot tell their write from
+          # ours. Fail loudly and leave both assignments for a maintainer to
+          # resolve instead of deleting somebody else's claim.
           CONFLICT=''
           IFS=',' read -ra AFTER_LOGINS <<< "$ASSIGNEES_AFTER"
           for login in "${AFTER_LOGINS[@]}"; do
@@ -241,41 +239,26 @@ jobs:
             fi
           done
           if [ -n "$CONFLICT" ]; then
-            echo "::error::'$CONFLICT' was assigned to issue #$ISSUE_NUMBER while this run was writing; removing '$TARGET' to preserve the human claim."
-            gh api -X DELETE "repos/$GH_REPO/issues/$ISSUE_NUMBER/assignees" -f "assignees[]=$TARGET" >/dev/null
+            echo "::error::'$CONFLICT' was assigned to issue #$ISSUE_NUMBER while this run was writing; the issue now has co-assignees. Not removing '@$TARGET' automatically (a human may have added it); resolve the duplicate assignment manually."
             exit 1
           fi
           echo "Assigned issue #$ISSUE_NUMBER to @$TARGET automatically."
 
       # Comment on the issue only for a workflow_dispatch run, which the
-      # requester explicitly asked for. issues.opened failures and manual
-      # cancellations stay silent: a broken automatic assignment belongs in
-      # the Actions tab, not as a comment on a brand-new issue, and a
-      # cancelled run was never requested at all (matching issue-label,
-      # issue-milestone, and issue-triage).
+      # requester explicitly asked for. issues.opened failures stay silent:
+      # a broken automatic assignment belongs in the Actions tab, not as a
+      # comment on a brand-new issue. A cancelled job is not reported either:
+      # GitHub reports a manual cancel and a job-level timeout the same way,
+      # and the step timeout above already turns a hang into failure().
       - name: Report assignment failure on issue
         if: >-
-          (failure() || cancelled()) && github.event_name == 'workflow_dispatch'
+          failure() && github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          JOB_STATUS: ${{ job.status }}
-          JOB_TIMEOUT_MINUTES: ${{ matrix.job-timeout-minutes }}
         run: |
           set -euo pipefail
-          # A step timeout fails its step, so failure() covers it. A
-          # cancelled job is either a job-level timeout (report it) or a
-          # manual cancel (stay silent). Only a job that ran to within 2
-          # minutes of its timeout counts as timed out; earlier
-          # cancellations are treated as manual.
-          if [ "$JOB_STATUS" = 'cancelled' ]; then
-            elapsed=$(( $(date +%s) - ${JOB_STARTED_AT:-0} ))
-            if [ -z "${JOB_STARTED_AT:-}" ] || [ "$elapsed" -lt $(( (JOB_TIMEOUT_MINUTES - 2) * 60 )) ]; then
-              echo "Run cancelled after ${elapsed}s (cancelled manually); not reporting."
-              exit 0
-            fi
-          fi
           gh issue comment "$ISSUE_NUMBER" --repo "$GH_REPO" \
             --body "Issue assignment failed or timed out. See the workflow run: $RUN_URL"

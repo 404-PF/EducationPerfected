@@ -5,8 +5,10 @@ name: issue-milestone
 # v*.*.* are ignored. When that milestone already holds >= 30 issues
 # (open + closed) at assignment time, the next patch milestone is assigned
 # instead, created on demand if it does not exist yet (v0.5.3 full ->
-# v0.5.4). Bot-created issues are skipped on purpose: bots do not triage, so
-# a milestone would never be acted on and would only churn the cap count.
+# v0.5.4). Closed milestones are never reopened or reused: a closed version
+# was released, so new work rolls forward to the next patch instead.
+# Bot-created issues are skipped on purpose: bots do not triage, so a
+# milestone would never be acted on and would only churn the cap count.
 
 on:
   issues:
@@ -21,9 +23,10 @@ on:
 # One shared group (not per-issue): concurrent opens must serialize so each
 # run re-reads milestone counts after earlier assignments and rolls over
 # correctly once a milestone hits the 30-issue cap. cancel-in-progress is
-# false so a queued run waits instead of being cancelled, and queue: max
-# makes every waiting run stay queued instead of letting each new issue
-# event replace the single pending run and silently drop assignments.
+# false so a queued run waits instead of being cancelled, and queue: max keeps
+# up to 100 runs pending. GitHub drops the oldest pending run beyond that
+# limit, so an extreme burst can lose an assignment; replay any issue left
+# without a milestone via workflow_dispatch.
 concurrency:
   group: issue-milestone
   cancel-in-progress: false
@@ -38,22 +41,30 @@ jobs:
       issues: write
     steps:
       - name: Assign closest milestone
+        # Below the 5-minute job timeout so a hung API call fails this step
+        # (and reaches the failure report) instead of being cancelled with the
+        # job, where GitHub cannot distinguish a timeout from a manual cancel.
+        timeout-minutes: 4
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number || github.event.inputs.issue_number }}
-          ISSUE_USER_TYPE: ${{ github.event.issue.user.type }}
           MILESTONE_LIMIT: 30
         run: |
           set -euo pipefail
 
+          # Re-read the issue instead of trusting the event payload: a manual
+          # dispatch carries no issue at all, so this is also the only place
+          # the author type and the current milestone are known on that path.
+          ISSUE_JSON="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER")"
+          ISSUE_USER_TYPE="$(jq -r '.user.type // empty' <<< "$ISSUE_JSON")"
           if [ "$ISSUE_USER_TYPE" = 'Bot' ]; then
             echo 'Bot-created issue; skipping milestone assignment.'
             exit 0
           fi
 
           # Idempotency: never overwrite a milestone a human already set.
-          CURRENT="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.milestone.number // 0')"
+          CURRENT="$(jq -r '.milestone.number // 0' <<< "$ISSUE_JSON")"
           if [ "$CURRENT" != '0' ]; then
             echo "Issue #$ISSUE_NUMBER already has milestone #$CURRENT; skipping."
             exit 0
@@ -75,46 +86,71 @@ jobs:
             | jq '[.[][] | select(.title | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(.title | ltrimstr("v") | split(".") | map(tonumber))' \
             > "$FILE"
 
-          # Closest = lowest still-open version. With nothing open, continue
-          # the chain from the highest known version.
-          TITLE="$(jq -r 'map(select(.state == "open")) | first | .title // empty' "$FILE")"
-          if [ -z "$TITLE" ]; then
-            [ "$(jq 'length' "$FILE")" -gt 0 ] || {
-              echo '::error::No v*.*.* milestone exists; nothing to be closest to.'
+          if [ "$(jq 'length' "$FILE")" -eq 0 ]; then
+            # Bootstrap: this repository had no milestone at all, so there is
+            # no "closest" version to inherit. Start the chain at the patch
+            # after the latest release instead of failing every new issue.
+            LATEST="$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name // empty' 2>/dev/null || true)"
+            if [[ "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              TITLE="$(bump "$LATEST")"
+              echo "No v*.*.* milestone exists; starting the chain at $TITLE (after release $LATEST)."
+            else
+              echo '::error::No v*.*.* milestone or release exists; cannot choose a closest version.'
               exit 1
-            }
-            TITLE="$(bump "$(jq -r 'last | .title' "$FILE")")"
-            echo "No open milestone; continuing with $TITLE."
+            fi
+          else
+            # Closest = lowest still-open version. With nothing open, continue
+            # the chain from the highest known version.
+            TITLE="$(jq -r 'map(select(.state == "open")) | first | .title // empty' "$FILE")"
+            if [ -z "$TITLE" ]; then
+              TITLE="$(bump "$(jq -r 'last | .title' "$FILE")")"
+              echo "No open milestone; continuing with $TITLE."
+            fi
           fi
+
+          milestone_state() {
+            jq -r --arg t "$1" 'map(select(.title == $t)) | first | .state // empty' "$FILE"
+          }
+          milestone_total() {
+            jq -r --arg t "$1" 'map(select(.title == $t)) | first | (.open_issues + .closed_issues) // 0' "$FILE"
+          }
 
           # Count is read from the just-fetched list at assignment time; the
           # shared concurrency group above keeps concurrent runs from both
           # landing on a milestone that hits the cap between read and write.
-          # Keep advancing while the target already holds >= 30 issues: a
-          # bumped title may itself be full. A title that is absent from the
-          # list counts as 0, which ends the loop.
-          TOTAL="$(jq -r --arg t "$TITLE" 'map(select(.title == $t)) | first | (.open_issues + .closed_issues) // 0' "$FILE")"
-          while [ "$TOTAL" -ge "$MILESTONE_LIMIT" ]; do
-            echo "Milestone is full ($TOTAL >= $MILESTONE_LIMIT); rolling over."
+          # Keep advancing while the target already holds >= 30 issues or is
+          # closed: a bumped title may itself be full, and a closed title was
+          # released, so reopening it would silently move new work into an
+          # old release. A title that is absent from the list counts as 0 and
+          # is not closed, which ends the loop.
+          STATE="$(milestone_state "$TITLE")"
+          TOTAL="$(milestone_total "$TITLE")"
+          while [ "$TOTAL" -ge "$MILESTONE_LIMIT" ] || [ "$STATE" = 'closed' ]; do
+            if [ "$STATE" = 'closed' ]; then
+              echo "Milestone $TITLE is closed (already released); rolling over."
+            else
+              echo "Milestone is full ($TOTAL >= $MILESTONE_LIMIT); rolling over."
+            fi
             TITLE="$(bump "$TITLE")"
-            TOTAL="$(jq -r --arg t "$TITLE" 'map(select(.title == $t)) | first | (.open_issues + .closed_issues) // 0' "$FILE")"
+            STATE="$(milestone_state "$TITLE")"
+            TOTAL="$(milestone_total "$TITLE")"
           done
 
-          # Reuse only an *open* milestone: a closed one with the same title
-          # is reopened rather than assigned to as-is, and the title is
-          # created when nothing carries it yet.
+          # Reuse only an open milestone; create the title when nothing open
+          # carries it yet.
           NUMBER="$(jq -r --arg t "$TITLE" 'map(select(.title == $t and .state == "open")) | first | .number // empty' "$FILE")"
-          if [ -z "$NUMBER" ]; then
-            CLOSED="$(jq -r --arg t "$TITLE" 'map(select(.title == $t and .state == "closed")) | first | .number // empty' "$FILE")"
-            if [ -n "$CLOSED" ]; then
-              echo "Reopening closed milestone $TITLE (#$CLOSED)."
-              gh api -X PATCH "repos/$GH_REPO/milestones/$CLOSED" -f state=open >/dev/null
-              NUMBER="$CLOSED"
-            fi
-          fi
           if [ -z "$NUMBER" ]; then
             echo "Creating milestone $TITLE."
             NUMBER="$(gh api "repos/$GH_REPO/milestones" -f title="$TITLE" -f state=open --jq .number)"
+          fi
+
+          # Re-read immediately before the write: milestone discovery and
+          # creation are network round trips during which a human may have set
+          # a milestone by hand, and this PATCH would otherwise overwrite it.
+          CURRENT="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.milestone.number // 0')"
+          if [ "$CURRENT" != '0' ]; then
+            echo "Issue #$ISSUE_NUMBER gained milestone #$CURRENT while this run was choosing one; preserving the human assignment."
+            exit 0
           fi
 
           gh api -X PATCH "repos/$GH_REPO/issues/$ISSUE_NUMBER" -F milestone="$NUMBER" >/dev/null
