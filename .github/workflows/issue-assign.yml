@@ -259,5 +259,13 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+          # The apply step rejects pull-request numbers, but `gh issue comment`
+          # resolves them, so without this guard a dispatch aimed at a PR would
+          # post the failure notice on that PR.
+          IS_PULL_REQUEST="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq 'has("pull_request")')"
+          if [ "$IS_PULL_REQUEST" = 'true' ]; then
+            echo "Issue #$ISSUE_NUMBER is a pull request; skipping the assignment failure comment."
+            exit 0
+          fi
           gh issue comment "$ISSUE_NUMBER" --repo "$GH_REPO" \
             --body "Issue assignment failed or timed out. See the workflow run: $RUN_URL"

@@ -57,6 +57,13 @@ jobs:
           # dispatch carries no issue at all, so this is also the only place
           # the author type and the current milestone are known on that path.
           ISSUE_JSON="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER")"
+          # A dispatch may name any number; pull requests share the issues
+          # endpoint and would consume a milestone slot (milestone totals count
+          # PRs too), so reject them like issue-assign does.
+          if [ "$(jq -r 'has("pull_request")' <<< "$ISSUE_JSON")" = 'true' ]; then
+            echo "::error::Issue #$ISSUE_NUMBER is a pull request; refusing to assign a milestone."
+            exit 1
+          fi
           ISSUE_USER_TYPE="$(jq -r '.user.type // empty' <<< "$ISSUE_JSON")"
           if [ "$ISSUE_USER_TYPE" = 'Bot' ]; then
             echo 'Bot-created issue; skipping milestone assignment.'
@@ -147,6 +154,10 @@ jobs:
           # Re-read immediately before the write: milestone discovery and
           # creation are network round trips during which a human may have set
           # a milestone by hand, and this PATCH would otherwise overwrite it.
+          # A residual race remains between this read and the PATCH: the
+          # issue-update endpoint has no conditional/precondition form, so a
+          # milestone set in that final one-call window is still overwritten.
+          # The read is as late as possible to keep that window minimal.
           CURRENT="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.milestone.number // 0')"
           if [ "$CURRENT" != '0' ]; then
             echo "Issue #$ISSUE_NUMBER gained milestone #$CURRENT while this run was choosing one; preserving the human assignment."
@@ -167,5 +178,13 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+          # The apply step rejects pull-request numbers, but `gh issue comment`
+          # resolves them, so without this guard a dispatch aimed at a PR would
+          # post the failure notice on that PR.
+          IS_PULL_REQUEST="$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq 'has("pull_request")')"
+          if [ "$IS_PULL_REQUEST" = 'true' ]; then
+            echo "Issue #$ISSUE_NUMBER is a pull request; skipping the milestone failure comment."
+            exit 0
+          fi
           gh issue comment "$ISSUE_NUMBER" --repo "$GH_REPO" \
             --body "Issue milestone assignment failed. See the workflow run: $RUN_URL"

@@ -17,20 +17,29 @@ on:
         required: true
         type: number
 
-# One group per issue, regardless of event: an issues.opened run and a /label
-# comment for the same issue must serialize, otherwise two decisions race and
-# the final labels depend on completion order. A newer request for the same
-# issue supersedes an in-flight one.
-concurrency:
-  group: >-
-    ${{ format('issue-label-{0}', github.event.issue.number || github.event.inputs.issue_number) }}
-  cancel-in-progress: true
+# Concurrency lives on the job (below), not the workflow: a workflow-level
+# group is claimed before the job-level `if` runs, so an unrelated or
+# unauthorized comment would cancel an in-flight labeling run. At job level
+# only runs that pass the gate participate, and a newer request for the same
+# issue supersedes an older one.
 
 jobs:
   label:
     name: label
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Setup (checkout + pinned npm install) plus the 7-minute Decide step and
+    # the 2-minute Apply step must fit inside the job timeout, or GitHub
+    # cancels the job before the failure report can post. 15 minutes leaves
+    # room for setup on a slow runner.
+    timeout-minutes: 15
+    # One group per issue: an issues.opened run and a /label comment for the
+    # same issue serialize, otherwise two decisions race and the final labels
+    # depend on completion order. Unauthorized comments are rejected by the
+    # job-level `if` before they can claim this group.
+    concurrency:
+      group: >-
+        ${{ format('issue-label-{0}', github.event.issue.number || github.event.inputs.issue_number) }}
+      cancel-in-progress: true
     # issues: write is the narrowest Actions permission that can add/remove
     # labels on an issue, but it also covers the repo label-registry
     # endpoints (POST/PATCH/DELETE /repos/{owner}/{repo}/labels). Accepted
@@ -223,7 +232,8 @@ jobs:
 
       - name: Decide labels with OpenCode
         id: decide
-        # Below the 10-minute job timeout so the failure report still runs.
+        # Below the 15-minute job timeout, leaving time for setup, Apply, and
+        # the failure report.
         timeout-minutes: 7
         if: >-
           (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
