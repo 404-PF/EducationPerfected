@@ -51,17 +51,46 @@ const committable = [...new Set([...tracked, ...untracked])]
     .filter(f => fs.existsSync(path.join(ROOT, f))); // skip tracked-but-deleted files
 assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set');
 
+// Exactly the harnesses that build fake credentials for the runtime half of this test,
+// spelled the way git lists paths (always with `/`), which is what `committable` holds.
+// Exempting every file with that basename would also hide an unrelated fixture or copy
+// of the harness that carries a real-looking literal.
+const CREDENTIAL_HARNESSES = new Set([
+    'scripts/credentials-test.js',
+    'V2_Archive/scripts/credentials-test.js',
+]);
+for (const harness of CREDENTIAL_HARNESSES) {
+    assert.ok(committable.includes(harness),
+        `${harness} is exempted by exact path, so it must be spelled the way git lists it`);
+}
+
 // The bare field name (email, password, apiKey ...) and the same name behind the
 // repository's environment-variable prefix (EP_EMAIL, EP_PASSWORD). Without the prefix
 // form, `const EP_PASSWORD = 'actual-secret'` — the very spelling this project uses —
 // would pass the scan. The prefix is limited to `EP_` on purpose: a general
 // `[A-Z]+_` prefix would flag unrelated selectors such as `button_password`.
 // The whole name stays anchored, so derived identifiers (`tokenCount`, `password_css`)
-// still do not count.
-// Compound prefixes (clientSecret, access_token, privateKey) are matched by the three
-// explicit prefixes below; the rest of the pattern requires a known suffix
-// (key, token, secret, credential) so unrelated names like button_password are excluded.
-const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:(?:client|access|private)[_-]?)?(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+// still do not count: the rest of the pattern requires a known suffix
+// (key, token, secret, credential), so unrelated names like button_password are excluded.
+const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+// Compound credential names glue that kind of prefix onto one of the suffix words
+// (clientSecret, access_token, refresh_token, auth_token, public_key, secret_key,
+// privateKey — the same words in the conventions the code that would carry them uses).
+// A second anchored pattern instead of prefixes folded into SECRET_NAME keeps both
+// regexes small enough to read and audit.
+const SECRET_COMPOUND_NAME = /^(?:(?:EP_)?(?:client|access|refresh|auth|private|public|secret)[_-]?(?:api[_-]?)?(?:key|token|secret|credential)s?)$/i;
+
+/**
+ * Whether a field name would hold a credential: a bare credential word
+ * (password, apiKey, ...) or a compound of a credential-ish prefix and one
+ * (clientSecret, refresh_token, ...). Derived identifiers and unrelated
+ * selectors never match (both patterns are anchored).
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isSecretName(name) {
+    return SECRET_NAME.test(name) || SECRET_COMPOUND_NAME.test(name);
+}
 // Values a documentation page uses to show *how* to set a variable, never a real secret.
 // The accepted words are a closed list, so `your-SecretKey123` is still reported: only a
 // value that reads as an instruction ("your-password") is exempt, and only in docs.
@@ -128,45 +157,35 @@ function fileKind(filePath) {
 }
 
 /**
- * Finds every quoted string literal in a line, skipping quoted spans so that a `//`
- * inside a value (a URL, a password) is not mistaken for a comment.
- * @param {string} line
- * @returns {Array<{index: number, quote: string, value: string, end: number}>}
+ * Masks comment text out of a source snippet in one pass: every comment's
+ * characters are replaced with spaces (newlines kept), so the assignment scan runs
+ * against code only while every byte offset — and with it the reported line number —
+ * stays correct, and prose examples inside comments cannot be reported.
+ *
+ * Comment openers inside quoted literals are literal text (a URL, a password with a
+ * comment look-alike in it): the match that starts first wins, so a block-comment
+ * opener inside a value is part of that value and an apostrophe inside a comment is
+ * part of that comment. Quoting state spans the whole snippet rather than one line:
+ * a template literal keeps going until its closing backtick, so a `//` on an earlier
+ * line of the value cannot hide the rest of the assignment. `'` and `"` still end at
+ * their quote or the line break, as always in JavaScript, so an odd quote mark in
+ * prose cannot swallow the lines after it. Literal contents stay in the masked text
+ * — a secret assigned inside a template (or interpolation) is still reported.
+ *
+ * Fragments that never close — a block comment without its terminator, a backtick
+ * without its closer — are left as they are, so the scan errs toward inspecting more
+ * rather than less.
+ *
+ * @param {string} text
+ * @returns {string} the same-length text with comments blanked out
  */
-function quotedLiterals(line) {
-    const literals = [];
-    for (let i = 0; i < line.length; i++) {
-        const quote = line[i];
-        if (quote !== '"' && quote !== "'" && quote !== '`') continue;
-        let j = i + 1;
-        let value = '';
-        for (; j < line.length; j++) {
-            if (line[j] === '\\') { value += line[j + 1] ?? ''; j++; continue; }
-            if (line[j] === quote) break;
-            value += line[j];
-        }
-        if (j >= line.length) break; // unterminated on this line: nothing safe to report
-        literals.push({ index: i, quote, value, end: j });
-        i = j;
-    }
-    return literals;
-}
-
-/**
- * Removes comments from a line without touching text inside quoted literals.
- * @param {string} line
- * @returns {string}
- */
-function stripComments(line) {
-    const literals = quotedLiterals(line);
-    const inLiteral = index => literals.some(l => index > l.index && index <= l.end);
-    for (let i = 0; i < line.length - 1; i++) {
-        if (line[i] === '/' && line[i + 1] === '/') {
-            if (!inLiteral(i)) return line.slice(0, i);
-            i++;
-        }
-    }
-    return line;
+function stripComments(text) {
+    // Whole comments and quoted literals, whichever opens first. A template's
+    // backslash escape may hold a newline (`\\[\s\S]`); `'` and `"` cannot hold
+    // one and so never leak past the line they open on.
+    return text.replace(
+        /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*|"(?:\\.|[^"\\\n])*|`(?:\\[\s\S]|[^`\\])*`/g,
+        span => (span[0] === '/' ? span.replace(/[^\n]/g, ' ') : span));
 }
 
 /**
@@ -209,14 +228,16 @@ function waitForPromptRelease(getListenerCount, maxAttempts = 1000, intervalMs =
  * Matches `name = "literal"` and `name: "literal"`, including quoted keys (JSON) and
  * nested assignments inside object literals. A value runs to its own closing delimiter,
  * honouring backslash escapes, so a value containing the other quote characters (or an
- * escaped delimiter) is read whole rather than truncated mid-secret.
+ * escaped delimiter) is read whole rather than truncated mid-secret. The text is
+ * comment-masked first (stripComments), so commented-out examples are not reported
+ * while a credential that follows a comment (or lives inside a template value) is.
  * @param {string} text
  * @param {boolean} [isDoc] - true for prose docs, where sample placeholder values are expected
  * @returns {Array<{line: number, name: string, redacted: string}>}
  */
 function scanTextForSecrets(text, isDoc = false) {
     const findings = [];
-    const source = text.split(/\r?\n/).map(stripComments).join('\n');
+    const source = stripComments(text);
     // A quoted or bare field name, followed by : or =, then a quoted literal.
     //   key  : "..." | '...' | `...` (the non-active delimiters are plain characters)
     //   value: \\ . | [^ <delimiter> \\] repeated, so only the active delimiter ends it
@@ -224,9 +245,10 @@ function scanTextForSecrets(text, isDoc = false) {
     let match;
     while ((match = assignment.exec(source)) !== null) {
         const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
-        // The anchored SECRET_NAME already excludes derived identifiers such as
-        // `tokenCount` or `password_css`: only the bare field name counts as a value.
-        if (!SECRET_NAME.test(name)) continue;
+        // The anchored name patterns (isSecretName) already exclude derived
+        // identifiers such as `tokenCount` or `password_css`: only the bare field
+        // name counts as a credential.
+        if (!isSecretName(name)) continue;
         const value = match.groups.val;
         // Empty values, interpolation and env reads are not literals to report.
         if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
@@ -249,8 +271,9 @@ function scanTextForSecrets(text, isDoc = false) {
 let scannedCount = 0;
 const skipped = [];
 for (const file of committable) {
-    // Skip credential test harnesses (they contain fake credentials for testing).
-    if (path.basename(file) === 'credentials-test.js') continue;
+    // Only the known harnesses are exempt (they contain fake credentials for testing);
+    // any other file that happens to share the name stays in the scan.
+    if (CREDENTIAL_HARNESSES.has(file)) continue;
     const fullPath = path.join(ROOT, file);
     // Scan every committable file by content, not by an extension allowlist
     const kind = fileKind(fullPath);
@@ -289,6 +312,17 @@ check('no .env is tracked and index.js does not read one');
         ['const clientSecret = ' + q + 'actual-secret' + q, 1, 'camel-case compound secret names'],
         ['const access_token = ' + q + 'actual-secret' + q, 1, 'underscore compound token names'],
         ['const privateKey = ' + q + 'actual-secret' + q, 1, 'camel-case compound key names'],
+        ['const secretKey = ' + q + 'actual-secret' + q, 1, 'camel-case secret-prefixed names'],
+        ['const secret_key = ' + q + 'actual-secret' + q, 1, 'underscore secret-prefixed names'],
+        ['const refreshToken = ' + q + 'actual-secret' + q, 1, 'camel-case refresh-prefixed token names'],
+        ['const refresh_token = ' + q + 'actual-secret' + q, 1, 'underscore refresh-prefixed token names'],
+        ['const authToken = ' + q + 'actual-secret' + q, 1, 'camel-case auth-prefixed token names'],
+        ['const public_key = ' + q + 'actual-secret' + q, 1, 'underscore public-prefixed key names'],
+        ['password = `' + '\nactual-secret //@ value' + '`', 1, 'a // inside a template value is literal text, not a comment'],
+        ['password = `' + '\nactual /* secret */ text' + '`', 1, 'a /* inside a template value is literal text, not a comment'],
+        ['password = ' + q + 'https://example.com/secret' + q, 1, 'a // inside a quoted value does not cut it'],
+        ['password = ' + q + 'actual /* secret */ value' + q, 1, 'a /* inside a quoted value does not cut it'],
+        ['/* example:\npassword = ' + q + 'actual-secret' + q + '\n*/\n', 0, 'assignments inside a block comment are prose, not code'],
         ['password =\n  ' + q + 'actual-secret' + q, 1, 'assignments split across lines'],
         ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
         ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
@@ -299,6 +333,10 @@ check('no .env is tracked and index.js does not read one');
     for (const [line, expected, label] of cases) {
         assert.equal(scanTextForSecrets(line).length, expected, label);
     }
+    // The mask keeps byte offsets, so a finding lands on the line it came from
+    // no matter how many comments are blanked before it.
+    const found = scanTextForSecrets('// intro\nconst password = ' + q + 'actual-secret' + q)[0];
+    assert.equal(found && found.line, 2, 'a finding reports the line of its assignment, not a shifted one');
     // Documentation placeholders are exempt; a value that merely starts with "your-" is not.
     assert.equal(scanTextForSecrets('EP_PASSWORD=' + q + 'your-password' + q, true).length, 0,
         'documented placeholder values are not reported');

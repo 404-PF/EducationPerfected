@@ -12,6 +12,11 @@ const ROOT = path.join(__dirname, '..');
 const MIN_NODE = readMinNode();
 
 // Absolute path to npm (same directory as node on Windows, or in bin on Unix).
+/**
+ * Finds the npm CLI that belongs to the running Node install, so the launcher
+ * never depends on npm being on PATH.
+ * @returns {string}
+ */
 function resolveNpm() {
     const nodeDir = path.dirname(process.execPath);
     const candidates = [
@@ -25,8 +30,16 @@ function resolveNpm() {
     return 'npm';
 }
 const NPM_PATH = resolveNpm();
+// Quoted on Windows: cmd.exe joins the command and its arguments into one shell
+// line, so an unquoted path with spaces (C:\Program Files\...) breaks. With the
+// shell on, this is passed through as-is; everywhere else the plain path is used.
 const NPM_COMMAND = process.platform === 'win32' ? `"${NPM_PATH}"` : NPM_PATH;
 
+/**
+ * Reads the minimum Node version the package's engines field asks for, as a
+ * comparable "x.y.z" string ("0.0.0" when nothing usable is declared).
+ * @returns {string}
+ */
 function readMinNode() {
     const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     const re = /\d+(\.\d+){0,2}/;
@@ -34,7 +47,13 @@ function readMinNode() {
     return m ? m[0] : '0.0.0';
 }
 
-// Numeric rather than lexical: "22.9.0" is older than "22.12.0".
+/**
+ * Version comparison that is numeric rather than lexical: "22.9.0" is older
+ * than "22.12.0". Compares part by part; a shorter version is padded with 0.
+ * @param {string} version - the version to test
+ * @param {string} minimum - the minimum acceptable version
+ * @returns {boolean}
+ */
 function isAtLeast(version, minimum) {
     const a = version.split('.').map(n => Number.parseInt(n, 10) || 0);
     const b = minimum.split('.').map(n => Number.parseInt(n, 10) || 0);
@@ -45,6 +64,12 @@ function isAtLeast(version, minimum) {
     return true;
 }
 
+/**
+ * The version of an installed dependency, read from its package manifest, or
+ * null when the manifest is absent or unreadable (e.g. a partial install).
+ * @param {string} name
+ * @returns {string|null}
+ */
 function installedVersion(name) {
     const manifest = path.join(ROOT, 'node_modules', name, 'package.json');
     if (!existsSync(manifest)) return null;
@@ -58,6 +83,13 @@ function installedVersion(name) {
 // True when the installed tree is usable as-is: the Puppeteer version matches the
 // pin in package.json and it actually loads (a partial install leaves the package
 // directory in place but its dependencies missing). Anything else is reinstalled.
+/**
+ * Whether the pinned dependencies are installed and loadable: the Puppeteer
+ * version must equal the pin, and `require("puppeteer")` must actually load —
+ * not just its manifest existing, since a partial install keeps the manifest
+ * but misses its transitive dependencies.
+ * @returns {boolean}
+ */
 function dependenciesReady() {
     const pinned = readFileSync(path.join(ROOT, 'package.json'), 'utf8');
     const wanted = JSON.parse(pinned).dependencies?.puppeteer;
@@ -72,6 +104,12 @@ function dependenciesReady() {
     }
 }
 
+/**
+ * (Re)installs the pinned dependencies (`npm ci`, scripts disabled — the browser
+ * is fetched explicitly below) and, when the Chromium build Puppeteer expects is
+ * missing, installs it via Puppeteer's own resolver.
+ * @returns {boolean}
+ */
 function installDependencies() {
     console.log(`Dependencies are missing or out of date (pinned Puppeteer). Running "npm ci" once...`);
     try {
@@ -98,6 +136,11 @@ function installDependencies() {
 }
 
 // Runs Puppeteer's own resolver and reports whether the browser build it expects is on disk.
+/**
+ * Whether the browser build the installed Puppeteer resolves to exists on disk
+ * (its executablePath evaluates and points at a real file).
+ * @returns {boolean}
+ */
 function puppeteerBrowserInstalled() {
     const check = `
         const { existsSync } = require('node:fs');
@@ -113,10 +156,21 @@ function puppeteerBrowserInstalled() {
     }
 }
 
+/**
+ * Strips a prerelease suffix ("25.16.0-beta.1" -> "25.16.0"); prerelease
+ * builds have no meaning for the Node version comparison.
+ * @param {string|number} version
+ * @returns {string}
+ */
 function baseVersion(version) {
     return String(version).split('-')[0];
 }
 
+/**
+ * The launch sequence: verify the Node version, repair the dependency tree (and
+ * the browser build) when needed, then hand over to index.js.
+ * @returns {number} 0 on success, 1 on failure
+ */
 function main() {
     if (!isAtLeast(baseVersion(process.versions.node), MIN_NODE)) {
         console.error(`Node.js ${process.versions.node} is too old. Install Node.js ${MIN_NODE} or newer from https://nodejs.org/.`);
