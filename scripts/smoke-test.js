@@ -178,12 +178,19 @@ async function testChoiceQuestions(page, origin) {
     assert.equal(await handler.detect(), true);
     check('choice handler detects the radiogroup');
 
-    const selected = () => page.$$eval(selectors.optionCss,
-        els => els.filter(el => el.getAttribute('aria-checked') === 'true').map(el => el.innerText.trim()));
+    // Option reads are scoped to the first radiogroup, exactly like the handler.
+    const groupOptions = () => page.$eval(selectors.groupCss, (group, oCss) =>
+        Array.from(group.querySelectorAll(oCss)).map(el => ({
+            label: el.innerText.trim(),
+            checked: el.getAttribute('aria-checked') === 'true'
+                || el.classList.contains('selected')
+                || (el.querySelector('input') ? el.querySelector('input').checked : false),
+        })), selectors.optionCss);
+    const selected = async () => (await groupOptions()).filter(o => o.checked).map(o => o.label);
     // the same snapshot shape waitForAdvance passes to handler.advanced()
     const snapshot = () => page.evaluate((gCss, oCss) => {
         const group = document.querySelector(gCss);
-        const options = group ? Array.from(document.querySelectorAll(oCss)) : [];
+        const options = group ? Array.from(group.querySelectorAll(oCss)) : [];
         const isSelected = el => el.getAttribute('aria-checked') === 'true'
             || el.classList.contains('selected')
             || (el.querySelector('input') ? el.querySelector('input').checked : false);
@@ -192,14 +199,16 @@ async function testChoiceQuestions(page, origin) {
         };
     }, selectors.groupCss, selectors.optionCss);
 
-    // Round 0: an absent first candidate must not hide the second one that matches.
-    const labels = await page.$$eval(selectors.optionCss, els => els.map(el => el.innerText.trim()));
+    // Round 0: an absent first candidate must not hide the second one that matches,
+    // and the decoy radiogroup's duplicate "eins" must not make the answer ambiguous.
+    const labels = (await groupOptions()).map(o => o.label);
     assert.equal(labels.length, 3);
     const wrong = labels.find(label => label !== WORDS[0][1]);
     const prepared = await handler.answer(['not an option', wrong]);
     assert.equal(prepared.status, 'ready');
     assert.equal(prepared.answer, wrong);
     assert.deepEqual(await selected(), [wrong]);
+    assert.equal(await page.$eval('#decoy-choices [role=radio]', el => el.getAttribute('aria-checked')), 'false');
     assert.equal(handler.advanced(await snapshot()), false);
     await handler.submit();
     await page.waitForSelector('[uib-modal-window] td#correct-answer-field', { timeout: 5000 });

@@ -143,6 +143,12 @@ const choicePage = () => {
     <main>
         <span id="question-text">${rounds[0].question}</span>
         <div role="radiogroup" id="choices"></div>
+        <!-- An unrelated radiogroup after the real one: the handler must scope its
+             option lookup to the group it detected, or this duplicate "eins" makes
+             the first round's answer look ambiguous. -->
+        <div role="radiogroup" id="decoy-choices" aria-label="unrelated">
+            <div role="radio" aria-checked="false">eins</div>
+        </div>
         <button id="submit-answer-button">Check</button>
         <button class="exit-button" hidden onclick="location.href='/learning/dashboard'">Exit</button>
     </main>
@@ -157,6 +163,7 @@ const choicePage = () => {
             if (index >= rounds.length) {
                 question.remove();
                 group.remove();
+                document.getElementById('decoy-choices').remove();
                 document.getElementById('submit-answer-button').remove();
                 exit.hidden = false;
                 return;

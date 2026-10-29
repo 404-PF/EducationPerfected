@@ -1269,7 +1269,7 @@ async function resolveCredentials(watchForSession) {
                         const q = document.querySelector(qCss);
                         const box = document.querySelector(aCss);
                         const group = document.querySelector(gCss);
-                        const options = group ? Array.from(document.querySelectorAll(oCss)) : [];
+                        const options = group ? Array.from(group.querySelectorAll(oCss)) : [];
                         const isSelected = el => el.getAttribute('aria-checked') === 'true'
                             || el.classList.contains('selected')
                             || (el.querySelector('input') ? el.querySelector('input').checked : false);
