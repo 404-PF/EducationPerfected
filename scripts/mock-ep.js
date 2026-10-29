@@ -196,8 +196,9 @@ const choicePage = () => {
                         <tr><td id="correct-answer-field">\${rounds[index].answer}</td></tr>
                         <tr><td id="users-answer-field"><span>\${picked.textContent}</span></td></tr>
                     </table>
-                    <button id="continue-button" onclick="advance()">Continue</button>\`;
+                    <button id="continue-button" disabled onclick="advance()">Continue</button>\`;
                 document.body.appendChild(modal);
+                // EP keeps Continue disabled through a short cooldown; index.js clears it.
             }
         };
         render();

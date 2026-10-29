@@ -1,6 +1,7 @@
 // v2.2.0
 
 const puppeteer = require('puppeteer');
+const { createChoiceHandler, normaliseOption } = require('./lib/choice-handler');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -1106,6 +1107,43 @@ async function resolveCredentials(watchForSession) {
             }
 
             /**
+ * Collects every non-rejected candidate answer known for a question, in priority
+ * order across all key variants. Unlike findAnswer it returns the whole list, which
+ * choice questions need: a stored alternative that is absent from the options must
+ * not hide a later candidate that is present.
+ * @param {string} question
+ * @param {boolean} normaliseRejections - Also treat case/whitespace variants of a
+ * rejected answer as rejected. Choice questions need this: the label that was
+ * clicked comes from the page, so it may not match the stored candidate's casing
+ * exactly, and resubmitting it would loop forever.
+ * @returns {{candidates: string[], hadCandidates: boolean}}
+ */
+            function knownCandidates(question, normaliseRejections = false) {
+                const probes = [question, question.replace(/,/g, ";"), cleanString(question)];
+                let hadCandidates = false;
+                const candidates = [];
+                const visited = new Set();
+                for (let probe of probes) {
+                    const key = String(probe).trim();
+                    if (key === '' || visited.has(key)) continue;
+                    visited.add(key);
+                    const stored = candidatesDict[key];
+                    if (!stored || stored.length === 0) continue;
+                    hadCandidates = true;
+                    const rejected = rejectedDict[key] || new Set();
+                    const rejectedNormalised = normaliseRejections
+                        ? new Set(Array.from(rejected, normaliseOption))
+                        : null;
+                    for (const candidate of stored) {
+                        if (rejected.has(candidate)) continue;
+                        if (rejectedNormalised !== null && rejectedNormalised.has(normaliseOption(candidate))) continue;
+                        if (!candidates.includes(candidate)) candidates.push(candidate);
+                    }
+                }
+                return { candidates, hadCandidates };
+            }
+
+            /**
  * Finds the best candidate answer for a question.
  * Checks all key variants, returns the first non-rejected candidate.
  * Returns null if candidates exist but all were rejected (caller escalates).
@@ -1114,21 +1152,8 @@ async function resolveCredentials(watchForSession) {
  * @returns {string|null}
  */
             function findAnswer(question) {
-                const probes = [question, question.replace(/,/g, ";"), cleanString(question)];
-                let hadCandidates = false;
-                const visited = new Set();
-                for (let probe of probes) {
-                    const key = String(probe).trim();
-                    if (key === '' || visited.has(key)) continue;
-                    visited.add(key);
-                    const candidates = candidatesDict[key];
-                    if (!candidates || candidates.length === 0) continue;
-                    hadCandidates = true;
-                    const rejected = rejectedDict[key] || new Set();
-                    for (const candidate of candidates) {
-                        if (!rejected.has(candidate)) return candidate;
-                    }
-                }
+                const { candidates, hadCandidates } = knownCandidates(question);
+                if (candidates.length > 0) return candidates[0];
                 if (hadCandidates) return null;
                 console.log(`No answer found for ${question}`);
                 return generateRandomString(8, 10);
@@ -1190,8 +1215,8 @@ async function resolveCredentials(watchForSession) {
  *                 changed (each type reports its own signal; text: the box emptied,
  *                 choice: the selection was cleared or the group went away)
  * Handlers that act without keystrokes also provide
- *   answer(answer) - resolves 'unmatched' | 'unverified' | 'ready'
- *   submit()    - resolves true when the answer was submitted
+ *   answer(candidates) - resolves { status: 'ready'|'unmatched'|'unverified', answer? }
+ *   submit()    - resolves once the answer was submitted
  * The text handler's typing flow stays inline in answerQuestions (unchanged speed).
  */
             const TEXT_HANDLER = {
@@ -1200,56 +1225,26 @@ async function resolveCredentials(watchForSession) {
                 advanced: state => state.box === '',
             };
 
-            const normaliseOption = text => String(text).replace(/\s+/g, ' ').trim().toLowerCase();
-
-            const CHOICE_HANDLER = {
-                type: 'choice',
-                detect: async () => (await page.$(DIR.choice_group_css)) !== null,
-                advanced: state => state.choice === null || state.choice.selected === 0,
-                async answer(answer) {
-                    const wanted = normaliseOption(answer);
-                    const options = await page.$$(DIR.choice_option_css);
-                    try {
-                        const labels = await Promise.all(options.map(o => o.evaluate(el => el.innerText)));
-                        const matches = labels.map((l, i) => normaliseOption(l) === wanted ? i : -1).filter(i => i >= 0);
-                        if (matches.length !== 1) {
-                            console.log(matches.length === 0
-                                ? `Answer "${answer}" is not among the options [${labels.map(l => l.trim()).join(' | ')}].`
-                                : `Answer "${answer}" matches ${matches.length} options; refusing to guess.`);
-                            return 'unmatched';
-                        }
-                        const target = options[matches[0]];
-                        await target.click();
-                        // verify the selection took before anything is submitted
-                        for (let i = 0; i < 20; i++) {
-                            const selected = await Promise.all(options.map(o => o.evaluate(el =>
-                                el.getAttribute('aria-checked') === 'true'
-                                || el.classList.contains('selected')
-                                || (el.querySelector('input') ? el.querySelector('input').checked : false)
-                            ).catch(() => false)));
-                            if (selected[matches[0]] && selected.filter(Boolean).length === 1) return 'ready';
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                        }
-                        return 'unverified';
-                    } finally {
-                        await Promise.all(options.map(o => o.dispose().catch(() => { })));
-                    }
+            // Choice selectors are unaudited (see DIR); the handler itself is shared with
+            // the smoke test so the click/verify/submit path is exercised there.
+            const CHOICE_HANDLER = createChoiceHandler({
+                page,
+                selectors: {
+                    groupCss: DIR.choice_group_css,
+                    optionCss: DIR.choice_option_css,
+                    submitCss: DIR.choice_submit_css,
                 },
-                async submit() {
-                    const button = await page.$(DIR.choice_submit_css);
-                    if (button) {
-                        await button.click();
-                        await button.dispose();
-                        return true;
-                    }
-                    await page.keyboard.press('Enter');
-                    return true;
-                },
-            };
+            });
 
             // order matters: the first handler whose detect() passes wins; text is the fallback
             const QUESTION_HANDLERS = [CHOICE_HANDLER, TEXT_HANDLER];
 
+            /**
+             * Picks the handler for the question currently on screen.
+             * A failing detect() is treated as "not this type" so one bad selector cannot
+             * stop the run; the text handler is always the fallback.
+             * @returns {Promise<object>} The first matching handler, or TEXT_HANDLER
+             */
             async function detectHandler() {
                 for (const handler of QUESTION_HANDLERS) {
                     if (await handler.detect().catch(() => false)) return handler;
@@ -1264,6 +1259,7 @@ async function resolveCredentials(watchForSession) {
  * @param {string} previous - The previous question text
  * @param {number} timeout - Timeout in ms (0 = no timeout)
  * @param {string} submitted - The answer that was submitted
+ * @param {object} handler - Question handler whose advanced() decides the round moved on
  * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
  */
             async function waitForAdvance(previous, timeout, submitted, handler = TEXT_HANDLER) {
@@ -1591,6 +1587,66 @@ async function resolveCredentials(watchForSession) {
                     }
                     unstableRounds = 0;
 
+                    const handler = await detectHandler();
+                    if (handler !== TEXT_HANDLER) {
+                        // Choice-style handlers act on the options, not the text box. Give
+                        // them every usable candidate: an absent first alternative must not
+                        // hide a later one that matches an option.
+                        const candidates = knownCandidates(question, true).candidates;
+                        if (candidates.length === 0) {
+                            const message = `Cannot answer the ${handler.type} question "${question}": no known answer is left to match its options. Skipping it and stopping the run.`;
+                            console.error(message);
+                            await alert(message);
+                            break;
+                        }
+                        const prepared = await handler.answer(candidates);
+                        if (!TOGGLE) break;
+                        if (prepared.status === 'unmatched') {
+                            // never click something random: report and stop instead
+                            const message = `Cannot answer the ${handler.type} question "${question}": ${prepared.detail}. Skipping it and stopping the run.`;
+                            console.error(message);
+                            await alert(message);
+                            break;
+                        }
+                        if (prepared.status !== 'ready') {
+                            boxVanishedRounds += 1;
+                            console.log(`Could not verify the ${handler.type} selection for "${question}"; restart ${boxVanishedRounds}/5.`);
+                            if (boxVanishedRounds >= 5) {
+                                console.log('The selection never verified; stopping the run.');
+                                break;
+                            }
+                            continue;
+                        }
+                        boxVanishedRounds = 0;
+                        // the label actually clicked, so a wrong-answer modal records the
+                        // option that was submitted rather than a dictionary alternative
+                        const chosen = prepared.answer;
+                        if ((await readQuestionText()) !== question) continue;
+
+                        if (ENTER) await handler.submit();
+                        lastSubmitted = { question, answer: chosen };
+                        let outcome = await waitForAdvance(question, ENTER ? ADVANCE_TIMEOUT : 0, chosen, handler);
+                        if (outcome === 'timeout' && ENTER && TOGGLE) {
+                            console.log(`Question "${question}" did not advance within ${ADVANCE_TIMEOUT}ms; submitting again.`);
+                            await handler.submit();
+                            outcome = await waitForAdvance(question, ADVANCE_TIMEOUT, chosen, handler);
+                            if (outcome === 'timeout') {
+                                console.error(`Question "${question}" did not advance after submitting "${chosen}". Stopping.`);
+                                await alert(`Answer loop stopped: "${question}" did not advance.`);
+                                break;
+                            }
+                        }
+                        if (outcome === 'aborted') break;
+                        if (outcome === 'advanced') {
+                            futileDict[futileKey(question)] = 0;
+                            futileStop = false;
+                        }
+                        if (outcome === 'modal') {
+                            if (!await handleModalAndContinue(question, chosen)) break;
+                        }
+                        continue;
+                    }
+
                     let answer = findAnswer(question);
                     // true when this pass had no usable candidate and only a random string
                     // is being submitted. correctAnswer must not count that round again if
@@ -1625,53 +1681,6 @@ async function resolveCredentials(watchForSession) {
                     if (typeof answer !== 'string' || answer === '') {
                         console.log(`Refusing to type an empty answer for "${question}".`);
                         break;
-                    }
-
-                    const handler = await detectHandler();
-                    if (handler !== TEXT_HANDLER) {
-                        const prepared = await handler.answer(answer);
-                        if (!TOGGLE) break;
-                        if (prepared === 'unmatched') {
-                            // never click something random: report and stop instead
-                            const message = `Cannot answer the ${handler.type} question "${question}": the expected answer is not among its options. Skipping it and stopping the run.`;
-                            console.error(message);
-                            await alert(message);
-                            break;
-                        }
-                        if (prepared !== 'ready') {
-                            boxVanishedRounds += 1;
-                            console.log(`Could not verify the ${handler.type} selection for "${question}"; restart ${boxVanishedRounds}/5.`);
-                            if (boxVanishedRounds >= 5) {
-                                console.log('The selection never verified; stopping the run.');
-                                break;
-                            }
-                            continue;
-                        }
-                        boxVanishedRounds = 0;
-                        if ((await readQuestionText()) !== question) continue;
-
-                        if (ENTER) await handler.submit();
-                        lastSubmitted = { question, answer };
-                        let outcome = await waitForAdvance(question, ENTER ? ADVANCE_TIMEOUT : 0, answer, handler);
-                        if (outcome === 'timeout' && ENTER && TOGGLE) {
-                            console.log(`Question "${question}" did not advance within ${ADVANCE_TIMEOUT}ms; submitting again.`);
-                            await handler.submit();
-                            outcome = await waitForAdvance(question, ADVANCE_TIMEOUT, answer, handler);
-                            if (outcome === 'timeout') {
-                                console.error(`Question "${question}" did not advance after submitting "${answer}". Stopping.`);
-                                await alert(`Answer loop stopped: "${question}" did not advance.`);
-                                break;
-                            }
-                        }
-                        if (outcome === 'aborted') break;
-                        if (outcome === 'advanced') {
-                            futileDict[futileKey(question)] = 0;
-                            futileStop = false;
-                        }
-                        if (outcome === 'modal') {
-                            if (!await handleModalAndContinue(question, answer, randomRound)) break;
-                        }
-                        continue;
                     }
 
                     // The screen can look identical after a round: dictionary tasks draw
