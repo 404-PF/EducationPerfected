@@ -58,7 +58,7 @@ assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set
 // `[A-Z]+_` prefix would flag unrelated selectors such as `button_password`.
 // The whole name stays anchored, so derived identifiers (`tokenCount`, `password_css`)
 // still do not count.
-const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:(?:client|access|refresh|private|public|auth|bearer|session|consumer|shared|app|signing|encryption)[_-]?)?(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
 // Values a documentation page uses to show *how* to set a variable, never a real secret.
 // The accepted words are a closed list, so `your-SecretKey123` is still reported: only a
 // value that reads as an instruction ("your-password") is exempt, and only in docs.
@@ -192,43 +192,41 @@ function redactLiterals(snippet, name) {
  */
 function scanTextForSecrets(text, isDoc = false) {
     const findings = [];
-    text.split(/\r?\n/).forEach((rawLine, i) => {
-        const line = stripComments(rawLine);
-        // A quoted or bare field name, followed by : or =, then a quoted literal.
-        //   key  : "..." | '...' | `...` (the non-active delimiters are plain characters)
-        //   value: \\ . | [^ <delimiter> \\] repeated, so only the active delimiter ends it
-        const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>(?:\\[\s\S]|(?!\k<q>)[^\\])*)\k<q>/g;
-        let match;
-        while ((match = assignment.exec(line)) !== null) {
-            const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
-            // The anchored SECRET_NAME already excludes derived identifiers such as
-            // `tokenCount` or `password_css`: only the bare field name counts as a value.
-            if (!SECRET_NAME.test(name)) continue;
-            const value = match.groups.val;
-            // Empty values, interpolation and env reads are not literals to report.
-            if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
-            // Documentation hands users placeholders (`set EP_PASSWORD=your-password`,
-            // `$env:EP_EMAIL='you@example.com'`). Those are instructions, not secrets, so
-            // a markdown file may use a clearly-placeholder value; anything that does not
-            // look like one is still reported, including in docs.
-            if (isDoc && PLACEHOLDER_VALUE.test(value)) continue;
-            findings.push({
-                line: i + 1,
-                name,
-                // Report the whole matched assignment with every quoted run replaced, so
-                // neither the secret nor a suffix of it can survive into the log.
-                redacted: redactLiterals(line.slice(match.index, match.index + match[0].length), name),
-            });
-        }
-    });
+    const source = text.split(/\r?\n/).map(stripComments).join('\n');
+    // A quoted or bare field name, followed by : or =, then a quoted literal.
+    //   key  : "..." | '...' | `...` (the non-active delimiters are plain characters)
+    //   value: \\ . | [^ <delimiter> \\] repeated, so only the active delimiter ends it
+    const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>(?:\\[\s\S]|(?!\k<q>)[^\\])*)\k<q>/g;
+    let match;
+    while ((match = assignment.exec(source)) !== null) {
+        const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
+        // The anchored SECRET_NAME already excludes derived identifiers such as
+        // `tokenCount` or `password_css`: only the bare field name counts as a value.
+        if (!SECRET_NAME.test(name)) continue;
+        const value = match.groups.val;
+        // Empty values, interpolation and env reads are not literals to report.
+        if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
+        // Documentation hands users placeholders (`set EP_PASSWORD=your-password`,
+        // `$env:EP_EMAIL='you@example.com'`). Those are instructions, not secrets, so
+        // a markdown file may use a clearly-placeholder value; anything that does not
+        // look like one is still reported, including in docs.
+        if (isDoc && PLACEHOLDER_VALUE.test(value)) continue;
+        findings.push({
+            line: source.slice(0, match.index).split('\n').length,
+            name,
+            // Report the whole matched assignment with every quoted run replaced, so
+            // neither the secret nor a suffix of it can survive into the log.
+            redacted: redactLiterals(source.slice(match.index, match.index + match[0].length), name),
+        });
+    }
     return findings;
 }
 
 let scannedCount = 0;
 const skipped = [];
 for (const file of committable) {
-    // Skip the test file itself (it contains fake credentials for testing)
-    if (file === 'scripts/credentials-test.js') continue;
+    // Skip credential test harnesses (they contain fake credentials for testing).
+    if (path.basename(file) === 'credentials-test.js') continue;
     const fullPath = path.join(ROOT, file);
     // Scan every committable file by content, not by an extension allowlist
     const kind = fileKind(fullPath);
@@ -244,8 +242,7 @@ for (const file of committable) {
         assert.fail(`${file}:${finding.line} assigns a literal to "${finding.name}": ${finding.redacted}`);
     }
 }
-// An unreadable file cannot be proven clean, so say so rather than passing silently.
-if (skipped.length > 0) console.warn(`  note: ${skipped.length} unreadable file(s) not scanned: ${skipped.join(', ')}`);
+assert.deepEqual(skipped, [], `unreadable committable file(s) were not scanned: ${skipped.join(', ')}`);
 check(`no commit-able file assigns a literal credential (${scannedCount} text files scanned)`);
 
 const indexSource = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
@@ -265,6 +262,10 @@ check('no .env is tracked and index.js does not read one');
         ['{"password": "a\\"b\\"c"}', 1, 'escaped delimiter inside the value'],
         ['const EP_PASSWORD = ' + q + 'actual-secret' + q, 1, 'EP_-prefixed env names'],
         ['{"EP_EMAIL": ' + q + 'a@b.co' + q + '}', 1, 'EP_-prefixed quoted key'],
+        ['const clientSecret = ' + q + 'actual-secret' + q, 1, 'camel-case compound secret names'],
+        ['const access_token = ' + q + 'actual-secret' + q, 1, 'underscore compound token names'],
+        ['const privateKey = ' + q + 'actual-secret' + q, 1, 'camel-case compound key names'],
+        ['password =\n  ' + q + 'actual-secret' + q, 1, 'assignments split across lines'],
         ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
         ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
         ['const USERNAME_FIELD = ' + q + '#loginId' + q, 0, 'selector constants are not secrets'],
@@ -516,7 +517,8 @@ async function withCredentialsFixtures(watcherDir, suffix, fake) {
         // Waits until the previous prompt has let go of stdin (its data listener is
         // gone), which is also when its promise settles.
         const released = async () => {
-            while (promptListeners() !== 0) await new Promise(r => setTimeout(r, 5));
+            for (let i = 0; i < 1000 && promptListeners() !== 0; i++) await new Promise(r => setTimeout(r, 5));
+            assert.equal(promptListeners(), 0, 'the previous prompt has released its data listener');
         };
 
         // fresh block without any keychain entries

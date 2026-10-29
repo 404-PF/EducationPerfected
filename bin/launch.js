@@ -25,6 +25,7 @@ function resolveNpm() {
     return 'npm';
 }
 const NPM_PATH = resolveNpm();
+const NPM_COMMAND = process.platform === 'win32' ? `"${NPM_PATH}"` : NPM_PATH;
 
 function readMinNode() {
     const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -63,7 +64,7 @@ function dependenciesReady() {
     if (!wanted) return false;
     if (installedVersion('puppeteer') !== wanted) return false;
     try {
-        const runner = 'console.log(require("puppeteer/package.json").version)';
+        const runner = 'require("puppeteer"); console.log(require("puppeteer/package.json").version)';
         const output = execFileSync(process.execPath, ['-e', runner], { cwd: ROOT, encoding: 'utf8' });
         return output.trim() === wanted;
     } catch {
@@ -76,7 +77,7 @@ function installDependencies() {
     try {
         // --ignore-scripts: dependency install hooks are not needed here, and the
         // browser download is done explicitly below instead.
-        execFileSync(NPM_PATH, ['ci', '--ignore-scripts'], { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
+        execFileSync(NPM_COMMAND, ['ci', '--ignore-scripts'], { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
     } catch {
         console.error('"npm ci" failed. Install Node.js ' + MIN_NODE + ' or newer and run "npm ci" in this folder.');
         return false;
@@ -85,7 +86,7 @@ function installDependencies() {
     if (!puppeteerBrowserInstalled()) {
         console.log('Installing the Chrome build Puppeteer needs...');
         try {
-            execFileSync(NPM_PATH, ['exec', '--', 'puppeteer', 'browsers', 'install', 'chrome'], {
+            execFileSync(NPM_COMMAND, ['exec', '--', 'puppeteer', 'browsers', 'install', 'chrome'], {
                 cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32',
             });
         } catch {
@@ -129,7 +130,7 @@ function main() {
         // ran with --ignore-scripts). Install it explicitly.
         console.log('Installing the Chrome build Puppeteer needs...');
         try {
-            execFileSync(NPM_PATH, ['exec', '--', 'puppeteer', 'browsers', 'install', 'chrome'], {
+            execFileSync(NPM_COMMAND, ['exec', '--', 'puppeteer', 'browsers', 'install', 'chrome'], {
                 cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32',
             });
         } catch {
