@@ -192,6 +192,7 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
 ## Known limitations
 
 - **Audio-based tasks aren't supported yet.**
+- **Smart Lessons and Assessments aren't supported yet.** They mix question types (multiple choice, matching, ordering, drag-and-drop, image) and have no word list to learn answers from. Multiple-choice questions only appear in these tasks, so the choice handler added for #38 is unused scaffolding rather than working support; the investigation is tracked in #39, with the lesson flow itself in #33.
 - The answer parser handles *most* word-list formatting edge cases, but extreme cases may still result in incorrect answers; the self-learning error-correction feature helps, but doesn't cover every scenario.
 - The anti-cheat bypass depends on how Education Perfect's anti-cheat features behave, and might stop working when the service changes.
 

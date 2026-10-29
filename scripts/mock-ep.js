@@ -8,7 +8,10 @@
 //                    wrong-answer modal (uib-modal-window + td#question-field ...),
 //                    completion button (button.exit-button)
 //   GET /task/choice multiple-choice question ([role=radiogroup] of [role=radio] options
-//                    plus button#submit-answer-button); same modal and exit button
+//                    plus button#submit-answer-button); same modal and exit button.
+//                    ASSUMED SHAPE, NOT OBSERVED: EP's real lesson markup is unknown
+//                    (issue #39). This fixture exists to exercise the handler, and its
+//                    selectors must not be treated as an audit of the live site.
 //
 // The answers are the German words one..five; a wrong submission shows the
 // correction modal, a right one advances the round.

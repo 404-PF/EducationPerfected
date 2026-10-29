@@ -395,10 +395,13 @@ async function resolveCredentials(watchForSession) {
         question_css: '#question-text',
         answer_box_css: 'input#answer-text',
 
-        // choice questions (multiple choice). NOT yet audited against the live app: the
-        // markup of EP's choice questions is unknown (issue #31), so these are provisional
-        // ARIA-based guesses, mirrored by scripts/mock-ep.js. Audit status: unaudited as of
-        // 2026-10-29 - update this date once checked against the live bundles.
+        // choice questions (multiple choice). These belong to Smart Lessons / Assessments,
+        // not to the word-to-word task page this loop runs on: that page never renders
+        // them, and a lesson page never renders #question-text, so the handler below is
+        // unreachable in both directions today. The selectors are also unaudited - EP's
+        // lesson markup is unknown - and mirror scripts/mock-ep.js, which models an
+        // assumed shape rather than an observed one. Real support is tracked in issue #39;
+        // the handler is infrastructure, not evidence that lessons work.
         choice_group_css: '[role=radiogroup]',
         choice_option_css: '[role=radiogroup] [role=radio]',
         choice_submit_css: 'button#submit-answer-button',
@@ -1225,8 +1228,9 @@ async function resolveCredentials(watchForSession) {
                 advanced: state => state.box === '',
             };
 
-            // Choice selectors are unaudited (see DIR); the handler itself is shared with
-            // the smoke test so the click/verify/submit path is exercised there.
+            // Choice selectors are unaudited and the type is unreachable from this loop
+            // today (see DIR, issue #39); the handler itself is shared with the smoke test
+            // so the click/verify/submit path is exercised there.
             const CHOICE_HANDLER = createChoiceHandler({
                 page,
                 selectors: {
