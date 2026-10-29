@@ -24,48 +24,31 @@ on:
 # issue supersedes an older one.
 
 jobs:
-  label:
-    name: label
+  # The command gate runs in its own job so the labeling job cannot claim the
+  # per-issue concurrency group until the comment is known to be an exact
+  # `/label` command from an authorized account. If the gate lived inside the
+  # labeling job, a comment like "/labels are wrong" would claim the group
+  # first, cancel an in-flight labeling run, and then do nothing.
+  gate:
+    name: gate
+    if: >
+      github.event_name == 'issue_comment' &&
+      github.event.issue != null &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+      startsWith(github.event.comment.body, '/label')
     runs-on: ubuntu-latest
-    # Setup (checkout + pinned npm install) plus the 7-minute Decide step and
-    # the 2-minute Apply step must fit inside the job timeout, or GitHub
-    # cancels the job before the failure report can post. 15 minutes leaves
-    # room for setup on a slow runner.
-    timeout-minutes: 15
-    # One group per issue: an issues.opened run and a /label comment for the
-    # same issue serialize, otherwise two decisions race and the final labels
-    # depend on completion order. Unauthorized comments are rejected by the
-    # job-level `if` before they can claim this group.
-    concurrency:
-      group: >-
-        ${{ format('issue-label-{0}', github.event.issue.number || github.event.inputs.issue_number) }}
-      cancel-in-progress: true
-    # issues: write is the narrowest Actions permission that can add/remove
-    # labels on an issue, but it also covers the repo label-registry
-    # endpoints (POST/PATCH/DELETE /repos/{owner}/{repo}/labels). Accepted
-    # residual risk, enforced by the bounded Apply step plus the registry
-    # integrity guard, which fails the job if the registry changes.
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
-    # issues.opened and workflow_dispatch always run.
-    # issue_comment is a coarse pre-filter; the gate step does exact
-    # first-line /label parsing. Restricting the association here keeps
-    # unauthorized comments from starting a runner at all.
-    if: >
-      github.event_name != 'issue_comment' ||
-      (
-        github.event.issue != null &&
-        github.event.issue.pull_request == null &&
-        github.event.comment.user.type != 'Bot' &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
-        startsWith(github.event.comment.body, '/label')
-      )
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
 
     steps:
       - name: Check /label command and permission
-        id: gate
-        if: github.event_name == 'issue_comment'
+        id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -109,12 +92,44 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content='eyes' >/dev/null || true
           echo 'proceed=true' >> "$GITHUB_OUTPUT"
 
+  label:
+    name: label
+    needs: gate
+    # always() keeps issues.opened and workflow_dispatch running even though
+    # the gate job is skipped for them; issue_comment runs only when the gate
+    # approved the command.
+    if: >-
+      always() &&
+      (github.event_name != 'issue_comment' || needs.gate.outputs.proceed == 'true')
+    runs-on: ubuntu-latest
+    # Setup (checkout + pinned npm install) plus the 7-minute Decide step and
+    # the 2-minute Apply step must fit inside the job timeout, or GitHub
+    # cancels the job before the failure report can post. 15 minutes leaves
+    # room for setup on a slow runner.
+    timeout-minutes: 15
+    # One group per issue: an issues.opened run and a /label comment for the
+    # same issue serialize, otherwise two decisions race and the final labels
+    # depend on completion order. Only runs approved by the gate job reach
+    # this point, so unrelated comments cannot claim the group.
+    concurrency:
+      group: >-
+        ${{ format('issue-label-{0}', github.event.issue.number || github.event.inputs.issue_number) }}
+      cancel-in-progress: true
+    # issues: write is the narrowest Actions permission that can add/remove
+    # labels on an issue, but it also covers the repo label-registry
+    # endpoints (POST/PATCH/DELETE /repos/{owner}/{repo}/labels). Accepted
+    # residual risk, enforced by the bounded Apply step plus the registry
+    # integrity guard, which fails the job if the registry changes.
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
       # Labeling needs the OpenCode API key. Without it every run would fail at
       # `opencode run`, so treat an unconfigured secret as "labeling off" and
       # skip the remaining steps instead of failing each new issue.
       - name: Check labeling configuration
         id: config
-        if: github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true'
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
@@ -127,13 +142,13 @@ jobs:
           fi
 
       # A disabled run is silent for issues.opened (no noise on new issues),
-      # but a /label comment or a dispatch was an explicit request: say why
-      # nothing happened instead of finishing green with no labels.
+      # but a dispatch or an authorized /label comment was an explicit request:
+      # say why nothing happened instead of finishing green with no labels.
       - name: Report labeling disabled on issue
         if: >-
           steps.config.outputs.enabled == 'false' &&
           (github.event_name == 'workflow_dispatch' ||
-           (github.event_name == 'issue_comment' && steps.gate.outputs.proceed == 'true'))
+           github.event_name == 'issue_comment')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -146,9 +161,7 @@ jobs:
       # Check out only the reviewed, pinned OpenCode install so the workflow
       # runs a fixed version instead of whatever the registry publishes next.
       - name: Check out the pinned OpenCode install
-        if: >-
-          (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
-          steps.config.outputs.enabled == 'true'
+        if: steps.config.outputs.enabled == 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -160,9 +173,7 @@ jobs:
       # so it is run explicitly below from the reviewed, lockfile-pinned
       # package. Do not fold it back into `npm ci`; that reintroduces S6505.
       - name: Install pinned OpenCode
-        if: >-
-          (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
-          steps.config.outputs.enabled == 'true'
+        if: steps.config.outputs.enabled == 'true'
         run: |
           set -euo pipefail
           OPENCODE_DIR="$GITHUB_WORKSPACE/.github/opencode"
@@ -172,9 +183,7 @@ jobs:
 
       - name: Fetch existing labels
         id: labels
-        if: >-
-          (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
-          steps.config.outputs.enabled == 'true'
+        if: steps.config.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -192,9 +201,7 @@ jobs:
 
       - name: Fetch issue context
         id: context
-        if: >-
-          (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
-          steps.config.outputs.enabled == 'true'
+        if: steps.config.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -235,9 +242,7 @@ jobs:
         # Below the 15-minute job timeout, leaving time for setup, Apply, and
         # the failure report.
         timeout-minutes: 7
-        if: >-
-          (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
-          steps.config.outputs.enabled == 'true'
+        if: steps.config.outputs.enabled == 'true'
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GH_REPO: ${{ github.repository }}
@@ -313,9 +318,7 @@ jobs:
 
       - name: Apply label decisions
         timeout-minutes: 2
-        if: >-
-          (github.event_name != 'issue_comment' || steps.gate.outputs.proceed == 'true') &&
-          steps.config.outputs.enabled == 'true'
+        if: steps.config.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -423,7 +426,7 @@ jobs:
         if: >-
           failure() &&
           (github.event_name == 'workflow_dispatch' ||
-           (github.event_name == 'issue_comment' && steps.gate.outputs.proceed == 'true'))
+           github.event_name == 'issue_comment')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
