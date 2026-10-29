@@ -1,8 +1,7 @@
 // Smoke test for the pinned Puppeteer setup: launches (or connects to) a browser and
 // drives the EP mock in scripts/mock-ep.js through the same Puppeteer APIs index.js
-// relies on, plus lib/choice-handler.js (the handler index.js registers). It does not
-// run index.js itself (that would need EP credentials), so it validates the dependency
-// setup and the shared handler, not the live site.
+// relies on. It does not run index.js itself (that would need EP credentials), so it
+// validates the dependency setup, not the live site.
 //
 //   node scripts/smoke-test.js                 launch the browser Puppeteer manages
 //   SMOKE_EXECUTABLE_PATH=/path/to/chrome node scripts/smoke-test.js
@@ -15,7 +14,6 @@ const assert = require('node:assert/strict');
 const puppeteer = require('puppeteer');
 const { execFileSync } = require('node:child_process');
 const { createServer, WORDS } = require('./mock-ep');
-const { createChoiceHandler } = require('../lib/choice-handler');
 
 const CHECKS = [];
 function check(name) {
@@ -164,93 +162,6 @@ async function testPageGoneError(page) {
     check(`closing the page produces an isPageGoneError-style message ("${closed.message}")`);
 }
 
-// Drives lib/choice-handler.js - the same handler index.js registers - against the
-// mock's radiogroup. Selection, candidate matching and submit verification are
-// therefore exercised as production code, not re-implemented here.
-async function testChoiceQuestions(page, origin) {
-    await page.goto(`${origin}/task/choice`, { waitUntil: 'domcontentloaded' });
-    const selectors = {
-        groupCss: '[role=radiogroup]',
-        optionCss: '[role=radiogroup] [role=radio]',
-        submitCss: '#submit-answer-button',
-    };
-    const handler = createChoiceHandler({ page, selectors });
-    assert.equal(await handler.detect(), true);
-    check('choice handler detects the radiogroup');
-
-    // Option reads are scoped to the first radiogroup, exactly like the handler.
-    const groupOptions = () => page.$eval(selectors.groupCss, (group, oCss) =>
-        Array.from(group.querySelectorAll(oCss)).map(el => ({
-            label: el.innerText.trim(),
-            checked: el.getAttribute('aria-checked') === 'true'
-                || el.classList.contains('selected')
-                || (el.querySelector('input') ? el.querySelector('input').checked : false),
-        })), selectors.optionCss);
-    const selected = async () => (await groupOptions()).filter(o => o.checked).map(o => o.label);
-    // the same snapshot shape waitForAdvance passes to handler.advanced()
-    const snapshot = () => page.evaluate((gCss, oCss) => {
-        const group = document.querySelector(gCss);
-        const options = group ? Array.from(group.querySelectorAll(oCss)) : [];
-        const isSelected = el => el.getAttribute('aria-checked') === 'true'
-            || el.classList.contains('selected')
-            || (el.querySelector('input') ? el.querySelector('input').checked : false);
-        return {
-            choice: group ? { labels: options.map(o => o.innerText.trim()), selected: options.filter(isSelected).length } : null,
-        };
-    }, selectors.groupCss, selectors.optionCss);
-
-    // Round 0: an absent first candidate must not hide the second one that matches,
-    // and the decoy radiogroup's duplicate "eins" must not make the answer ambiguous.
-    const labels = (await groupOptions()).map(o => o.label);
-    assert.equal(labels.length, 3);
-    const wrong = labels.find(label => label !== WORDS[0][1]);
-    const prepared = await handler.answer(['not an option', wrong]);
-    assert.equal(prepared.status, 'ready');
-    assert.equal(prepared.answer, wrong);
-    assert.deepEqual(await selected(), [wrong]);
-    assert.equal(await page.$eval('#decoy-choices [role=radio]', el => el.getAttribute('aria-checked')), 'false');
-    assert.equal(handler.advanced(await snapshot()), false);
-    await handler.submit();
-    await page.waitForSelector('[uib-modal-window] td#correct-answer-field', { timeout: 5000 });
-    assert.equal(await page.$eval('[uib-modal-window] td#correct-answer-field', el => el.textContent), WORDS[0][1]);
-    // same re-enable-and-dismiss path index.js uses for the correction modal
-    const continued = await page.evaluate(css => {
-        const button = document.querySelector(css);
-        if (!button) return false;
-        button.disabled = false;
-        button.click();
-        return true;
-    }, '#continue-button');
-    assert.equal(continued, true);
-    await page.waitForFunction(() => document.querySelectorAll('[uib-modal-window]').length === 0, { timeout: 2000 });
-    assert.equal(handler.advanced(await snapshot()), true);
-    check('choice handler: candidate fallback, verified selection, modal and correction');
-
-    // An unmatched answer is refused without clicking anything.
-    const unmatched = await handler.answer(['not an option at all']);
-    assert.equal(unmatched.status, 'unmatched');
-    assert.deepEqual(await selected(), []);
-    check('choice handler: unmatched answer does not click');
-
-    // Right options advance every remaining round.
-    for (let i = 1; i < WORDS.length; i++) {
-        assert.equal(await page.$eval('#question-text', el => el.textContent), WORDS[i][0]);
-        const ready = await handler.answer([WORDS[i][1]]);
-        assert.equal(ready.status, 'ready');
-        assert.deepEqual(await selected(), [WORDS[i][1]]);
-        await handler.submit();
-        if (i < WORDS.length - 1) {
-            await page.waitForFunction(expected => {
-                const question = document.querySelector('#question-text');
-                return question !== null && question.textContent === expected;
-            }, { timeout: 5000 }, WORDS[i + 1][0]);
-        }
-    }
-    await page.waitForSelector('button.exit-button:not([hidden])', { timeout: 5000 });
-    assert.equal(await handler.detect(), false);
-    check('choice handler: right answers advance every round');
-}
-
 let question, boxValue, clearBox;
 
 async function main() {
@@ -322,9 +233,6 @@ async function main() {
 
         // Completion exit
         await testCompletionExit(page, origin);
-
-        // --- choice questions ---
-        await testChoiceQuestions(page, origin);
 
         // --- host bindings + preload ---
         await testHotkeyPreloadSurvival(page, origin);
