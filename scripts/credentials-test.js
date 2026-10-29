@@ -180,12 +180,35 @@ function fileKind(filePath) {
  * @returns {string} the same-length text with comments blanked out
  */
 function stripComments(text) {
-    // Whole comments and quoted literals, whichever opens first. A template's
-    // backslash escape may hold a newline (`\\[\s\S]`); `'` and `"` cannot hold
-    // one and so never leak past the line they open on.
-    return text.replace(
-        /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*|"(?:\\.|[^"\\\n])*|`(?:\\[\s\S]|[^`\\])*`/g,
-        span => (span[0] === '/' ? span.replace(/[^\n]/g, ' ') : span));
+    // Scanners for whole comments and quoted literals, whichever opens first.
+    // A template's backslash escape may hold a newline (`\\[\s\S]`); `'` and `"`
+    // cannot hold one and so never leak past the line they open on.
+    const SCANNERS = [
+        /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,
+        /'(?:\\.|[^'\\\n])*/g,
+        /"(?:\\.|[^"\\\n])*/g,
+        /`(?:\\[\s\S]|[^`\\])*`/g,
+    ];
+    let out = '';
+    let head = 0;
+    while (head < text.length) {
+        // The earliest match decides: literals protect their comment lookalikes,
+        // comments swallow the quotes inside them.
+        let next = null;
+        for (const scanner of SCANNERS) {
+            scanner.lastIndex = head;
+            const found = scanner.exec(text);
+            if (found && (!next || found.index < next.index)) next = found;
+        }
+        if (!next) { // the rest is code with nothing left to mask
+            out += text.slice(head);
+            break;
+        }
+        out += text.slice(head, next.index);   // the code before the match
+        out += next[0].startsWith('/') ? next[0].replace(/[^\n]/g, ' ') : next[0];
+        head = next.index + next[0].length;
+    }
+    return out;
 }
 
 /**
@@ -336,7 +359,7 @@ check('no .env is tracked and index.js does not read one');
     // The mask keeps byte offsets, so a finding lands on the line it came from
     // no matter how many comments are blanked before it.
     const found = scanTextForSecrets('// intro\nconst password = ' + q + 'actual-secret' + q)[0];
-    assert.equal(found && found.line, 2, 'a finding reports the line of its assignment, not a shifted one');
+    assert.equal(found?.line, 2, 'a finding reports the line of its assignment, not a shifted one');
     // Documentation placeholders are exempt; a value that merely starts with "your-" is not.
     assert.equal(scanTextForSecrets('EP_PASSWORD=' + q + 'your-password' + q, true).length, 0,
         'documented placeholder values are not reported');
