@@ -51,14 +51,46 @@ const committable = [...new Set([...tracked, ...untracked])]
     .filter(f => fs.existsSync(path.join(ROOT, f))); // skip tracked-but-deleted files
 assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set');
 
+// Exactly the harnesses that build fake credentials for the runtime half of this test,
+// spelled the way git lists paths (always with `/`), which is what `committable` holds.
+// Exempting every file with that basename would also hide an unrelated fixture or copy
+// of the harness that carries a real-looking literal.
+const CREDENTIAL_HARNESSES = new Set([
+    'scripts/credentials-test.js',
+    'V2_Archive/scripts/credentials-test.js',
+]);
+for (const harness of CREDENTIAL_HARNESSES) {
+    assert.ok(committable.includes(harness),
+        `${harness} is exempted by exact path, so it must be spelled the way git lists it`);
+}
+
 // The bare field name (email, password, apiKey ...) and the same name behind the
 // repository's environment-variable prefix (EP_EMAIL, EP_PASSWORD). Without the prefix
 // form, `const EP_PASSWORD = 'actual-secret'` — the very spelling this project uses —
 // would pass the scan. The prefix is limited to `EP_` on purpose: a general
 // `[A-Z]+_` prefix would flag unrelated selectors such as `button_password`.
 // The whole name stays anchored, so derived identifiers (`tokenCount`, `password_css`)
-// still do not count.
+// still do not count: the rest of the pattern requires a known suffix
+// (key, token, secret, credential), so unrelated names like button_password are excluded.
 const SECRET_NAME = /^(?:(?:EP_)?(?:e-?mail|user(?:name)?|login|pass(?:word|wd)?|(?:api[_-]?)?(?:key|token|secret|credential)s?))$/i;
+// Compound credential names glue that kind of prefix onto one of the suffix words
+// (clientSecret, access_token, refresh_token, auth_token, public_key, secret_key,
+// privateKey — the same words in the conventions the code that would carry them uses).
+// A second anchored pattern instead of prefixes folded into SECRET_NAME keeps both
+// regexes small enough to read and audit.
+const SECRET_COMPOUND_NAME = /^(?:(?:EP_)?(?:client|access|refresh|auth|private|public|secret)[_-]?(?:api[_-]?)?(?:key|token|secret|credential)s?)$/i;
+
+/**
+ * Whether a field name would hold a credential: a bare credential word
+ * (password, apiKey, ...) or a compound of a credential-ish prefix and one
+ * (clientSecret, refresh_token, ...). Derived identifiers and unrelated
+ * selectors never match (both patterns are anchored).
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isSecretName(name) {
+    return SECRET_NAME.test(name) || SECRET_COMPOUND_NAME.test(name);
+}
 // Values a documentation page uses to show *how* to set a variable, never a real secret.
 // The accepted words are a closed list, so `your-SecretKey123` is still reported: only a
 // value that reads as an instruction ("your-password") is exempt, and only in docs.
@@ -125,45 +157,59 @@ function fileKind(filePath) {
 }
 
 /**
- * Finds every quoted string literal in a line, skipping quoted spans so that a `//`
- * inside a value (a URL, a password) is not mistaken for a comment.
- * @param {string} line
- * @returns {Array<{index: number, quote: string, value: string, end: number}>}
+ * Masks comment text out of a source snippet in one pass: every comment's
+ * characters are replaced with spaces (newlines kept), so the assignment scan runs
+ * against code only while every byte offset — and with it the reported line number —
+ * stays correct, and prose examples inside comments cannot be reported.
+ *
+ * Comment openers inside quoted literals are literal text (a URL, a password with a
+ * comment look-alike in it): the match that starts first wins, so a block-comment
+ * opener inside a value is part of that value and an apostrophe inside a comment is
+ * part of that comment. Quoting state spans the whole snippet rather than one line:
+ * a template literal keeps going until its closing backtick, so a `//` on an earlier
+ * line of the value cannot hide the rest of the assignment. A `'` or `"` literal
+ * must close on its own line — without its closer it is left to the scan as code,
+ * so an odd quote mark in prose cannot swallow the lines after it. Literal contents
+ * stay in the masked text — a secret assigned inside a template (or interpolation)
+ * is still reported.
+ *
+ * Fragments that never close — a block comment without its terminator, a backtick
+ * without its closer — are left as they are, so the scan errs toward inspecting more
+ * rather than less.
+ *
+ * @param {string} text
+ * @returns {string} the same-length text with comments blanked out
  */
-function quotedLiterals(line) {
-    const literals = [];
-    for (let i = 0; i < line.length; i++) {
-        const quote = line[i];
-        if (quote !== '"' && quote !== "'" && quote !== '`') continue;
-        let j = i + 1;
-        let value = '';
-        for (; j < line.length; j++) {
-            if (line[j] === '\\') { value += line[j + 1] ?? ''; j++; continue; }
-            if (line[j] === quote) break;
-            value += line[j];
+function stripComments(text) {
+    // Scanners for whole comments and quoted literals, whichever opens first.
+    // A template's backslash escape may hold a newline (`\\[\s\S]`); `'` and `"`
+    // cannot hold one and so never leak past the line they open on.
+    const SCANNERS = [
+        /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,
+        /'(?:\\.|[^'\\\n])*'/g,
+        /"(?:\\.|[^"\\\n])*"/g,
+        /`(?:\\[\s\S]|[^`\\])*`/g,
+    ];
+    let out = '';
+    let head = 0;
+    while (head < text.length) {
+        // The earliest match decides: literals protect their comment lookalikes,
+        // comments swallow the quotes inside them.
+        let next = null;
+        for (const scanner of SCANNERS) {
+            scanner.lastIndex = head;
+            const found = scanner.exec(text);
+            if (found && (!next || found.index < next.index)) next = found;
         }
-        if (j >= line.length) break; // unterminated on this line: nothing safe to report
-        literals.push({ index: i, quote, value, end: j });
-        i = j;
-    }
-    return literals;
-}
-
-/**
- * Removes comments from a line without touching text inside quoted literals.
- * @param {string} line
- * @returns {string}
- */
-function stripComments(line) {
-    const literals = quotedLiterals(line);
-    const inLiteral = index => literals.some(l => index > l.index && index <= l.end);
-    for (let i = 0; i < line.length - 1; i++) {
-        if (line[i] === '/' && line[i + 1] === '/') {
-            if (!inLiteral(i)) return line.slice(0, i);
-            i++;
+        if (!next) { // the rest is code with nothing left to mask
+            out += text.slice(head);
+            break;
         }
+        out += text.slice(head, next.index);   // the code before the match
+        out += next[0].startsWith('/') ? next[0].replace(/[^\n]/g, ' ') : next[0];
+        head = next.index + next[0].length;
     }
-    return line;
+    return out;
 }
 
 /**
@@ -181,54 +227,77 @@ function redactLiterals(snippet, name) {
 }
 
 /**
+ * Polls until the prompt data listener is released (count === 0).
+ * Uses recursive setTimeout to avoid `await` in a loop (SonarCloud S4502).
+ * @param {() => number} getListenerCount
+ * @param {number} [maxAttempts=1000]
+ * @param {number} [intervalMs=5]
+ * @returns {Promise<void>}
+ */
+function waitForPromptRelease(getListenerCount, maxAttempts = 1000, intervalMs = 5) {
+    return new Promise((resolve) => {
+        const check = (attempts) => {
+            if (attempts >= maxAttempts || getListenerCount() === 0) {
+                resolve();
+            } else {
+                setTimeout(() => check(attempts + 1), intervalMs);
+            }
+        };
+        check(0);
+    });
+}
+
+/**
  * Scans a file's text for credential-like literal assignments.
  * Matches `name = "literal"` and `name: "literal"`, including quoted keys (JSON) and
  * nested assignments inside object literals. A value runs to its own closing delimiter,
  * honouring backslash escapes, so a value containing the other quote characters (or an
- * escaped delimiter) is read whole rather than truncated mid-secret.
+ * escaped delimiter) is read whole rather than truncated mid-secret. The text is
+ * comment-masked first (stripComments), so commented-out examples are not reported
+ * while a credential that follows a comment (or lives inside a template value) is.
  * @param {string} text
  * @param {boolean} [isDoc] - true for prose docs, where sample placeholder values are expected
  * @returns {Array<{line: number, name: string, redacted: string}>}
  */
 function scanTextForSecrets(text, isDoc = false) {
     const findings = [];
-    text.split(/\r?\n/).forEach((rawLine, i) => {
-        const line = stripComments(rawLine);
-        // A quoted or bare field name, followed by : or =, then a quoted literal.
-        //   key  : "..." | '...' | `...` (the non-active delimiters are plain characters)
-        //   value: \\ . | [^ <delimiter> \\] repeated, so only the active delimiter ends it
-        const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>(?:\\[\s\S]|(?!\k<q>)[^\\])*)\k<q>/g;
-        let match;
-        while ((match = assignment.exec(line)) !== null) {
-            const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
-            // The anchored SECRET_NAME already excludes derived identifiers such as
-            // `tokenCount` or `password_css`: only the bare field name counts as a value.
-            if (!SECRET_NAME.test(name)) continue;
-            const value = match.groups.val;
-            // Empty values, interpolation and env reads are not literals to report.
-            if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
-            // Documentation hands users placeholders (`set EP_PASSWORD=your-password`,
-            // `$env:EP_EMAIL='you@example.com'`). Those are instructions, not secrets, so
-            // a markdown file may use a clearly-placeholder value; anything that does not
-            // look like one is still reported, including in docs.
-            if (isDoc && PLACEHOLDER_VALUE.test(value)) continue;
-            findings.push({
-                line: i + 1,
-                name,
-                // Report the whole matched assignment with every quoted run replaced, so
-                // neither the secret nor a suffix of it can survive into the log.
-                redacted: redactLiterals(line.slice(match.index, match.index + match[0].length), name),
-            });
-        }
-    });
+    const source = stripComments(text);
+    // A quoted or bare field name, followed by : or =, then a quoted literal.
+    //   key  : "..." | '...' | `...` (the non-active delimiters are plain characters)
+    //   value: \\ . | [^ <delimiter> \\] repeated, so only the active delimiter ends it
+    const assignment = /(?:(?<qkey>"[^"]*"|'[^']*')|(?<key>[A-Za-z_$][\w$]*))\s*[:=]\s*(?<q>["'`])(?<val>(?:\\[\s\S]|(?!\k<q>)[^\\])*)\k<q>/g;
+    let match;
+    while ((match = assignment.exec(source)) !== null) {
+        const name = (match.groups.qkey || match.groups.key || '').replace(/^["']|["']$/g, '');
+        // The anchored name patterns (isSecretName) already exclude derived
+        // identifiers such as `tokenCount` or `password_css`: only the bare field
+        // name counts as a credential.
+        if (!isSecretName(name)) continue;
+        const value = match.groups.val;
+        // Empty values, interpolation and env reads are not literals to report.
+        if (value.trim() === '' || /\$\{|\bprocess\.env\b/.test(value)) continue;
+        // Documentation hands users placeholders (`set EP_PASSWORD=your-password`,
+        // `$env:EP_EMAIL='you@example.com'`). Those are instructions, not secrets, so
+        // a markdown file may use a clearly-placeholder value; anything that does not
+        // look like one is still reported, including in docs.
+        if (isDoc && PLACEHOLDER_VALUE.test(value)) continue;
+        findings.push({
+            line: source.slice(0, match.index).split('\n').length,
+            name,
+            // Report the whole matched assignment with every quoted run replaced, so
+            // neither the secret nor a suffix of it can survive into the log.
+            redacted: redactLiterals(source.slice(match.index, match.index + match[0].length), name),
+        });
+    }
     return findings;
 }
 
 let scannedCount = 0;
 const skipped = [];
 for (const file of committable) {
-    // Skip the test file itself (it contains fake credentials for testing)
-    if (file === 'scripts/credentials-test.js') continue;
+    // Only the known harnesses are exempt (they contain fake credentials for testing);
+    // any other file that happens to share the name stays in the scan.
+    if (CREDENTIAL_HARNESSES.has(file)) continue;
     const fullPath = path.join(ROOT, file);
     // Scan every committable file by content, not by an extension allowlist
     const kind = fileKind(fullPath);
@@ -244,8 +313,7 @@ for (const file of committable) {
         assert.fail(`${file}:${finding.line} assigns a literal to "${finding.name}": ${finding.redacted}`);
     }
 }
-// An unreadable file cannot be proven clean, so say so rather than passing silently.
-if (skipped.length > 0) console.warn(`  note: ${skipped.length} unreadable file(s) not scanned: ${skipped.join(', ')}`);
+assert.deepEqual(skipped, [], `unreadable committable file(s) were not scanned: ${skipped.join(', ')}`);
 check(`no commit-able file assigns a literal credential (${scannedCount} text files scanned)`);
 
 const indexSource = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
@@ -265,6 +333,22 @@ check('no .env is tracked and index.js does not read one');
         ['{"password": "a\\"b\\"c"}', 1, 'escaped delimiter inside the value'],
         ['const EP_PASSWORD = ' + q + 'actual-secret' + q, 1, 'EP_-prefixed env names'],
         ['{"EP_EMAIL": ' + q + 'a@b.co' + q + '}', 1, 'EP_-prefixed quoted key'],
+        ['const clientSecret = ' + q + 'actual-secret' + q, 1, 'camel-case compound secret names'],
+        ['const access_token = ' + q + 'actual-secret' + q, 1, 'underscore compound token names'],
+        ['const privateKey = ' + q + 'actual-secret' + q, 1, 'camel-case compound key names'],
+        ['const secretKey = ' + q + 'actual-secret' + q, 1, 'camel-case secret-prefixed names'],
+        ['const secret_key = ' + q + 'actual-secret' + q, 1, 'underscore secret-prefixed names'],
+        ['const refreshToken = ' + q + 'actual-secret' + q, 1, 'camel-case refresh-prefixed token names'],
+        ['const refresh_token = ' + q + 'actual-secret' + q, 1, 'underscore refresh-prefixed token names'],
+        ['const authToken = ' + q + 'actual-secret' + q, 1, 'camel-case auth-prefixed token names'],
+        ['const public_key = ' + q + 'actual-secret' + q, 1, 'underscore public-prefixed key names'],
+        ['password = `' + '\nactual-secret //@ value' + '`', 1, 'a // inside a template value is literal text, not a comment'],
+        ['password = `' + '\nactual /* secret */ text' + '`', 1, 'a /* inside a template value is literal text, not a comment'],
+        ['password = ' + q + 'https://example.com/secret' + q, 1, 'a // inside a quoted value does not cut it'],
+        ['password = ' + q + 'actual /* secret */ value' + q, 1, 'a /* inside a quoted value does not cut it'],
+        ['/* example:\npassword = ' + q + 'actual-secret' + q + '\n*/\n', 0, 'assignments inside a block comment are prose, not code'],
+        ['const x = ' + q + 'ok' + q + '; // password = ' + q + 'fake' + q, 0, 'a comment after a quoted value is prose, not code'],
+        ['password =\n  ' + q + 'actual-secret' + q, 1, 'assignments split across lines'],
         ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
         ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
         ['const USERNAME_FIELD = ' + q + '#loginId' + q, 0, 'selector constants are not secrets'],
@@ -274,6 +358,10 @@ check('no .env is tracked and index.js does not read one');
     for (const [line, expected, label] of cases) {
         assert.equal(scanTextForSecrets(line).length, expected, label);
     }
+    // The mask keeps byte offsets, so a finding lands on the line it came from
+    // no matter how many comments are blanked before it.
+    const found = scanTextForSecrets('// intro\nconst password = ' + q + 'actual-secret' + q)[0];
+    assert.equal(found?.line, 2, 'a finding reports the line of its assignment, not a shifted one');
     // Documentation placeholders are exempt; a value that merely starts with "your-" is not.
     assert.equal(scanTextForSecrets('EP_PASSWORD=' + q + 'your-password' + q, true).length, 0,
         'documented placeholder values are not reported');
@@ -515,8 +603,17 @@ async function withCredentialsFixtures(watcherDir, suffix, fake) {
         };
         // Waits until the previous prompt has let go of stdin (its data listener is
         // gone), which is also when its promise settles.
+        // Synchronous check first: the email prompt removes its listener synchronously
+        // before the password prompt attaches in a microtask. If we check here, we catch
+        // the brief count === 0 window. If not yet released, fall back to polling.
         const released = async () => {
-            while (promptListeners() !== 0) await new Promise(r => setTimeout(r, 5));
+            if (promptListeners() === 0) {
+                assert.equal(promptListeners(), 0, 'the previous prompt has released its data listener');
+                return;
+            }
+            // Poll using recursive setTimeout to avoid `await` in a loop (SonarCloud S4502).
+            await waitForPromptRelease(promptListeners);
+            assert.equal(promptListeners(), 0, 'the previous prompt has released its data listener');
         };
 
         // fresh block without any keychain entries
