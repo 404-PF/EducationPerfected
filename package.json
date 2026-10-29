@@ -6,7 +6,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "node bin/launch.js",
-    "smoke": "node scripts/smoke-test.js"
+    "smoke": "node scripts/smoke-test.js",
+    "test:handlers": "node scripts/handler-test.js"
   },
   "engines": {
     "node": ">=22.12.0"

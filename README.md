@@ -1,8 +1,8 @@
 # EducationPerfected
 
 #### A JavaScript program that automatically answers Education Perfect language questions at **super** speeds.
-Works for word-to-word (translation) tasks and Dash mode.  
-**Does not work with Audio-based tasks... yet.** 
+Works for word-to-word (translation) tasks and Dash mode, which have been run end-to-end against the live Education Perfect service. It also supports audio tasks (Listening and Dictation) and multiple-choice questions in auto-marked Smart Lessons: for those, the live site was inspected to confirm the question markup and where the answers come from, but the full answer/submit cycle has only been exercised against local fixtures ([scripts/handler-test.js](scripts/handler-test.js)), not the live service.  
+Other Smart Lesson question types are detected and reported, not guessed at. Short-answer lesson questions are handled too, but that shape hasn't been verified against the live site yet.
 
 ![example image](result.png)
 
@@ -29,8 +29,8 @@ which teachers use to set students (of various ages) homework... and one of thos
 As a perfectionist myself, I set out to perfect Education Perfect - that's how EducationPerfected was born.  
 The main goal/target were and still are language tasks that require you to translate words/phrases from one language
 to another.  
-Of course, there are also tasks in the same format but with audio involved. _Unfortunately, we (me or any
-other kind contributors) have not been able to automate those tasks._ 
+Of course, there are also tasks in the same format but with audio involved. _Those used to be out of reach;
+they are supported now (see below)._ 
 
 The obvious approach was to write a simple userscript in JavaScript that gets injected into the browser 
 debugger console. This is the classic method to perform simple automation in browsers. This method is simple, 
@@ -97,6 +97,7 @@ If you run into weird behavior, try restarting the program.
 The program's only runtime dependency is [Puppeteer](https://github.com/puppeteer/puppeteer), pinned to **25.16.0** in [package.json](package.json) and locked (with its own dependencies) in [package-lock.json](package-lock.json). Each Puppeteer version pairs with a Chrome build that it downloads and launches - Chrome 156 for this one. Install with `npm ci`, or just use one of the starter scripts, which run it for you when needed. To bump Puppeteer, change the version in `package.json`, run `npm install`, and commit the updated lockfile.
 
 That version was exercised by a local smoke test ([scripts/smoke-test.js](scripts/smoke-test.js)) against a mock EP site ([scripts/mock-ep.js](scripts/mock-ep.js)) covering the Puppeteer calls this program makes: login form fill and submit, reading the word lists, typing and submitting answers, reading and dismissing the wrong-answer modal, and the completion screen. Run it yourself with `npm run smoke` (use `SMOKE_HEADFUL=1` to watch a visible window, or `SMOKE_EXECUTABLE_PATH`/`SMOKE_BROWSER_URL` to target a browser you already have).  
+The Smart Lesson and audio handlers have their own end-to-end test ([scripts/handler-test.js](scripts/handler-test.js), run it with `npm run test:handlers`). It drives the program's real answer loop against local fixtures ([scripts/mock-ep.js](scripts/mock-ep.js)) that were built from notes taken while inspecting the live site (a multiple-choice lesson slide and an audio task, sanitised of account data) - they are reconstructions, not recorded sessions.  
 *This smoke test proves the dependency setup works. An end-to-end run against EP's live service (not just the mock) has since confirmed the supported word-to-word/Dash task flow works as expected - though the live site can still change, so re-verify if you suspect breakage.*
 
 ### Features
@@ -191,7 +192,8 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
 
 ## Known limitations
 
-- **Audio-based tasks aren't supported yet.**
+- **Smart Lesson support covers multiple-choice questions in auto-marked activities.** The question markup and the client-side answer state were verified against the live site; the select/submit/advance cycle has only been exercised against the local fixtures. Short-answer lesson questions are answered the same way but haven't been live-verified yet. Multi-select, matching, ordering, drag-and-drop and image-based questions, and any manually marked question, are detected and reported instead of answered.
+- **Audio tasks (Listening/Dictation) are answered from the data EP ships to the browser before submission** (that state, and the audio markup, were verified against the live site; the type/submit/advance and rejection handling cycles have only been exercised against the local fixtures). If EP stops shipping that state, those tasks fail loudly rather than fall back to guessing. List audio tasks ship no marking flag at all (confirmed on a live Listening task, 2026-10-30), so audio is answered only when EP's auto-marking flag is explicitly true or the task is positively identified as a self-test vocabulary list (unassigned, list and translation content type); assigned tasks and unknown contexts stop and report instead. That identification rests on field values EP ships, not on a documented guarantee, and it carries two known unknowns: an assessment launched in a way that produces the same null-task/no-section-data shape is not proven impossible, and self-test work still earns points and stays visible to teachers either way. Dictation shares the pipeline but wasn't separately re-inspected for these fields.
 - The answer parser handles *most* word-list formatting edge cases, but extreme cases may still result in incorrect answers; the self-learning error-correction feature helps, but doesn't cover every scenario.
 - The anti-cheat bypass depends on how Education Perfect's anti-cheat features behave, and might stop working when the service changes.
 
@@ -205,7 +207,6 @@ fixes, anti-cheat bypass, or even just fixing typos and documentation. I have to
 
 TODO list? or never-DO list? no one knows :P
 - Auto navigation between tasks (temporarily achieved with script+.js during V1)
-- Support for audio-based tasks
 - Dedicated anti-cheat bypass features
 - Even better answer parsing
 
