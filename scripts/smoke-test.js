@@ -162,6 +162,34 @@ async function testPageGoneError(page) {
     check(`closing the page produces an isPageGoneError-style message ("${closed.message}")`);
 }
 
+async function testChoiceQuestions(page, origin) {
+    await page.goto(`${origin}/task/choice`, { waitUntil: 'domcontentloaded' });
+    const selected = () => page.$$eval('[role=radiogroup] [role=radio]',
+        els => els.filter(el => el.getAttribute('aria-checked') === 'true').map(el => el.innerText));
+    const options = await page.$$('[role=radiogroup] [role=radio]');
+    assert.equal(options.length, 3);
+    // wrong option -> verified selection, then the correction modal
+    const labels = await Promise.all(options.map(o => o.evaluate(el => el.innerText)));
+    const wrong = labels.findIndex(l => l !== WORDS[0][1]);
+    await options[wrong].click();
+    assert.deepEqual(await selected(), [labels[wrong]]);
+    await page.click('#submit-answer-button');
+    await page.waitForSelector('[uib-modal-window] td#correct-answer-field', { timeout: 5000 });
+    await page.click('button#continue-button');
+    // right options advance every round
+    for (let i = 1; i < WORDS.length; i++) {
+        assert.equal(await page.$eval('#question-text', el => el.textContent), WORDS[i][0]);
+        const opts = await page.$$('[role=radiogroup] [role=radio]');
+        for (const o of opts) {
+            if (await o.evaluate(el => el.innerText) === WORDS[i][1]) await o.click();
+        }
+        assert.deepEqual(await selected(), [WORDS[i][1]]);
+        await page.click('#submit-answer-button');
+    }
+    await page.waitForSelector('button.exit-button:not([hidden])', { timeout: 5000 });
+    check('choice question: click option, verify aria-checked, submit, modal and advance');
+}
+
 let question, boxValue, clearBox;
 
 async function main() {
@@ -233,6 +261,9 @@ async function main() {
 
         // Completion exit
         await testCompletionExit(page, origin);
+
+        // --- choice questions ---
+        await testChoiceQuestions(page, origin);
 
         // --- host bindings + preload ---
         await testHotkeyPreloadSurvival(page, origin);

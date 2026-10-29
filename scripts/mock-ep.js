@@ -7,6 +7,8 @@
 //   GET /task/play   question (#question-text), answer box (input#answer-text),
 //                    wrong-answer modal (uib-modal-window + td#question-field ...),
 //                    completion button (button.exit-button)
+//   GET /task/choice multiple-choice question ([role=radiogroup] of [role=radio] options
+//                    plus button#submit-answer-button); same modal and exit button
 //
 // The answers are the German words one..five; a wrong submission shows the
 // correction modal, a right one advances the round.
@@ -127,6 +129,81 @@ const taskPage = (start) => {
     </script>`);
 };
 
+// Choice round: the answer is picked by clicking a role=radio option (aria-checked marks
+// the selection) and submitted with the button. Right answers clear the selection and
+// advance; wrong ones show the correction modal.
+const choicePage = () => {
+    const rounds = WORDS.map(([question, answer], i) => ({
+        question,
+        answer,
+        options: [answer, WORDS[(i + 1) % WORDS.length][1], WORDS[(i + 2) % WORDS.length][1]]
+            .sort((a, b) => a.localeCompare(b)),
+    }));
+    return PAGE(`
+    <main>
+        <span id="question-text">${rounds[0].question}</span>
+        <div role="radiogroup" id="choices"></div>
+        <button id="submit-answer-button">Check</button>
+        <button class="exit-button" hidden onclick="location.href='/learning/dashboard'">Exit</button>
+    </main>
+    <script>
+        const rounds = ${JSON.stringify(rounds)};
+        let index = 0;
+        const question = document.getElementById('question-text');
+        const group = document.getElementById('choices');
+        const exit = document.querySelector('.exit-button');
+
+        function render() {
+            if (index >= rounds.length) {
+                question.remove();
+                group.remove();
+                document.getElementById('submit-answer-button').remove();
+                exit.hidden = false;
+                return;
+            }
+            question.textContent = rounds[index].question;
+            group.innerHTML = '';
+            for (const label of rounds[index].options) {
+                const option = document.createElement('div');
+                option.setAttribute('role', 'radio');
+                option.setAttribute('aria-checked', 'false');
+                option.textContent = label;
+                option.onclick = () => {
+                    group.querySelectorAll('[role=radio]').forEach(o => o.setAttribute('aria-checked', 'false'));
+                    option.setAttribute('aria-checked', 'true');
+                };
+                group.appendChild(option);
+            }
+        }
+
+        function advance() {
+            document.querySelectorAll('[uib-modal-window]').forEach(m => m.remove());
+            index += 1;
+            render();
+        }
+
+        document.getElementById('submit-answer-button').onclick = () => {
+            const picked = group.querySelector('[aria-checked=true]');
+            if (!picked) return;
+            if (picked.textContent === rounds[index].answer) {
+                advance();
+            } else {
+                const modal = document.createElement('div');
+                modal.setAttribute('uib-modal-window', 'modal-window');
+                modal.innerHTML = \`
+                    <table class="modal-body">
+                        <tr><td id="question-field">\${rounds[index].question}</td></tr>
+                        <tr><td id="correct-answer-field">\${rounds[index].answer}</td></tr>
+                        <tr><td id="users-answer-field"><span>\${picked.textContent}</span></td></tr>
+                    </table>
+                    <button id="continue-button" onclick="advance()">Continue</button>\`;
+                document.body.appendChild(modal);
+            }
+        };
+        render();
+    </script>`);
+};
+
 function createServer() {
     return http.createServer((req, res) => {
         const url = new URL(req.url, 'http://127.0.0.1');
@@ -142,6 +219,7 @@ function createServer() {
             const start = Number.parseInt(url.searchParams.get('start') || '0', 10);
             return send(taskPage(start));
         }
+        if (url.pathname === '/task/choice') return send(choicePage());
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end('not found');
     });

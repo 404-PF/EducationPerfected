@@ -394,6 +394,14 @@ async function resolveCredentials(watchForSession) {
         question_css: '#question-text',
         answer_box_css: 'input#answer-text',
 
+        // choice questions (multiple choice). NOT yet audited against the live app: the
+        // markup of EP's choice questions is unknown (issue #31), so these are provisional
+        // ARIA-based guesses, mirrored by scripts/mock-ep.js. Audit status: unaudited as of
+        // 2026-10-29 - update this date once checked against the live bundles.
+        choice_group_css: '[role=radiogroup]',
+        choice_option_css: '[role=radiogroup] [role=radio]',
+        choice_submit_css: 'button#submit-answer-button',
+
         exit_button_css: 'button.exit-button',
         exit_continue_button_css: 'button.continue-button',
 
@@ -1174,6 +1182,82 @@ async function resolveCredentials(watchForSession) {
             }
 
             /**
+ * Question-type handlers share one interface so later types (audio, matching, ordering,
+ * Smart Lessons...) add an entry to QUESTION_HANDLERS instead of a new loop:
+ *   type        - name used in logs
+ *   detect()    - resolves true when the page currently shows this type of question
+ *   advanced(state) - given waitForAdvance's page snapshot, true when the submitted round
+ *                 changed (each type reports its own signal; text: the box emptied,
+ *                 choice: the selection was cleared or the group went away)
+ * Handlers that act without keystrokes also provide
+ *   answer(answer) - resolves 'unmatched' | 'unverified' | 'ready'
+ *   submit()    - resolves true when the answer was submitted
+ * The text handler's typing flow stays inline in answerQuestions (unchanged speed).
+ */
+            const TEXT_HANDLER = {
+                type: 'text',
+                detect: async () => true,
+                advanced: state => state.box === '',
+            };
+
+            const normaliseOption = text => String(text).replace(/\s+/g, ' ').trim().toLowerCase();
+
+            const CHOICE_HANDLER = {
+                type: 'choice',
+                detect: async () => (await page.$(DIR.choice_group_css)) !== null,
+                advanced: state => state.choice === null || state.choice.selected === 0,
+                async answer(answer) {
+                    const wanted = normaliseOption(answer);
+                    const options = await page.$$(DIR.choice_option_css);
+                    try {
+                        const labels = await Promise.all(options.map(o => o.evaluate(el => el.innerText)));
+                        const matches = labels.map((l, i) => normaliseOption(l) === wanted ? i : -1).filter(i => i >= 0);
+                        if (matches.length !== 1) {
+                            console.log(matches.length === 0
+                                ? `Answer "${answer}" is not among the options [${labels.map(l => l.trim()).join(' | ')}].`
+                                : `Answer "${answer}" matches ${matches.length} options; refusing to guess.`);
+                            return 'unmatched';
+                        }
+                        const target = options[matches[0]];
+                        await target.click();
+                        // verify the selection took before anything is submitted
+                        for (let i = 0; i < 20; i++) {
+                            const selected = await Promise.all(options.map(o => o.evaluate(el =>
+                                el.getAttribute('aria-checked') === 'true'
+                                || el.classList.contains('selected')
+                                || (el.querySelector('input') ? el.querySelector('input').checked : false)
+                            ).catch(() => false)));
+                            if (selected[matches[0]] && selected.filter(Boolean).length === 1) return 'ready';
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                        }
+                        return 'unverified';
+                    } finally {
+                        await Promise.all(options.map(o => o.dispose().catch(() => { })));
+                    }
+                },
+                async submit() {
+                    const button = await page.$(DIR.choice_submit_css);
+                    if (button) {
+                        await button.click();
+                        await button.dispose();
+                        return true;
+                    }
+                    await page.keyboard.press('Enter');
+                    return true;
+                },
+            };
+
+            // order matters: the first handler whose detect() passes wins; text is the fallback
+            const QUESTION_HANDLERS = [CHOICE_HANDLER, TEXT_HANDLER];
+
+            async function detectHandler() {
+                for (const handler of QUESTION_HANDLERS) {
+                    if (await handler.detect().catch(() => false)) return handler;
+                }
+                return TEXT_HANDLER;
+            }
+
+            /**
  * Waits for the round to advance past the previous question, or for a modal to appear.
  * Polls the question text and answer box value; treats a cleared box as advancement.
  * Aborts cleanly if TOGGLE becomes false. Returns a status string.
@@ -1182,22 +1266,31 @@ async function resolveCredentials(watchForSession) {
  * @param {string} submitted - The answer that was submitted
  * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
  */
-            async function waitForAdvance(previous, timeout, submitted) {
+            async function waitForAdvance(previous, timeout, submitted, handler = TEXT_HANDLER) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
-                    const state = await page.evaluate((qCss, mCss, aCss) => {
+                    const state = await page.evaluate((qCss, mCss, aCss, gCss, oCss) => {
                         const q = document.querySelector(qCss);
                         const box = document.querySelector(aCss);
+                        const group = document.querySelector(gCss);
+                        const options = group ? Array.from(document.querySelectorAll(oCss)) : [];
+                        const isSelected = el => el.getAttribute('aria-checked') === 'true'
+                            || el.classList.contains('selected')
+                            || (el.querySelector('input') ? el.querySelector('input').checked : false);
                         return {
                             question: q ? q.textContent : null,
                             modal: document.querySelector(mCss) !== null,
                             box: box ? box.value : null,
+                            choice: group ? {
+                                labels: options.map(o => o.innerText.trim()),
+                                selected: options.filter(isSelected).length,
+                            } : null,
                         };
-                    }, DIR.question_css, DIR.modal_css, DIR.answer_box_css);
+                    }, DIR.question_css, DIR.modal_css, DIR.answer_box_css, DIR.choice_group_css, DIR.choice_option_css);
 
                     if (state.modal) return 'modal';
                     if (state.question === null || state.question !== previous) return 'advanced';
-                    if (typeof submitted === 'string' && state.box === '') return 'advanced';
+                    if (typeof submitted === 'string' && handler.advanced(state)) return 'advanced';
                     await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 return TOGGLE ? 'timeout' : 'aborted';
@@ -1532,6 +1625,53 @@ async function resolveCredentials(watchForSession) {
                     if (typeof answer !== 'string' || answer === '') {
                         console.log(`Refusing to type an empty answer for "${question}".`);
                         break;
+                    }
+
+                    const handler = await detectHandler();
+                    if (handler !== TEXT_HANDLER) {
+                        const prepared = await handler.answer(answer);
+                        if (!TOGGLE) break;
+                        if (prepared === 'unmatched') {
+                            // never click something random: report and stop instead
+                            const message = `Cannot answer the ${handler.type} question "${question}": the expected answer is not among its options. Skipping it and stopping the run.`;
+                            console.error(message);
+                            await alert(message);
+                            break;
+                        }
+                        if (prepared !== 'ready') {
+                            boxVanishedRounds += 1;
+                            console.log(`Could not verify the ${handler.type} selection for "${question}"; restart ${boxVanishedRounds}/5.`);
+                            if (boxVanishedRounds >= 5) {
+                                console.log('The selection never verified; stopping the run.');
+                                break;
+                            }
+                            continue;
+                        }
+                        boxVanishedRounds = 0;
+                        if ((await readQuestionText()) !== question) continue;
+
+                        if (ENTER) await handler.submit();
+                        lastSubmitted = { question, answer };
+                        let outcome = await waitForAdvance(question, ENTER ? ADVANCE_TIMEOUT : 0, answer, handler);
+                        if (outcome === 'timeout' && ENTER && TOGGLE) {
+                            console.log(`Question "${question}" did not advance within ${ADVANCE_TIMEOUT}ms; submitting again.`);
+                            await handler.submit();
+                            outcome = await waitForAdvance(question, ADVANCE_TIMEOUT, answer, handler);
+                            if (outcome === 'timeout') {
+                                console.error(`Question "${question}" did not advance after submitting "${answer}". Stopping.`);
+                                await alert(`Answer loop stopped: "${question}" did not advance.`);
+                                break;
+                            }
+                        }
+                        if (outcome === 'aborted') break;
+                        if (outcome === 'advanced') {
+                            futileDict[futileKey(question)] = 0;
+                            futileStop = false;
+                        }
+                        if (outcome === 'modal') {
+                            if (!await handleModalAndContinue(question, answer, randomRound)) break;
+                        }
+                        continue;
                     }
 
                     // The screen can look identical after a round: dictionary tasks draw
