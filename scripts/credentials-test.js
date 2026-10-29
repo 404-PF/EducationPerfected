@@ -167,10 +167,11 @@ function fileKind(filePath) {
  * opener inside a value is part of that value and an apostrophe inside a comment is
  * part of that comment. Quoting state spans the whole snippet rather than one line:
  * a template literal keeps going until its closing backtick, so a `//` on an earlier
- * line of the value cannot hide the rest of the assignment. `'` and `"` still end at
- * their quote or the line break, as always in JavaScript, so an odd quote mark in
- * prose cannot swallow the lines after it. Literal contents stay in the masked text
- * — a secret assigned inside a template (or interpolation) is still reported.
+ * line of the value cannot hide the rest of the assignment. A `'` or `"` literal
+ * must close on its own line — without its closer it is left to the scan as code,
+ * so an odd quote mark in prose cannot swallow the lines after it. Literal contents
+ * stay in the masked text — a secret assigned inside a template (or interpolation)
+ * is still reported.
  *
  * Fragments that never close — a block comment without its terminator, a backtick
  * without its closer — are left as they are, so the scan errs toward inspecting more
@@ -185,8 +186,8 @@ function stripComments(text) {
     // cannot hold one and so never leak past the line they open on.
     const SCANNERS = [
         /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,
-        /'(?:\\.|[^'\\\n])*/g,
-        /"(?:\\.|[^"\\\n])*/g,
+        /'(?:\\.|[^'\\\n])*'/g,
+        /"(?:\\.|[^"\\\n])*"/g,
         /`(?:\\[\s\S]|[^`\\])*`/g,
     ];
     let out = '';
@@ -346,6 +347,7 @@ check('no .env is tracked and index.js does not read one');
         ['password = ' + q + 'https://example.com/secret' + q, 1, 'a // inside a quoted value does not cut it'],
         ['password = ' + q + 'actual /* secret */ value' + q, 1, 'a /* inside a quoted value does not cut it'],
         ['/* example:\npassword = ' + q + 'actual-secret' + q + '\n*/\n', 0, 'assignments inside a block comment are prose, not code'],
+        ['const x = ' + q + 'ok' + q + '; // password = ' + q + 'fake' + q, 0, 'a comment after a quoted value is prose, not code'],
         ['password =\n  ' + q + 'actual-secret' + q, 1, 'assignments split across lines'],
         ['const password_css = ' + q + '#password' + q, 0, 'selectors are not secrets'],
         ['const tokenCount = ' + q + 'not-a-secret' + q, 0, 'derived names are not secrets'],
