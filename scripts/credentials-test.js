@@ -562,6 +562,13 @@ async function withCredentialsFixtures(watcherDir, suffix, fake) {
             source: 'EP_EMAIL/EP_PASSWORD',
         });
         check('environment variables take precedence over the keychain');
+        const priorTestBoot = process.env.EP_TEST_BOOT;
+        process.env.EP_TEST_BOOT = '1';
+        assert.equal(await keychain.resolveCredentials(), null);
+        if (priorTestBoot === undefined) delete process.env.EP_TEST_BOOT;
+        else process.env.EP_TEST_BOOT = priorTestBoot;
+        check('test boot ignores both configured environment and populated keychain credentials');
+
 
         delete process.env.EP_PASSWORD;
         assert.deepEqual(await keychain.resolveCredentials(), {

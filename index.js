@@ -1,6 +1,8 @@
 // v2.2.0
 
 const puppeteer = require('puppeteer');
+const { detectQuestion } = require('./lib/detect-question');
+const { playChoiceRound } = require('./lib/choice-handler');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -308,6 +310,9 @@ async function promptCredentials(watchForSession) {
  * @returns {Promise<{email: string, password: string, source: string}|{sessionDetected: true}|null>}
  */
 async function resolveCredentials(watchForSession) {
+    // Test boot must never consult env credentials, the OS keychain, or a
+    // terminal prompt. The local harness performs its own inert mock login.
+    if (process.env.EP_TEST_BOOT === '1') return null;
     const email = cleanEmail(process.env.EP_EMAIL);
     const password = cleanPassword(process.env.EP_PASSWORD);
     if (email && password) return { email, password, source: 'EP_EMAIL/EP_PASSWORD' };
@@ -336,11 +341,16 @@ async function resolveCredentials(watchForSession) {
 // ===== Program ===== //
 
 (async () => {
+    // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
+    // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
+    // real run they are ignored, so a stray environment can never point the
+    // program at a lookalike host or disable the host protection below.
+    const TEST_BOOT = process.env.EP_TEST_BOOT === '1';
     const DIR = {
         // Credentials are resolved at runtime (see resolveCredentials) and never kept
         // anywhere a commit could pick them up. Email/password are added below.
 
-        login_url: 'https://app.educationperfect.com/app/login',
+        login_url: (TEST_BOOT && process.env.EP_LOGIN_URL) || 'https://app.educationperfect.com/app/login',
 
         // The login form is no longer served from app.educationperfect.com: that URL
         // boots the SPA, which bounces /app/login -> / -> authentication.educationperfect.com
@@ -348,7 +358,7 @@ async function resolveCredentials(watchForSession) {
         // #loginId/#password ids, so the selectors below only need the matching origin -
         // a same-document selector wait would never match while the page is still on the
         // first host.
-        login_host: 'iam.educationperfect.com',
+        login_host: (TEST_BOOT && process.env.EP_LOGIN_HOST) || 'iam.educationperfect.com',
 
         // log-in page elements
         username_css: '#loginId',
@@ -394,6 +404,11 @@ async function resolveCredentials(watchForSession) {
         question_css: '#question-text',
         answer_box_css: 'input#answer-text',
 
+        // task page: Smart Lesson/Assessment and audio-task shapes. Audited against
+        // the live app (Italian Smart Lesson + Listening/Dictation, 2026-10-30);
+        // lib/detect-question.js carries the full markup notes, including why the
+        // per-option ids are unusable and where EP ships the answers client-side.
+
         exit_button_css: 'button.exit-button',
         exit_continue_button_css: 'button.continue-button',
 
@@ -405,11 +420,14 @@ async function resolveCredentials(watchForSession) {
 
     // launch browser
     puppeteer.launch({
-        headless: false,
+        // test boot: no visible window, and the endpoint is printed so the
+        // test can attach
+        headless: TEST_BOOT ? 'shell' : false,
         defaultViewport: null,
         handleSIGINT: false
     })
         .then(async browser => {
+            if (TEST_BOOT) console.log(`EP_WS_ENDPOINT=${browser.wsEndpoint()}`);
             const page = (await browser.pages())[0];
 
             /**
@@ -664,7 +682,8 @@ async function resolveCredentials(watchForSession) {
             // EP round-trips (large class, slow backend, transient lag) can legitimately
             // exceed 5s, so a fixed 5s timeout used to abort the whole task on one slow
             // round. Keep generous, and retry the round once before giving up.
-            const ADVANCE_TIMEOUT = 15000;
+            const ADVANCE_TIMEOUT = TEST_BOOT && Number(process.env.EP_TEST_ADVANCE_TIMEOUT) > 0
+                ? Number(process.env.EP_TEST_ADVANCE_TIMEOUT) : 15000;
 
             // question -> ordered candidate answers (most-preferred first), seeded from
             // the word lists and enriched by what wrong-answer modals prove.
@@ -1050,7 +1069,7 @@ async function resolveCredentials(watchForSession) {
                 // being typed: the detected question then belonged to an item different from
                 // the one graded, and every later occurrence of those words was mis-answered
                 // while "learning" wrote the wrong pairing back again.
-                if (modalQuestion !== question) {
+                if (!/^(audio|typed):/.test(question) && modalQuestion !== question) {
                     console.warn(`Round skew: read question "${question}" but EP graded "${modalQuestion}". Learning only the graded pairing.`);
                 }
                 // EP just graded `answer` wrong for modalQuestion: that exact pairing must
@@ -1323,6 +1342,11 @@ async function resolveCredentials(watchForSession) {
                 throw new Error(`Could not enter answer "${answer}" (box contains "${await answerBoxValue()}").`);
             }
 
+            // non-text item key -> submissions attempted this run (the per-item bound
+            // in handleTypedRound; keys are contentID+questionIndex+mode, so entries
+            // never bleed across items or runs)
+            const typedSubmissionsByKey = new Map();
+
             // the last (question, answer) submitted in the current run. A round whose
             // submission is still on screen must not be resubmitted blindly — the stall
             // guard below checks for exactly that. Cleared whenever a modal is handled,
@@ -1350,6 +1374,274 @@ async function resolveCredentials(watchForSession) {
             }
 
             /**
+ * Waits for a non-text round to advance past the current item, or for a modal.
+ * Mirrors waitForAdvance, but the round's identity is the detected question key:
+ * audio and lesson items have no #question-text to compare.
+ * @param {string} key - descriptor.key of the submitted item
+ * @param {number} timeout - Timeout in ms (0 = no timeout)
+ * @param {string} submitted - The answer that was submitted
+ * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
+ */
+            async function waitForAdvanceKey(key, timeout, submitted) {
+                const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
+                while (TOGGLE && Date.now() < deadline) {
+                    if (await page.$(DIR.modal_css) !== null) return 'modal';
+                    const current = await detectQuestion(page);
+                    if (current === null) {
+                        // a transition, or the task ended: only the VISIBLE completion
+                        // controls prove completion (they exist hidden on every round)
+                        const complete = await page.evaluate((exitCss, contCss) => {
+                            const shown = (css) => {
+                                const el = document.querySelector(css);
+                                return !!el && !el.hidden && (el.offsetParent !== null || el.getClientRects().length > 0);
+                            };
+                            return shown(exitCss) || shown(contCss);
+                        }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
+                        if (complete) return 'advanced';
+                    } else if (typeof current.key === 'string' && current.key !== key) {
+                        return 'advanced';
+                    }
+                    // A cleared answer box is deliberately NOT an advance signal here
+                    // (unlike the classic path): if EP rejects a typed audio/lesson
+                    // answer by clearing the box while keeping the same item on screen,
+                    // treating the clear as advancement would resubmit the same answer
+                    // forever. Advancement is a changed question key, a modal, or
+                    // completion - nothing else.
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                return TOGGLE ? 'timeout' : 'aborted';
+            }
+
+            /**
+ * Plays one round of an audio (Listening/Dictation) or lesson short-answer question.
+ * The accepted answers ship in EP's client-side question state (verified live
+ * 2026-10-30 for Listening/Dictation; the lesson short-answer shape is
+ * extrapolated, not live-verified), so the round is: type the first shipped
+ * answer EP hasn't rejected,
+ * submit, wait for the item to change. No random probing - the answers come from
+ * EP itself, so if every one is rejected the item is broken, not unknown, and the
+ * run stops and reports instead of guessing (issue #32's fail-loudly rule).
+ * @param {object} descriptor - audio/typed descriptor from detectQuestion
+ * @returns {Promise<boolean>} False to stop the run, true to keep looping
+ */
+            async function handleTypedRound(descriptor) {
+                const key = descriptor.key;
+                // Marking gate. Lesson short-answer is strict: the flag (captured
+                // as a real boolean on a Smart Lesson, 2026-10-30) must be
+                // explicitly true. List audio tasks ship no sectionData at all
+                // (captured on Listening), so audio is allowed either by an
+                // explicit true flag OR by positive identification of the
+                // captured self-test list context (contentSource.selectedActivity
+                // with _taskID null, _activityType 1, _contentType 1 - see
+                // detect-question.js; the no-teacher-marking-surface reading of
+                // that shape is a documented inference, not a proof). An explicit
+                // false, an assigned task, or any unknown context stops the run.
+                if (descriptor.kind === 'audio') {
+                    // the list allowance substitutes ONLY for the captured live
+                    // shape: sectionData genuinely ABSENT. A present but
+                    // unreadable/malformed sectionData never borrows it.
+                    const allowed = descriptor.autoMarked === true
+                        || (descriptor.autoMarked === 'unknown' && descriptor.sectionDataPresent === false && descriptor.selfTestList === true);
+                    if (!allowed) {
+                        const message = descriptor.autoMarked === false
+                            ? 'This audio task is marked manually (self/peer/teacher), not auto-marked by EP; stopping instead of answering.'
+                            : 'EP did not confirm this audio task is auto-marked or a self-test list (the marking fields were missing or unreadable); stopping instead of answering.';
+                        console.error(message);
+                        await alert(message);
+                        return false;
+                    }
+                } else if (descriptor.autoMarked !== true) {
+                    const message = descriptor.autoMarked === false
+                        ? 'This lesson question is marked manually (self/peer/teacher), not auto-marked by EP; stopping instead of answering.'
+                        : 'EP did not confirm this lesson question is auto-marked (the marking field was missing or unreadable); stopping instead of answering.';
+                    console.error(message);
+                    await alert(message);
+                    return false;
+                }
+                // Bound the submissions any single item can get in one run. The
+                // advance wait below treats only a changed question key, a modal, or
+                // completion as progress, so an item that quietly rejects (cleared
+                // box, same question) would otherwise be resubmitted without limit.
+                // Two attempts mirror the classic path's submit-once-plus-one-retry.
+                const submissions = typedSubmissionsByKey.get(key) || 0;
+                if (submissions >= 2) {
+                    const message = `EP has not accepted ${submissions} submissions for ${key}; stopping instead of resubmitting.`;
+                    console.error(message);
+                    await alert(message);
+                    return false;
+                }
+                const answers = (descriptor.answers || []).filter(a => typeof a === 'string' && a.trim() !== '');
+                const rejected = rejectedDict[key] || new Set();
+                const answer = answers.find(a => !rejected.has(a));
+                if (answer === undefined) {
+                    const message = answers.length === 0
+                        ? `This ${descriptor.kind === 'audio' ? 'audio' : 'lesson'} question ships no accepted answers to answer with (it may be manually marked); stopping instead of guessing.`
+                        : `EP rejected every shipped answer for ${key}; stopping instead of guessing.`;
+                    console.error(message);
+                    await alert(message);
+                    return false;
+                }
+
+                console.log(`Answering ${descriptor.kind === 'audio' ? 'audio' : 'lesson'} question ${key} from EP's shipped answers.`);
+                if (!await enterAnswer(answer)) {
+                    // the box vanished mid-entry: a round transition; the next pass re-detects
+                    console.log('Answer box vanished while answering; re-detecting the question.');
+                    return true;
+                }
+                if (!TOGGLE) return false;
+
+                // the item can swap while the answer is being typed (the same round
+                // skew the classic path guards against): re-detect before submitting
+                const fresh = await detectQuestion(page);
+                if (fresh === null || fresh.kind === 'text' || fresh.key !== key) {
+                    console.log(`Question changed while typing (${key}); looking the answer up again on the next pass.`);
+                    return true;
+                }
+
+                // Recheck the actual value after scope detection, immediately
+                // before Enter. No submission slot is consumed by a lost box.
+                if (await answerBoxValue() !== answer || !TOGGLE) return true;
+                if (ENTER) {
+                    typedSubmissionsByKey.set(key, submissions + 1);
+                    await page.keyboard.press('Enter');
+                }
+                lastSubmitted = { question: key, answer };
+
+                let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer);
+                if (outcome === 'timeout' && ENTER) {
+                    // same single-retry policy as the classic path: EP can swallow
+                    // an Enter. But a quiet rejection CLEARS the box, so never
+                    // retry blind: re-read it and retype the exact answer first,
+                    // otherwise the retry submits an empty box.
+                    console.log(`Question ${key} did not advance within ${ADVANCE_TIMEOUT}ms; retrying the submission once.`);
+                    await page.click(DIR.answer_box_css).catch(() => { });
+                    if (!TOGGLE) return false;
+                    const inBox = await page.$eval(DIR.answer_box_css, el => el.value).catch(() => null);
+                    if (inBox === null) {
+                        console.log('Answer box vanished before the retry; re-detecting the question.');
+                        return true;
+                    }
+                    if (inBox !== answer) {
+                        console.log(inBox === ''
+                            ? 'The answer box was cleared after the submission (quiet rejection); retyping the answer for the retry.'
+                            : 'The answer box content changed after the submission; retyping the answer for the retry.');
+                        if (!await enterAnswer(answer)) {
+                            console.log('Answer box vanished while retyping; re-detecting the question.');
+                            return true;
+                        }
+                        if (!TOGGLE) return false;
+                    }
+                    const retryQuestion = await detectQuestion(page);
+                    if (!retryQuestion || retryQuestion.key !== key) return true;
+                    if (await answerBoxValue() !== answer || !TOGGLE) return true;
+                    const retryCount = typedSubmissionsByKey.get(key) || 0;
+                    if (retryCount >= 2) {
+                        const message = `EP has not accepted ${retryCount} submissions for ${key}; stopping instead of resubmitting.`;
+                        console.error(message);
+                        await alert(message);
+                        return false;
+                    }
+                    typedSubmissionsByKey.set(key, retryCount + 1);
+                    await page.keyboard.press('Enter');
+                    outcome = await waitForAdvanceKey(key, ADVANCE_TIMEOUT, answer);
+                    if (outcome === 'timeout') {
+                        console.error(`Question ${key} did not advance after submitting its answer. Stopping.`);
+                        await alert(`Answer loop stopped: ${key} did not advance.`);
+                        return false;
+                    }
+                }
+                if (outcome === 'timeout' && !ENTER) {
+                    // semi-auto: the answer is typed and awaiting the user's Enter
+                    console.log(`Waiting for the answer to ${key} to be submitted.`);
+                    outcome = await waitForAdvanceKey(key, 0, answer);
+                }
+                if (outcome === 'aborted') return false;
+                if (outcome === 'modal') {
+                    // the modal proves this shipped answer was rejected: record that and
+                    // learn whatever correction it shows, then try the remaining answers
+                    recordRejection(key, answer);
+                    return await handleModalAndContinue(key, answer, false);
+                }
+                return TOGGLE;
+            }
+
+            // The non-text question handlers, dispatched from answerQuestions by the
+            // detected descriptor's kind (issue #33's QUESTION_HANDLERS). Detection is
+            // deliberately shared per-round in detectQuestion: a round must be
+            // classified atomically (and re-detected for stabilization), not probed by
+            // each handler in turn. Each handler plays one round from the descriptor
+            // and returns false to stop the run, true to keep looping.
+            const QUESTION_HANDLERS = [
+                { type: 'choice', play: playChoiceDescriptorRound },
+                { type: 'audio', play: handleTypedRound },
+                { type: 'typed', play: handleTypedRound },
+            ];
+
+            /**
+ * Plays one round of a non-text question (Smart Lesson slide or audio task).
+ * Every refusal path stops and reports rather than guessing (issue #33).
+ * @param {object} descriptor - non-text descriptor from detectQuestion
+ * @returns {Promise<boolean>} False to stop the run, true to keep looping
+ */
+            async function handleNonTextRound(descriptor) {
+                if (!TOGGLE) return false;
+                if (descriptor.kind === 'unsupported') {
+                    console.error(descriptor.reason);
+                    await alert(descriptor.reason);
+                    return false;
+                }
+                const handler = QUESTION_HANDLERS.find(h => h.type === descriptor.kind);
+                if (!handler) {
+                    const message = `No question handler is registered for "${descriptor.kind}"; stopping instead of guessing.`;
+                    console.error(message);
+                    await alert(message);
+                    return false;
+                }
+                return await handler.play(descriptor);
+            }
+
+            /**
+ * Choice-round handler: re-detects the slide to confirm it held still, then
+ * plays it through lib/choice-handler.js and maps the outcome onto the run.
+ * @param {object} descriptor - choice descriptor from detectQuestion
+ * @returns {Promise<boolean>} False to stop the run, true to keep looping
+ */
+            async function playChoiceDescriptorRound(descriptor) {
+                    // EP swaps slides asynchronously, like it swaps question text: require
+                    // the detected slide to hold still across two reads before clicking.
+                    const again = await detectQuestion(page);
+                    if (again === null || again.kind !== 'choice' || again.key !== descriptor.key) {
+                        console.log('Choice slide changed during detection; re-reading it in a fresh pass.');
+                        return true;
+                    }
+                    const result = await playChoiceRound(page, again, {
+                        enter: ENTER,
+                        timeout: ADVANCE_TIMEOUT,
+                        shouldStop: () => !TOGGLE,
+                        log: msg => console.log(msg),
+                    });
+                    if (result.status === 'advanced') return TOGGLE;
+                    if (result.status === 'aborted') return false;
+                    if (result.status === 'complete') {
+                        console.log('Lesson completed.');
+                        return false;
+                    }
+                    if (result.status === 'modal') {
+                        // A modal after a choice submission is not necessarily a
+                        // rejection (EP shows info/completion modals too), and the
+                        // wrong-answer modal for choice questions has never been
+                        // observed live. Stop and report rather than guess which it is.
+                        console.error('A modal appeared during the choice round; stopping so it can be checked. The submission may or may not have been accepted.');
+                        await alert('A modal interrupted the choice round; stopping the run.');
+                        return false;
+                    }
+                    // 'stopped'
+                    console.error(result.message);
+                    await alert(result.message);
+                    return false;
+                }
+
+            /**
  * Main answer loop: runs until TOGGLE is false, task completes, or an error occurs.
  * Handles cleanup, modal resolution, and page-gone errors. Restart-safe.
  * @returns {Promise<void>}
@@ -1359,6 +1651,7 @@ async function resolveCredentials(watchForSession) {
 
                 TOGGLE = true;
                 lastSubmitted = null;
+                typedSubmissionsByKey.clear();
                 futileStop = false;  // a manual restart after a futility stop gets a fresh bounded run
                 console.log("answerLoop entered.");
 
@@ -1421,29 +1714,48 @@ async function resolveCredentials(watchForSession) {
                         // this loop itself, so honor it here
                         break;
                     }
-                    let question = await readQuestionText();
-                    if (question === null) {
+                    // Per-round question-type detection (issues #33/#32): the loop asks
+                    // the page what it is showing instead of assuming #question-text.
+                    // Classic text questions keep the inline path below; Smart Lesson
+                    // slides and audio tasks are played by their handlers, and the next
+                    // pass detects fresh. This is also what lets a run start on a lesson
+                    // page, where #question-text never exists.
+                    let descriptor = await detectQuestion(page);
+                    if (descriptor === null) {
                         // The question element disappears on round transitions and on the
                         // task's end screens, but an unconfirmed disappearance must not
                         // kill a live run or click the wrong control: wait (up to ~20s)
-                        // for the element to return, or for an explicit completion state —
+                        // for a question to return, or for an explicit completion state —
                         // a modal, or exit/continue controls on the completion screen.
                         // The old code crashed here with a bare $eval; then it broke out
                         // of the run on any unconfirmed null question.
                         let complete = false;   // completion controls were seen on screen
                         let modalSeen = false;  // a modal is up; route it to its handler
+                        let completePolls = 0;  // consecutive polls with completion controls visible
                         for (let i = 0; i < 80 && TOGGLE; i++) {
                             await new Promise(resolve => setTimeout(resolve, 250));
-                            question = await readQuestionText();
-                            if (question !== null) break;
+                            descriptor = await detectQuestion(page);
+                            if (descriptor !== null) break;
                             if (await page.$(DIR.modal_css) !== null) { modalSeen = true; break; }
-                            complete = await page.evaluate((exitCss, contCss) => {
-                                return document.querySelector(exitCss) !== null
-                                    || document.querySelector(contCss) !== null;
+                            // The completion controls exist in the DOM (hidden) on every
+                            // round of a lesson/task, and slides unmount for a beat
+                            // before the next one mounts: only controls that are VISIBLE
+                            // on two consecutive polls (the question stayed gone, so this
+                            // is not a slide gap) prove completion. An existence check
+                            // here used to "complete" the task mid-lesson and click a
+                            // hidden exit button.
+                            const controlsVisible = await page.evaluate((exitCss, contCss) => {
+                                const shown = (css) => {
+                                    const el = document.querySelector(css);
+                                    return !!el && !el.hidden && (el.offsetParent !== null || el.getClientRects().length > 0);
+                                };
+                                return shown(exitCss) || shown(contCss);
                             }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
+                            completePolls = controlsVisible ? completePolls + 1 : 0;
+                            complete = completePolls >= 2;
                             if (complete) break;
                         }
-                        if (question === null) {
+                        if (descriptor === null) {
                             if (modalSeen) {
                                 // the completion flow is a modal window: let the modal path
                                 // resolve it (it clicks exit/continue and reports completion)
@@ -1464,8 +1776,13 @@ async function resolveCredentials(watchForSession) {
                             }
                             break;
                         }
-                        // the element came back: fall through to the fresh pass
+                        // a question came back: fall through to its pass
                     }
+                    if (descriptor.kind !== 'text') {
+                        if (!await handleNonTextRound(descriptor)) break;
+                        continue;
+                    }
+                    let question = descriptor.text;
                     // EP swaps the question element's text asynchronously after starting a
                     // round; reads taken mid-swap pick up the word EP WAS asking, not the
                     // one it is asking now (the runs watched the text flip between deck
@@ -1813,6 +2130,16 @@ async function resolveCredentials(watchForSession) {
             await page.exposeFunction('refresh', refreshWords);
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
+            // Harness-only observability and idempotent stop, never inferred
+            // from log text or exposed during normal runs.
+            if (TEST_BOOT) {
+                await page.exposeFunction('epTestState', () => ({ running: RUNNING !== null }));
+                await page.exposeFunction('epTestStop', async () => {
+                    TOGGLE = false;
+                    if (RUNNING) await RUNNING;
+                    if (CLEANUP) await CLEANUP;
+                });
+            }
 
             /**
              * Installs the hotkey keyup listener on the page document.
