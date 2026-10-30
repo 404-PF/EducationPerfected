@@ -343,7 +343,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram() {
+async function launchProgram({ legacySignals = false } = {}) {
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -426,6 +426,7 @@ async function launchProgram() {
     let startupBrowser;
     let startupSignal = null;
     let startupShutdown = null;
+    let signalClose = () => startupBrowser.close();
     const removeStartupSignals = () => {
         process.removeListener('SIGINT', onStartupInt);
         process.removeListener('SIGTERM', onStartupTerm);
@@ -436,7 +437,7 @@ async function launchProgram() {
             let timer;
             try {
                 await Promise.race([
-                    startupBrowser.close(),
+                    signalClose(),
                     new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Startup shutdown timed out')), 3000); }),
                 ]);
             } catch {
@@ -451,6 +452,7 @@ async function launchProgram() {
         return startupShutdown;
     };
     const onStartupSignal = signal => {
+        if (!startupSignal && !startupBrowser) console.log('Cancellation requested; waiting for browser launch before cleanup.');
         startupSignal ||= signal;
         // A raw credential prompt has no echo and must relinquish the terminal.
         if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
@@ -2247,7 +2249,12 @@ async function launchProgram() {
             await page.evaluate(installHotkeysInPage);
 
             console.log('Education Perfected V2 fully Loaded.');
-            removeStartupSignals();
+            if (legacySignals) {
+                // Legacy entrypoints have no CLI signal owner. Keep this owner
+                // and drain shared controls before closing the owned browser.
+                signalClose = () => controls.close();
+                browser.once('disconnected', () => { if (!startupSignal) removeStartupSignals(); });
+            } else removeStartupSignals();
             return controls;
         })
         .catch(async error => {
@@ -2278,7 +2285,7 @@ async function launchProgram() {
 
 module.exports = { launchProgram };
 if (require.main === module) {
-    launchProgram().catch(error => {
+    launchProgram({ legacySignals: true }).catch(error => {
         console.error(diagnostic(error, 'EducationPerfected startup'));
         process.exitCode = 1;
     });

@@ -7,11 +7,13 @@ const { createServer } = require('./mock-ep');
 const { cleanupTestProcess } = require('./test-process-cleanup');
 (async () => {
     const signal = process.argv.includes('--term') ? 'SIGTERM' : 'SIGINT';
+    const legacy = process.argv.includes('--legacy');
+    const entry = process.argv.includes('--launcher') ? '../bin/launch.js' : legacy ? '../index.js' : '../bin/cli.js';
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const env = { ...process.env, EP_TEST_BOOT: '1', EP_LOGIN_URL: `http://127.0.0.1:${server.address().port}/app/login`, EP_LOGIN_HOST: '127.0.0.1' };
     delete env.EP_EMAIL; delete env.EP_PASSWORD;
-    const child = spawn(process.execPath, [path.join(__dirname, '../bin/cli.js')], { env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+    const child = spawn(process.execPath, [path.join(__dirname, entry)], { env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
     let output = '', browser;
     child.stdout.on('data', d => { output += d; });
     child.stderr.on('data', d => { output += d; });
@@ -27,6 +29,21 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
         assert.equal(output.includes('Commands: start'), false);
         const endpoint = /EP_WS_ENDPOINT=(\S+)/.exec(output)?.[1];
         assert.ok(endpoint);
+        if (legacy) {
+            browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
+            const page = (await browser.pages())[0];
+            await page.type('#loginId', 'fixture-user');
+            await page.type('#password', 'fixture-only');
+            await page.click('form button');
+            await new Promise((resolve, reject) => {
+                const deadline = Date.now() + 12000;
+                timer = setInterval(() => {
+                    if (output.includes('fully Loaded.')) { clearInterval(timer); resolve(); }
+                    else if (Date.now() >= deadline) { clearInterval(timer); reject(new Error('Legacy ready checkpoint failed')); }
+                }, 20);
+            });
+            await browser.disconnect(); browser = null;
+        }
         const closed = new Promise(resolve => child.once('close', (code, sig) => resolve({ code, signal: sig })));
         child.kill(signal);
         const result = await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Startup signal did not exit')), 8000); })]);
@@ -36,7 +53,7 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
             browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
             await browser.disconnect();
         });
-        console.log('Startup signal closes browser before sign-in: ' + signal);
+        console.log((legacy ? 'Legacy signal closes browser after sign-in: ' : 'Startup signal closes browser before sign-in: ') + entry + ' / ' + signal);
     } finally {
         clearInterval(timer); clearTimeout(timer);
         if (browser) await browser.close().catch(() => {});

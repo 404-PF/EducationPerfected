@@ -195,7 +195,7 @@ function main() {
     }
 
     try {
-        require(path.join(ROOT, 'index.js')).launchProgram().catch(error => {
+        require(path.join(ROOT, 'index.js')).launchProgram({ legacySignals: true }).catch(error => {
             console.error(diagnostic(error, 'EducationPerfected startup'));
             process.exitCode = 1;
         });
