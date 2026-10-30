@@ -366,6 +366,8 @@ function stopProgramChild(child) {
     } catch { /* already exited */ }
 }
 
+const programChildren = new Set();
+
 async function bootRealProgram(origin) {
     const childEnv = { ...process.env };
     // never let real credentials reach the child: it would type them into the
@@ -383,6 +385,8 @@ async function bootRealProgram(origin) {
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: process.platform !== 'win32',
     });
+    programChildren.add(child);
+    child.once('exit', () => programChildren.delete(child));
     let output = '';
     child.stdout.on('data', d => { output += d; });
     child.stderr.on('data', d => { output += d; });
@@ -425,8 +429,7 @@ async function bootRealProgram(origin) {
 async function drive(page, route, seconds, output) {
     await page.goto(`http://127.0.0.1:${ROUTE_PORT}${route}`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.startAnswer());   // Alt+S equivalent
-    await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: seconds * 1000 }).catch(() => {});
-    await page.evaluate(() => window.epTestStop());
+    await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: seconds * 1000 });
 }
 
 let ROUTE_PORT = 0;
@@ -547,7 +550,7 @@ async function testRealLoopQuietRejection(page, output) {
     await drive(page, '/audio-reject', 32, output);
     const submissions = await page.evaluate(() => (window.__submissions || []));
     assert.ok(submissions.length > 0, 'expected at least one submission attempt');
-    assert.ok(submissions.length <= 3, `submissions unbounded: ${submissions.length} in 40s`);
+    assert.equal(submissions.length, 2, 'quiet rejection must stop naturally after exactly two submissions');
     // the bounded retry must resubmit the exact answer, never an empty box
     // cleared by the quiet rejection
     for (const s of submissions) {
@@ -568,11 +571,32 @@ async function main() {
     let launched = false;
     let page = null;
     let program = null;
+    const interrupt = code => {
+        // Registered before boot: cleanup also covers a signal while waiting
+        // for the child browser endpoint, before program has been assigned.
+        const cleanup = Promise.all([
+            program ? program.browser.close().catch(() => {}) : Promise.resolve(),
+            browser ? (launched ? browser.close() : browser.disconnect()) : Promise.resolve(),
+        ]).catch(() => {});
+        // Chrome may have its own process group, so the connected integration
+        // browser must also close over CDP. Bound cleanup in case CDP is stuck.
+        Promise.race([cleanup, new Promise(resolve => setTimeout(resolve, 3000))])
+            .finally(() => {
+                for (const child of programChildren) stopProgramChild(child);
+                process.exit(code);
+            });
+    };
+    const onSigint = () => interrupt(130);
+    const onSigterm = () => interrupt(143);
+    process.once('SIGINT', onSigint);
+    process.once('SIGTERM', onSigterm);
     try {
         if (process.env.HANDLER_BROWSER_URL) {
             browser = await puppeteer.connect({ browserURL: process.env.HANDLER_BROWSER_URL, defaultViewport: null });
         } else {
             browser = await puppeteer.launch({
+                // This harness owns bounded signal cleanup for both browsers.
+                handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
                 headless: process.env.HANDLER_HEADFUL ? false : 'shell',
                 defaultViewport: null,
                 ...(process.env.HANDLER_EXECUTABLE_PATH ? { executablePath: process.env.HANDLER_EXECUTABLE_PATH } : {}),
@@ -628,6 +652,8 @@ async function main() {
             } catch { /* already gone */ }
         }
         server.close();
+        process.removeListener('SIGINT', onSigint);
+        process.removeListener('SIGTERM', onSigterm);
     }
 }
 
