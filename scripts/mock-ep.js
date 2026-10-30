@@ -162,8 +162,12 @@ const lessonPage = (asyncTransitions) => PAGE(`
         const asyncTransitions = ${asyncTransitions ? 'true' : 'false'};
         let index = 0;
         // the AngularJS scope stub: detect-question reads scope.self.model
-        const SELF = { model: { _currentQuestion: null, gameMode: 3, sectionData: { activityGroup: { isAutoMarked: true } } } };
-        window.angular = { element: () => ({ scope: () => ({ self: SELF }) }) };
+        const SELF = { model: { _currentQuestion: null, gameMode: 3 }, sectionData: { activityGroup: { isAutoMarked: true } } };
+        window.angular = { element: el => ({
+            scope: () => el && el.id === 'sa-navigation-controls'
+                ? { self: { isCompositionRoot: true }, game: { model: SELF.model } } : { self: SELF },
+            isolateScope: () => el && el.id === 'sa-navigation-controls' ? { self: { model: SELF.model } } : undefined,
+        }) };
 
         const host = document.getElementById('slide-host');
         const exit = document.querySelector('.exit-button');
@@ -227,27 +231,26 @@ const lessonPage = (asyncTransitions) => PAGE(`
                 if (!selected) return;
                 const chosen = selected.querySelector('#render-group').textContent.trim();
                 if (chosen === rounds[index].correct) {
-                    submit.style.display = 'none';
-                    next.style.display = '';
+                    advance();
                 } else {
-                    const modal = document.createElement('div');
-                    modal.setAttribute('uib-modal-window', 'modal-window');
-                    modal.innerHTML = '<table class="modal-body">'
-                        + '<tr><td id="question-field">' + rounds[index].word + '</td></tr>'
-                        + '<tr><td id="correct-answer-field">' + rounds[index].correct + '</td></tr>'
-                        + '<tr><td id="users-answer-field"><span>' + chosen + '</span></td></tr></table>';
-                    document.body.appendChild(modal);
+                    submit.style.display = 'none';
+                    next.textContent = '3 seconds';
+                    next.style.display = '';
+                    next.disabled = true;
+                    const scheduleUnlock = window.__choiceScheduleUnlock || setTimeout;
+                    scheduleUnlock(() => { next.disabled = false; next.textContent = 'Next Question'; }, 150);
                 }
             });
-            next.addEventListener('click', () => {
+            function advance() {
                 index += 1;
                 if (asyncTransitions && index < rounds.length) {
-                    unmount();                  // old slide gone at once
-                    setTimeout(render, 800);    // SPA remount latency
+                    unmount();
+                    setTimeout(render, 800);
                 } else {
                     render();
                 }
-            });
+            }
+            next.addEventListener('click', advance);
             host.appendChild(group);
             host.appendChild(mc);
             host.appendChild(hiddenSubmit);
@@ -349,7 +352,7 @@ const audioRejectPage = (selectedActivity, sectionDataSnippet) => PAGE(`
             questionIndex: 0,
             validAnswers: [{ outputString: 'Ho la febbre' }],
             translationMode: 2,
-        }, contentSource: { selectedActivity: ${JSON.stringify(selectedActivity)} }${sectionDataSnippet || ''} } };
+        }, contentSource: { selectedActivity: ${JSON.stringify(selectedActivity)} } }${sectionDataSnippet || ''} };
         window.angular = { element: () => ({ scope: () => ({ self: SELF }) }) };
         const box = document.getElementById('answer-text');
         box.addEventListener('keydown', (event) => {

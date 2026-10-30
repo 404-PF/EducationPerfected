@@ -45,7 +45,7 @@ async function testChoiceFlow(page, origin) {
     assert.equal(first.autoMarked, true);
     check('choice slide detected with options and correct answer from scope state');
 
-    // round 1: select + submit + Next Question, advancing to round 2
+    // round 1: correct Submit auto-advances with no Next Question
     const round1 = await playChoiceRound(page, first, { enter: true, timeout: 5000, shouldStop: () => false });
     assert.equal(round1.status, 'advanced', JSON.stringify(round1));
     const second = await detectQuestion(page);
@@ -126,7 +126,7 @@ async function testAutoMarkingGate(page, origin) {
     await page.waitForSelector('div.multi-choice-component[role=radiogroup]', { timeout: 5000 });
 
     // explicit false: manually marked
-    await page.evaluate(() => { window.angular.element().scope().self.model.sectionData.activityGroup.isAutoMarked = false; });
+    await page.evaluate(() => { window.angular.element().scope().self.sectionData.activityGroup.isAutoMarked = false; });
     let descriptor = await detectQuestion(page);
     assert.equal(descriptor.autoMarked, false);
     let result = await playChoiceRound(page, descriptor, { enter: true, timeout: 1000, shouldStop: () => false });
@@ -134,12 +134,17 @@ async function testAutoMarkingGate(page, origin) {
     assert.match(result.message, /manually/);
 
     // missing field: unknown must also stop (fail closed)
-    await page.evaluate(() => { delete window.angular.element().scope().self.model.sectionData.activityGroup.isAutoMarked; });
+    await page.evaluate(() => { delete window.angular.element().scope().self.sectionData.activityGroup.isAutoMarked; });
     descriptor = await detectQuestion(page);
     assert.equal(descriptor.autoMarked, 'unknown');
     result = await playChoiceRound(page, descriptor, { enter: true, timeout: 1000, shouldStop: () => false });
     assert.equal(result.status, 'stopped');
     assert.match(result.message, /did not confirm/);
+    await page.evaluate(() => {
+        // A stale/unrelated game-model field must not override controller data.
+        window.angular.element().scope().self.model.sectionData = { activityGroup: { isAutoMarked: true } };
+    });
+    assert.equal((await detectQuestion(page)).autoMarked, 'unknown');
     check('auto-marking gate: explicit false and unknown both stop the round');
 }
 
@@ -199,7 +204,7 @@ async function testAudioGateSignals(page, origin) {
     await mutate(() => {
         const m = window.angular.element().scope().self.model;
         m.contentSource = { selectedActivity: { _taskID: null, _activityType: 1, _contentType: 1 } };
-        m.sectionData = { activityGroup: { isAutoMarked: false } };
+        window.angular.element().scope().self.sectionData = { activityGroup: { isAutoMarked: false } };
     });
     d = await detectQuestion(page);
     assert.equal(d.autoMarked, false);
@@ -210,7 +215,7 @@ async function testAudioGateSignals(page, origin) {
     await mutate(() => {
         const m = window.angular.element().scope().self.model;
         m.contentSource = { selectedActivity: { _taskID: null, _activityType: 1, _contentType: 1 } };
-        m.sectionData = {};
+        window.angular.element().scope().self.sectionData = {};
     });
     d = await detectQuestion(page);
     assert.equal(d.autoMarked, 'unknown');
@@ -219,7 +224,7 @@ async function testAudioGateSignals(page, origin) {
 
     // null and numeric sectionData are NOT the captured absent shape
     for (const bad of [null, 0]) {
-        await mutate((v) => { window.angular.element().scope().self.model.sectionData = v; }, bad);
+        await mutate((v) => { window.angular.element().scope().self.sectionData = v; }, bad);
         d = await detectQuestion(page);
         assert.equal(d.autoMarked, 'unknown');
         assert.equal(d.sectionDataPresent, true, `sectionData=${bad} must count as present`);
@@ -227,7 +232,7 @@ async function testAudioGateSignals(page, origin) {
     }
 
     // an explicit auto-marked flag passes on its own
-    await mutate(() => { window.angular.element().scope().self.model.sectionData = { activityGroup: { isAutoMarked: true } }; });
+    await mutate(() => { window.angular.element().scope().self.sectionData = { activityGroup: { isAutoMarked: true } }; });
     d = await detectQuestion(page);
     assert.equal(d.autoMarked, true);
 
@@ -336,6 +341,39 @@ async function testControlAssociation(page, origin) {
     assert.equal(await clickVisibleButton(page, 'Next Question', stale), 'unassociated');
     check('stale keyed descriptor refuses both Submit and Next even with the same model and bar');
 
+}
+
+async function testLiveShapedWrongChoice(page, origin) {
+    await page.goto(`${origin}/lesson`);
+    const descriptor = await detectQuestion(page);
+    assert.equal(await page.evaluate(() => {
+        const nav = window.angular.element(document.querySelector('#sa-navigation-controls'));
+        return !!nav.scope().self.model;
+    }), false, 'parent scope intentionally lacks nav model');
+    // Hold this one unlock until after the locked-state assertion. Runner
+    // latency must never turn a correct refusal into a timing-dependent click.
+    await page.evaluate(() => {
+        window.__choiceScheduleUnlock = (unlock) => { window.__choiceUnlock = unlock; };
+    });
+    await page.click('.mcq-preview-option input');
+    assert.equal(await clickVisibleButton(page, 'Submit', descriptor), 'clicked');
+    assert.equal(await clickVisibleButton(page, 'Next Question', descriptor), 'not-found', 'locked Next cannot be clicked');
+    await page.evaluate(() => { window.__choiceUnlock(); });
+    await page.waitForFunction(() => [...document.querySelectorAll('#sa-navigation-controls button')].some(b => b.textContent === 'Next Question' && !b.disabled));
+    assert.equal((await detectQuestion(page)).key, descriptor.key, 'wrong answer retains original key until Next');
+    assert.equal(await clickVisibleButton(page, 'Next Question', descriptor), 'clicked');
+    assert.notEqual((await detectQuestion(page)).key, descriptor.key);
+    // Separately exercise the unchanged real-timer fixture path, without
+    // asserting inside a fixed timer window.
+    await page.goto(`${origin}/lesson`);
+    const timedDescriptor = await detectQuestion(page);
+    await page.click('.mcq-preview-option input');
+    assert.equal(await clickVisibleButton(page, 'Submit', timedDescriptor), 'clicked');
+    await page.waitForFunction(() => [...document.querySelectorAll('#sa-navigation-controls button')].some(b => b.textContent === 'Next Question' && !b.disabled));
+    assert.equal((await detectQuestion(page)).key, timedDescriptor.key);
+    assert.equal(await clickVisibleButton(page, 'Next Question', timedDescriptor), 'clicked');
+    assert.notEqual((await detectQuestion(page)).key, timedDescriptor.key);
+    check('live-shaped nav isolate scope grades wrong answer, refuses held lock and advances only matching keyed Next; real-timer path also advances');
 }
 
 async function testNormalizedChoice(page, origin) {
@@ -506,7 +544,7 @@ async function testTypedSubmitRaces(page, origin) {
             if (!changed && window.__submissions.length === 1 && document.querySelector('#answer-text').value === 'Ho la febbre') {
                 changed = true; q.questionIndex = 1; q.contentID = 999;
                 q.validAnswers = [{ outputString: 'different answer' }];
-                m.sectionData = { activityGroup: { isAutoMarked: false } };
+                window.angular.element().scope().self.sectionData = { activityGroup: { isAutoMarked: false } };
             }
             return q;
         }});
@@ -627,6 +665,7 @@ async function main() {
             await testNormalizedChoice(page, origin);
             await testUnkeyedChoiceTransition(page, origin);
             await testControlAssociation(page, origin);
+            await testLiveShapedWrongChoice(page, origin);
         }
 
         if (phase === 'all' || phase === 'integration') {
