@@ -56,6 +56,9 @@ assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set
 // Exempting every file with that basename would also hide an unrelated fixture or copy
 // of the harness that carries a real-looking literal.
 const CREDENTIAL_HARNESSES = new Set([
+    // Explicit synthetic-only adapter/isolated-session fixtures. Never real logins.
+    'scripts/native-store-test.js',
+    'scripts/native-store-integration.sh',
     'scripts/credentials-test.js',
     'V2_Archive/scripts/credentials-test.js',
 ]);

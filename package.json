@@ -11,6 +11,8 @@
     "cli": "node bin/cli.js",
     "build:linux-dev": "node packaging/build-linux.js",
     "test:packaged": "node scripts/packaged-cli-test.js && node scripts/packaged-integrity-test.js",
+    "test:store:integration": "sh scripts/native-store-integration.sh",
+    "test:store:pty": "python3 scripts/setup-pty-test.py",
     "test:store": "node scripts/native-store-test.js",
     "test:controls": "node scripts/run-controls-test.js",
     "test:cli": "node scripts/cli-test.js",

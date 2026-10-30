@@ -11,7 +11,7 @@ const { credentialCommand } = require('../bin/cli');
     }
     const store = createCredentialStore({ Entry: FixtureEntry });
     assert.equal(await store.read(), null);
-    const fixture = { email: ['fixture', 'example.test'].join('@'), password: ['fixture', 'only', ' secret '].join('-') };
+    const fixture = { email: 'fixture@example.test', password: 'fixture-only- secret ' };
     await store.save(fixture); assert.equal(saved, 1); assert.deepEqual(await store.read(), fixture);
     assert.deepEqual(options, { linux: { store: 'secret-service' } });
     value = '{broken'; await assert.rejects(() => store.read(), /invalid/);

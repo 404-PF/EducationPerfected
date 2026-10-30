@@ -268,9 +268,9 @@ async function racePromptAgainstLogin(prompt, sessionWatch) {
  *   the first prompt, and raced against both.
  * @returns {Promise<{email: string, password: string}|PROMPT_CANCELLED_BY_LOGIN|null>}
  */
-async function promptCredentials(watchForSession) {
+async function promptCredentials(watchForSession, { setup = false } = {}) {
     if (!process.stdin.isTTY) {
-        console.log('Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
+        console.log(setup ? 'Setup requires a terminal with hidden input; no login saved.' : 'Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
         return null;
     }
     // The watcher is started, not tested: watchForSession() hands back a Promise, which
@@ -286,7 +286,7 @@ async function promptCredentials(watchForSession) {
             : racePromptAgainstLogin(prompt, sessionWatch);
     };
 
-    const emailPrompt = promptSecret('EP email (leave empty to log in manually): ', cleanEmail);
+    const emailPrompt = promptSecret(setup ? 'EP email (leave empty to cancel setup): ' : 'EP email (leave empty to log in manually): ', cleanEmail);
     const email = await race(emailPrompt);
     if (email === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (email === null) return null;
@@ -294,7 +294,7 @@ async function promptCredentials(watchForSession) {
     const password = await race(passwordPrompt);
     if (password === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (password === null) {
-        console.log('No password entered; log in manually in the opened browser window.');
+        console.log(setup ? 'No password entered; setup cancelled.' : 'No password entered; log in manually in the opened browser window.');
         return null;
     }
     return { email, password };
@@ -329,7 +329,7 @@ async function resolveCredentials(watchForSession) {
         const saved = await require('./lib/credential-store').createCredentialStore().read();
         if (saved) return { ...saved, source: 'the OS credential store' };
     } catch (error) {
-        if (error.code !== 'MODULE_NOT_FOUND') console.warn('Saved login unavailable. Unlock the OS credential store or run CLI --setup; manual login is still available.');
+        console.warn('Saved login unavailable (' + (error.code || 'store failure') + '). Unlock the OS credential store or run CLI --setup; manual login is still available.');
     }
 
     const keychainEmail = await readKeychainCredential('EP_EMAIL');

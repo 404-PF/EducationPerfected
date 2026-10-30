@@ -58,7 +58,7 @@ async function credentialCommand(command, { store, prompt = promptCredentials, o
     const onInt = () => interrupted('SIGINT'), onTerm = () => interrupted('SIGTERM');
     let record;
     process.on('SIGINT', onInt); process.on('SIGTERM', onTerm);
-    try { record = await prompt(); } finally {
+    try { record = await prompt(undefined, { setup: true }); } finally {
         process.removeListener('SIGINT', onInt); process.removeListener('SIGTERM', onTerm);
     }
     if (!record) { output.write('Setup cancelled; no login saved.\n'); return; }
