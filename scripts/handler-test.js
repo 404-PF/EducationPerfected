@@ -350,14 +350,30 @@ async function testLiveShapedWrongChoice(page, origin) {
         const nav = window.angular.element(document.querySelector('#sa-navigation-controls'));
         return !!nav.scope().self.model;
     }), false, 'parent scope intentionally lacks nav model');
+    // Hold this one unlock until after the locked-state assertion. Runner
+    // latency must never turn a correct refusal into a timing-dependent click.
+    await page.evaluate(() => {
+        window.__choiceScheduleUnlock = (unlock) => { window.__choiceUnlock = unlock; };
+    });
     await page.click('.mcq-preview-option input');
     assert.equal(await clickVisibleButton(page, 'Submit', descriptor), 'clicked');
     assert.equal(await clickVisibleButton(page, 'Next Question', descriptor), 'not-found', 'locked Next cannot be clicked');
+    await page.evaluate(() => { window.__choiceUnlock(); });
     await page.waitForFunction(() => [...document.querySelectorAll('#sa-navigation-controls button')].some(b => b.textContent === 'Next Question' && !b.disabled));
     assert.equal((await detectQuestion(page)).key, descriptor.key, 'wrong answer retains original key until Next');
     assert.equal(await clickVisibleButton(page, 'Next Question', descriptor), 'clicked');
     assert.notEqual((await detectQuestion(page)).key, descriptor.key);
-    check('live-shaped nav isolate scope grades wrong answer, waits timed lock and advances only matching keyed Next');
+    // Separately exercise the unchanged real-timer fixture path, without
+    // asserting inside a fixed timer window.
+    await page.goto(`${origin}/lesson`);
+    const timedDescriptor = await detectQuestion(page);
+    await page.click('.mcq-preview-option input');
+    assert.equal(await clickVisibleButton(page, 'Submit', timedDescriptor), 'clicked');
+    await page.waitForFunction(() => [...document.querySelectorAll('#sa-navigation-controls button')].some(b => b.textContent === 'Next Question' && !b.disabled));
+    assert.equal((await detectQuestion(page)).key, timedDescriptor.key);
+    assert.equal(await clickVisibleButton(page, 'Next Question', timedDescriptor), 'clicked');
+    assert.notEqual((await detectQuestion(page)).key, timedDescriptor.key);
+    check('live-shaped nav isolate scope grades wrong answer, refuses held lock and advances only matching keyed Next; real-timer path also advances');
 }
 
 async function testNormalizedChoice(page, origin) {

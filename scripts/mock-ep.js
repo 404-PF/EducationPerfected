@@ -237,7 +237,8 @@ const lessonPage = (asyncTransitions) => PAGE(`
                     next.textContent = '3 seconds';
                     next.style.display = '';
                     next.disabled = true;
-                    setTimeout(() => { next.disabled = false; next.textContent = 'Next Question'; }, 150);
+                    const scheduleUnlock = window.__choiceScheduleUnlock || setTimeout;
+                    scheduleUnlock(() => { next.disabled = false; next.textContent = 'Next Question'; }, 150);
                 }
             });
             function advance() {
