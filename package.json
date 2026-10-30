@@ -9,6 +9,8 @@
     "smoke": "node scripts/smoke-test.js",
     "test:handlers": "node scripts/handler-test.js",
     "cli": "node bin/cli.js",
+    "build:linux-dev": "node packaging/build-linux.js",
+    "test:packaged": "node scripts/packaged-cli-test.js && node scripts/packaged-integrity-test.js",
     "test:store": "node scripts/native-store-test.js",
     "test:controls": "node scripts/run-controls-test.js",
     "test:cli": "node scripts/cli-test.js",
@@ -20,6 +22,11 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
+    "modern-tar": "0.8.6",
     "puppeteer": "25.16.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6"
   }
 }

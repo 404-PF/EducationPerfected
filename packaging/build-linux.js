@@ -1,0 +1,49 @@
+// Local Linux x64 development build only, not a signed release pipeline.
+const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
+const { pipeline } = require('node:stream/promises');
+const { createGzip } = require('node:zlib');
+const { createHash } = require('node:crypto');
+const esbuild = require('esbuild');
+const { packTar } = require('modern-tar/fs');
+(async () => {
+ if (process.platform !== 'linux' || process.arch !== 'x64') throw Error('Development builder requires Linux x64');
+ const out = path.resolve(process.argv[2] || 'build/linux-x64'); fs.mkdirSync(out, { recursive: true });
+ const browser = await require('puppeteer').executablePath(), browserDir = path.dirname(browser);
+ const archive = path.join(out, 'browser.tar.gz');
+ await pipeline(packTar(browserDir), createGzip(), fs.createWriteStream(archive));
+ const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
+ fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: path.basename(browser) }));
+ await esbuild.build({ entryPoints: [path.join(__dirname, 'bootstrap.js')], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(out, 'main.cjs'), external: ['keytar', '@napi-rs/keyring'], define: { 'process.env.NODE_ENV': '"production"' } });
+ // Inventory every installed production dependency, including missing notice files.
+ // This is an audit aid, not permission to redistribute an incomplete notice set.
+ const notices = path.join(out, 'THIRD-PARTY-NOTICES'); fs.mkdirSync(notices, { recursive: true });
+ const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../package-lock.json'), 'utf8'));
+ const inventory = [];
+ for (const [relative, record] of Object.entries(lock.packages)) {
+  if (!relative || record.dev) continue;
+  const directory = path.join(__dirname, '..', relative);
+  if (!fs.existsSync(directory)) continue; // Other-platform optional binary, not in this build.
+  const pkg = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
+  const copied = [];
+  for (const filename of fs.readdirSync(directory).filter(name => /^(LICENSE|COPYING|NOTICE)/i.test(name))) {
+   if (fs.statSync(path.join(directory, filename)).isFile()) {
+    const destination = relative.replaceAll('/', '-') + '-' + filename;
+    fs.copyFileSync(path.join(directory, filename), path.join(notices, destination)); copied.push(destination);
+   }
+  }
+  inventory.push({ name: pkg.name, version: pkg.version, license: pkg.license || null, repository: pkg.repository || null, files: copied, status: copied.length ? 'files-copied-not-legally-reviewed' : 'MISSING-NOTICE-REQUIRES-REVIEW' });
+ }
+ fs.writeFileSync(path.join(notices, 'DEPENDENCY-INVENTORY.json'), JSON.stringify(inventory, null, 2));
+ fs.writeFileSync(path.join(notices, 'BROWSER.txt'), 'Chrome for Testing browser files are bundled without removal of their accompanying notices. Redistribution and project licensing review remain release gates.\n');
+ const missing = inventory.filter(item => !item.files.length);
+ fs.writeFileSync(path.join(notices, 'NOT-FOR-DISTRIBUTION.txt'), 'Development artifact only. License/notice completeness and project rights are NOT cleared. Missing notices: ' + missing.map(item => item.name).join(', ') + '\n');
+ if (missing.length) console.warn('Development build has missing third-party notice files; distribution is blocked. See DEPENDENCY-INVENTORY.json.');
+ const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { manifest: path.join(out, 'manifest.json'), native: require.resolve('@napi-rs/keyring-linux-x64-gnu') } };
+ fs.writeFileSync(path.join(out, 'sea.json'), JSON.stringify(config));
+ cp.execFileSync(process.execPath, ['--experimental-sea-config', path.join(out, 'sea.json')], { stdio: 'inherit' });
+ const executable = path.join(out, 'educationperfected'); fs.copyFileSync(process.execPath, executable); fs.chmodSync(executable, 0o755);
+ cp.execFileSync(process.execPath, [require.resolve('postject/dist/cli.js'), executable, 'NODE_SEA_BLOB', config.output, '--sentinel-fuse', 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'], { stdio: 'inherit' });
+ const output = fs.createWriteStream(executable, { flags: 'a' }); await pipeline(fs.createReadStream(archive), output);
+ const footer = Buffer.alloc(16); footer.writeBigUInt64LE(BigInt(fs.statSync(archive).size)); footer.write('EPBNDL01', 8); fs.appendFileSync(executable, footer);
+ console.log('Development executable: ' + executable);
+})().catch(error => { console.error(error); process.exitCode = 1; });
