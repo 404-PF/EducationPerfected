@@ -343,6 +343,185 @@ async function testControlAssociation(page, origin) {
 
 }
 
+async function testSubmitReadiness(page, origin) {
+    const setup = async (change) => {
+        await page.goto(`${origin}/lesson`);
+        const descriptor = await detectQuestion(page);
+        await page.evaluate(variant => {
+            window.__readinessGrades = 0;
+            const bar = document.querySelector('#sa-navigation-controls');
+            bar.addEventListener('click', event => { if (event.target.textContent === 'Submit') window.__readinessGrades += 1; }, true);
+            const submit = [...bar.querySelectorAll('button')].find(b => b.textContent === 'Submit' && b.offsetParent !== null);
+            document.querySelector('.multi-choice-component').addEventListener('click', () => {
+                submit.disabled = true;
+                if (variant === 'missing') submit.remove();
+                if (variant === 'timeout' || variant === 'stop') return;
+                setTimeout(() => {
+                    if (variant === 'stale') window.angular.element().scope().self.model._currentQuestion.questionIndex += 1;
+                    if (variant === 'ambiguous') {
+                        const duplicate = document.createElement('button'); duplicate.textContent = 'Submit'; bar.append(duplicate);
+                    }
+                    if (variant === 'missing') bar.append(submit);
+                    submit.disabled = false;
+                }, 300);
+            }, true);
+        }, change);
+        return descriptor;
+    };
+    let d = await setup('enabled');
+    assert.equal((await playChoiceRound(page, d, { enter: true, timeout: 1200, shouldStop: () => false })).status, 'advanced');
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
+    check('Submit readiness waits for delayed enable and advances');
+    d = await setup('missing');
+    assert.equal((await playChoiceRound(page, d, { enter: true, timeout: 1200, shouldStop: () => false })).status, 'advanced');
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
+    check('Submit readiness waits for a removed and reinserted control and grades once');
+    d = await setup('timeout');
+    const capStart = performance.now();
+    const capped = await playChoiceRound(page, d, { enter: true, timeout: 6000, shouldStop: () => false });
+    const capElapsed = performance.now() - capStart;
+    assert.equal(capped.status, 'stopped');
+    assert.match(capped.message, /Submit button was not found/);
+    assert.ok(capElapsed >= 2900 && capElapsed < 5500, `readiness cap elapsed ${capElapsed}ms`);
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 0);
+    check('Submit readiness caps a longer round timeout at three seconds without grading');
+    for (const stage of ['evaluate', 'getProperty', 'asElement']) {
+        d = await setup('enabled');
+        let lookupFailures = 0;
+        const lookupPage = new Proxy(page, {
+            get(target, key) {
+                if (key === 'evaluateHandle') return async (...args) => {
+                    const outer = await target.evaluateHandle(...args);
+                    if (lookupFailures || args[1] !== 'Submit') return outer;
+                    const evaluate = outer.evaluate.bind(outer);
+                    outer.evaluate = async (...values) => {
+                        const result = await evaluate(...values);
+                        if (stage === 'evaluate' && result === 'ready') { lookupFailures += 1; throw new Error('lookup only'); }
+                        return result;
+                    };
+                    const getProperty = outer.getProperty.bind(outer);
+                    outer.getProperty = async name => {
+                        if (stage === 'getProperty') { lookupFailures += 1; throw new Error('lookup only'); }
+                        const property = await getProperty(name);
+                        if (stage === 'asElement') property.asElement = () => { lookupFailures += 1; throw new Error('lookup only'); };
+                        return property;
+                    };
+                    return outer;
+                };
+                const value = Reflect.get(target, key);
+                return typeof value === 'function' ? value.bind(target) : value;
+            },
+        });
+        assert.equal((await playChoiceRound(lookupPage, d, { enter: true, timeout: 1200, shouldStop: () => false })).status, 'advanced');
+        assert.equal(lookupFailures, 1);
+        assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
+    }
+    check('Submit readiness retries demonstrable pre-invocation lookup failures and grades once');
+    d = await setup('enabled');
+    let repeatedFailures = 0;
+    const failingLookupPage = new Proxy(page, {
+        get(target, key) {
+            if (key === 'evaluateHandle') return async (...args) => {
+                const outer = await target.evaluateHandle(...args);
+                if (args[1] === 'Submit') outer.getProperty = async () => {
+                    repeatedFailures += 1;
+                    throw new Error('private diagnostic payload must not escape');
+                };
+                return outer;
+            };
+            const value = Reflect.get(target, key);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
+    const failedLookup = await playChoiceRound(failingLookupPage, d, { enter: true, timeout: 600, shouldStop: () => false });
+    assert.equal(failedLookup.status, 'stopped');
+    assert.match(failedLookup.message, /Submit control lookup failed before any click was invoked/);
+    assert.doesNotMatch(failedLookup.message, /not found|private diagnostic payload/);
+    assert.ok(repeatedFailures >= 2);
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 0);
+    check('Repeated Submit lookup failures stop without grading and report a safe diagnostic category');
+    for (const variant of ['stale', 'ambiguous', 'timeout']) {
+        d = await setup(variant);
+        const result = await playChoiceRound(page, d, { enter: true, timeout: 600, shouldStop: () => false });
+        assert.equal(result.status, 'stopped');
+        assert.equal(await page.evaluate(() => window.__readinessGrades), 0);
+        const expected = { stale: /could not be associated/, ambiguous: /More than one visible Submit/, timeout: /Submit button was not found/ };
+        assert.match(result.message, expected[variant]);
+        assert.equal(await page.$eval('#sa-navigation-controls', bar => [...bar.querySelectorAll('button')].some(b => b.textContent === 'Submit' && b.offsetParent !== null)), true);
+    }
+    check('Submit readiness refuses stale keys, ambiguity and timeout without grading');
+    d = await setup('stop');
+    let stop = false;
+    const signal = setTimeout(() => { stop = true; }, 200);
+    const result = await playChoiceRound(page, d, { enter: true, timeout: 1200, shouldStop: () => stop });
+    clearTimeout(signal);
+    assert.equal(result.status, 'aborted');
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 0);
+    assert.equal((await detectQuestion(page)).key, d.key);
+    check('Submit readiness honors stop before grading');
+    d = await setup('enabled');
+    const realEvaluateHandle = page.evaluateHandle.bind(page);
+    let injected = false;
+    const uncertainPage = new Proxy(page, {
+        get(target, key) {
+            if (key === 'evaluateHandle') return async (...args) => {
+                const outer = await realEvaluateHandle(...args);
+                if (injected) return outer;
+                const realGetProperty = outer.getProperty.bind(outer);
+                outer.getProperty = async name => {
+                    const property = await realGetProperty(name);
+                    const element = property.asElement();
+                    if (name === 'element' && element) {
+                        injected = true;
+                        const click = element.click.bind(element);
+                        element.click = async () => { await click(); throw new Error('post-dispatch uncertainty'); };
+                    }
+                    return property;
+                };
+                return outer;
+            };
+            const value = Reflect.get(target, key);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
+    const uncertain = await playChoiceRound(uncertainPage, d, { enter: true, timeout: 1200, shouldStop: () => false });
+    assert.equal(uncertain.status, 'stopped');
+    assert.equal(injected, true);
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
+    check('Submit readiness never retries a click with uncertain post-dispatch failure');
+    await page.goto(`${origin}/lesson`);
+    const nextDescriptor = await detectQuestion(page);
+    const wrong = LESSON_ROUNDS[0].options.find(option => !nextDescriptor.correct.includes(option));
+    let nextAttempts = 0;
+    const uncertainNextPage = new Proxy(page, {
+        get(target, key) {
+            if (key === 'evaluateHandle') return async (...args) => {
+                const outer = await realEvaluateHandle(...args);
+                if (args[1] !== 'Next Question') return outer;
+                const realGetProperty = outer.getProperty.bind(outer);
+                outer.getProperty = async name => {
+                    const property = await realGetProperty(name);
+                    const element = property.asElement();
+                    if (name === 'element' && element) {
+                        const click = element.click.bind(element);
+                        element.click = async () => { nextAttempts += 1; await click(); throw new Error('post-advance uncertainty'); };
+                    }
+                    return property;
+                };
+                return outer;
+            };
+            const value = Reflect.get(target, key);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
+    const nextFailure = await playChoiceRound(uncertainNextPage, { ...nextDescriptor, correct: [wrong] }, { enter: true, timeout: 1200, shouldStop: () => false });
+    assert.equal(nextFailure.status, 'stopped');
+    assert.match(nextFailure.message, /Next Question click could not be confirmed/);
+    assert.equal(nextAttempts, 1);
+    assert.notEqual((await detectQuestion(page)).key, nextDescriptor.key);
+    check('Uncertain Next dispatch advances once and stops without retrying');
+}
+
 async function testLiveShapedWrongChoice(page, origin) {
     await page.goto(`${origin}/lesson`);
     const descriptor = await detectQuestion(page);
@@ -693,6 +872,7 @@ async function main() {
             await testUnkeyedChoiceTransition(page, origin);
             await testControlAssociation(page, origin);
             await testLiveShapedWrongChoice(page, origin);
+            await testSubmitReadiness(page, origin);
         }
 
         if (phase === 'all' || phase === 'integration') {
