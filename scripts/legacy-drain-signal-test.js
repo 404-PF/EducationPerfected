@@ -23,7 +23,7 @@ if (process.env.EP_DRAIN_PRELOAD === '1') {
                         if (!delayed && selector === 'div[uib-modal-window=modal-window]') {
                             delayed = true;
                             console.log('DRAIN_DELAY_ENTERED');
-                            await new Promise(resolve => setTimeout(resolve, 4500));
+                            await (process.env.EP_DRAIN_HANG === '1' ? new Promise(() => {}) : new Promise(resolve => setTimeout(resolve, 4500)));
                             console.log('DRAIN_DELAY_FINISHED');
                         }
                         return evaluate(selector, ...args);
@@ -35,11 +35,12 @@ if (process.env.EP_DRAIN_PRELOAD === '1') {
         } });
     };
 } else (async () => {
+    const force = process.argv.includes('--force');
     for (const entry of ['../index.js', '../bin/launch.js']) for (const signal of ['SIGINT', 'SIGTERM']) {
         const server = createServer();
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         const origin = `http://127.0.0.1:${server.address().port}`;
-        const env = { ...process.env, EP_TEST_BOOT: '1', EP_LOGIN_URL: origin + '/app/login', EP_LOGIN_HOST: '127.0.0.1', EP_DRAIN_PRELOAD: '1' };
+        const env = { ...process.env, EP_TEST_BOOT: '1', EP_LOGIN_URL: origin + '/app/login', EP_LOGIN_HOST: '127.0.0.1', EP_DRAIN_PRELOAD: '1', EP_DRAIN_HANG: force ? '1' : '0' };
         delete env.EP_EMAIL; delete env.EP_PASSWORD;
         const child = spawn(process.execPath, ['--require', __filename, path.join(__dirname, entry)], { env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
         let output = '', browser;
@@ -69,14 +70,20 @@ if (process.env.EP_DRAIN_PRELOAD === '1') {
             await new Promise(resolve => setTimeout(resolve, 3300));
             assert.equal(child.exitCode, null, output); assert.equal(child.signalCode, null, output);
             assert.equal(browser.connected, true, 'Browser must remain alive beyond the old 3s deadline');
+            if (force) child.kill(signal === 'SIGINT' ? 'SIGTERM' : 'SIGINT');
             const result = await Promise.race([closed, new Promise((_, reject) => {
                 const timer = setTimeout(() => reject(new Error('Legacy drain did not exit: ' + output)), 10000); timer.unref();
             })]);
             assert.equal(result.signal, null, output); assert.equal(result.code, signal === 'SIGINT' ? 130 : 143, output);
-            assert.ok(Date.now() - signaledAt > 4000, output);
-            assert.ok(output.includes('DRAIN_DELAY_FINISHED'), output); assert.ok(output.includes('answerLoop Exited.'), output);
+            if (force) {
+                assert.ok(output.includes('Second interrupt received; forcing browser shutdown.'), output);
+                assert.ok(!output.includes('DRAIN_DELAY_FINISHED'), output);
+            } else {
+                assert.ok(Date.now() - signaledAt > 4000, output);
+                assert.ok(output.includes('DRAIN_DELAY_FINISHED'), output); assert.ok(output.includes('answerLoop Exited.'), output);
+            }
             await assert.rejects(() => puppeteer.connect({ browserWSEndpoint: endpoint }));
-            console.log(`Legacy active drain >3s completed before browser close: ${entry} / ${signal}`);
+            console.log(`Legacy ${force ? 'hung drain forced only by second interrupt' : 'active drain >3s completed before browser close'}: ${entry} / ${signal}`);
         } finally {
             if (browser) await browser.close().catch(() => {});
             try { cleanupTestProcess(child); } catch {}

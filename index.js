@@ -433,6 +433,7 @@ async function launchProgram({ legacySignals = false } = {}) {
     let startupBrowser;
     let startupSignal = null;
     let startupShutdown = null;
+    let legacyReady = false;
     const closeSignalBrowser = async () => {
         let timer;
         try {
@@ -465,6 +466,14 @@ async function launchProgram({ legacySignals = false } = {}) {
         return startupShutdown;
     };
     const onStartupSignal = signal => {
+        if (startupSignal && legacyReady) {
+            console.error('Second interrupt received; forcing browser shutdown. Pending work may not finish cleanup.');
+            startupBrowser.process()?.kill();
+            startupBrowser.disconnect();
+            removeStartupSignals();
+            process.exit(startupSignal === 'SIGINT' ? 130 : 143);
+        }
+        if (legacyReady) console.log('Stopping and waiting for active work to finish. Interrupt again to force shutdown.');
         if (!startupSignal && !startupBrowser) console.log('Cancellation requested; waiting for browser launch before cleanup.');
         startupSignal ||= signal;
         // A raw credential prompt has no echo and must relinquish the terminal.
@@ -2266,6 +2275,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                 // Legacy entrypoints have no CLI signal owner. Keep this owner
                 // and drain shared controls before closing the owned browser.
                 signalClose = () => controls.close();
+                legacyReady = true;
                 browser.once('disconnected', () => { if (!startupSignal) removeStartupSignals(); });
             } else removeStartupSignals();
             return controls;
