@@ -39,7 +39,7 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
                 const deadline = Date.now() + 12000;
                 timer = setInterval(() => {
                     if (output.includes('fully Loaded.')) { clearInterval(timer); resolve(); }
-                    else if (Date.now() >= deadline) { clearInterval(timer); reject(new Error('Legacy ready checkpoint failed')); }
+                    else if (child.exitCode !== null || child.signalCode !== null || Date.now() >= deadline) { clearInterval(timer); reject(new Error('Legacy ready checkpoint failed: ' + output)); }
                 }, 20);
             });
             await browser.disconnect(); browser = null;

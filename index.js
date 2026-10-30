@@ -426,7 +426,16 @@ async function launchProgram({ legacySignals = false } = {}) {
     let startupBrowser;
     let startupSignal = null;
     let startupShutdown = null;
-    let signalClose = () => startupBrowser.close();
+    const closeSignalBrowser = async () => {
+        let timer;
+        try {
+            await Promise.race([
+                startupBrowser.close(),
+                new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Browser shutdown timed out')), 3000); }),
+            ]);
+        } finally { clearTimeout(timer); }
+    };
+    let signalClose = closeSignalBrowser;
     const removeStartupSignals = () => {
         process.removeListener('SIGINT', onStartupInt);
         process.removeListener('SIGTERM', onStartupTerm);
@@ -434,17 +443,14 @@ async function launchProgram({ legacySignals = false } = {}) {
     const shutdownStartup = () => {
         if (!startupBrowser || startupShutdown) return startupShutdown;
         startupShutdown = (async () => {
-            let timer;
             try {
-                await Promise.race([
-                    signalClose(),
-                    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Startup shutdown timed out')), 3000); }),
-                ]);
+                // Ready legacy controls must drain before the browser-close timeout
+                // starts. Startup still has only a browser to close.
+                await signalClose();
             } catch {
                 startupBrowser.process()?.kill();
                 startupBrowser.disconnect();
             } finally {
-                clearTimeout(timer);
                 removeStartupSignals();
                 process.exit(startupSignal === 'SIGINT' ? 130 : 143);
             }
@@ -2204,7 +2210,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
-                close: () => browser.close(),
+                close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
             });
             browser.on('disconnected', () => controls.browserClosed());
 
