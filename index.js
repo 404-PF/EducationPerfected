@@ -432,6 +432,7 @@ async function launchProgram({ legacySignals = false } = {}) {
     // to credential prompts; do not create the CLI reader during sign-in.
     let startupBrowser;
     let startupSignal = null;
+    const exitCodeFor = signal => signal === 'SIGINT' ? 130 : signal === 'SIGHUP' ? 129 : 143;
     let startupShutdown = null;
     let legacyReady = false;
     const closeSignalBrowser = async () => {
@@ -461,7 +462,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                 startupBrowser.disconnect();
             } finally {
                 removeStartupSignals();
-                process.exit(startupSignal === 'SIGINT' ? 130 : startupSignal === 'SIGHUP' ? 129 : 143);
+                process.exit(exitCodeFor(startupSignal));
             }
         })();
         return startupShutdown;
@@ -472,7 +473,7 @@ async function launchProgram({ legacySignals = false } = {}) {
             startupBrowser.process()?.kill();
             startupBrowser.disconnect();
             removeStartupSignals();
-            process.exit(startupSignal === 'SIGINT' ? 130 : startupSignal === 'SIGHUP' ? 129 : 143);
+            process.exit(exitCodeFor(startupSignal));
         }
         if (legacyReady) console.log('Stopping and waiting for active work to finish. Interrupt again to force shutdown.');
         if (!startupSignal && !startupBrowser) console.log('Cancellation requested; waiting for browser launch before cleanup.');
@@ -493,7 +494,8 @@ async function launchProgram({ legacySignals = false } = {}) {
         headless: TEST_BOOT ? 'shell' : false,
         defaultViewport: null,
         handleSIGINT: false,
-        handleSIGTERM: false
+        handleSIGTERM: false,
+        handleSIGHUP: false
     })
         .then(async browser => {
             startupBrowser = browser;
@@ -2286,7 +2288,7 @@ async function launchProgram({ legacySignals = false } = {}) {
         .catch(async error => {
             if (startupSignal) {
                 if (startupBrowser) await shutdownStartup();
-                else { removeStartupSignals(); process.exit(startupSignal === 'SIGINT' ? 130 : startupSignal === 'SIGHUP' ? 129 : 143); }
+                else { removeStartupSignals(); process.exit(exitCodeFor(startupSignal)); }
                 return;
             }
             removeStartupSignals();

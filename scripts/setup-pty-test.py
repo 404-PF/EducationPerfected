@@ -36,11 +36,11 @@ with session() as (child, master, slave, before):
     assert b'Login saved in the OS credential store.' in data
     assert termios.tcgetattr(slave)[3] & termios.ECHO == before[3] & termios.ECHO
 print('Inert-store PTY setup: fields hidden and terminal echo restored.')
-for signum in [2, 15]:
+for signum in [2, 15, 1]:
     with session() as (child, master, slave, before):
         until(child, master, b'', b'EP email')
         child.send_signal(signum)
         child.wait(timeout=5)
         assert child.returncode == 128 + signum
         assert termios.tcgetattr(slave)[3] & termios.ECHO == before[3] & termios.ECHO
-print('Setup SIGINT/SIGTERM restore terminal echo; inert store never accesses native credentials.')
+print('Setup SIGINT/SIGTERM/SIGHUP restore terminal echo; inert store never accesses native credentials.')

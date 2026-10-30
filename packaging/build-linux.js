@@ -11,6 +11,7 @@ const { packTar } = require('modern-tar/fs');
  if (process.env.PUPPETEER_EXECUTABLE_PATH) throw Error('Custom browser paths are not accepted by this development builder');
  const out = path.resolve(__dirname, '../build/linux-x64'); fs.mkdirSync(out, { recursive: true });
  const browser = await require('puppeteer').executablePath(), browserDir = path.dirname(browser);
+ if (!fs.existsSync(browser)) throw Error('Chrome for Testing is not installed; run npx puppeteer browsers install chrome');
  if (path.basename(browserDir) !== 'chrome-linux64' || !fs.existsSync(path.join(browserDir, 'chrome_crashpad_handler')) || !fs.existsSync(path.join(browserDir, 'icudtl.dat'))) throw Error('Expected a Chrome for Testing payload directory');
  const archive = path.join(out, 'browser.tar.gz');
  await pipeline(packTar(browserDir), createGzip(), fs.createWriteStream(archive));

@@ -36,7 +36,7 @@ if (process.env.EP_DRAIN_PRELOAD === '1') {
     };
 } else (async () => {
     const force = process.argv.includes('--force');
-    for (const entry of ['../index.js', '../bin/launch.js']) for (const signal of ['SIGINT', 'SIGTERM']) {
+    for (const entry of ['../index.js', '../bin/launch.js']) for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
         const server = createServer();
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         const origin = `http://127.0.0.1:${server.address().port}`;
@@ -74,7 +74,7 @@ if (process.env.EP_DRAIN_PRELOAD === '1') {
             const result = await Promise.race([closed, new Promise((_, reject) => {
                 const timer = setTimeout(() => reject(new Error('Legacy drain did not exit: ' + output)), 10000); timer.unref();
             })]);
-            assert.equal(result.signal, null, output); assert.equal(result.code, signal === 'SIGINT' ? 130 : 143, output);
+            assert.equal(result.signal, null, output); assert.equal(result.code, signal === 'SIGINT' ? 130 : signal === 'SIGHUP' ? 129 : 143, output);
             if (force) {
                 assert.ok(output.includes('Second interrupt received; forcing browser shutdown.'), output);
                 assert.ok(!output.includes('DRAIN_DELAY_FINISHED'), output);

@@ -1,4 +1,4 @@
-// Local fixture only. Pass an absolute development executable path.
+// Local fixture only. Uses the fixed build/linux-x64 development executable.
 const assert = require('node:assert/strict');
 const { createServer } = require('./mock-ep');
 const { spawn } = require('node:child_process');
@@ -46,7 +46,8 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   console.log('Packaged executable: embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed.');
  } finally {
   if(browser) await browser.close().catch(()=>{});
-  await stopChild(child,closed);
-  server.close(); fs.rmSync(isolated,{recursive:true,force:true});
+  try { await stopChild(child,closed); } finally {
+   server.close(); fs.rmSync(isolated,{recursive:true,force:true});
+  }
  }
 })().catch(error=>{console.error(error);process.exitCode=1;});

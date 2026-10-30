@@ -21,6 +21,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
   const deadline=Date.now()+5000;
   while(!fs.readdirSync(extract).some(name=>name.startsWith('educationperfected-') && fs.existsSync(path.join(extract,name,'keyring.node')))) {
+   if(child.exitCode!==null || child.signalCode!==null)throw Error('Extraction child exited before checkpoint: '+child.exitCode+'/'+child.signalCode);
    if(Date.now()>deadline)throw Error('Extraction checkpoint timed out');
    await new Promise(resolve=>setTimeout(resolve,1));
   }
@@ -28,5 +29,5 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   assert.deepEqual(fs.readdirSync(extract),[],'Interrupted extraction must be removed');
   console.log('Extraction '+signal+' handled with owned temp cleanup.');
   }
- } finally {await stopChild(child,closed);fs.rmSync(root,{recursive:true,force:true});}
+ } finally {try {await stopChild(child,closed);} finally {fs.rmSync(root,{recursive:true,force:true});}}
 })().catch(error=>{console.error(error);process.exitCode=1;});
