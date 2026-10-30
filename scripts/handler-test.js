@@ -374,6 +374,33 @@ async function testLiveShapedWrongChoice(page, origin) {
     assert.equal(await clickVisibleButton(page, 'Next Question', timedDescriptor), 'clicked');
     assert.notEqual((await detectQuestion(page)).key, timedDescriptor.key);
     check('live-shaped nav isolate scope grades wrong answer, refuses held lock and advances only matching keyed Next; real-timer path also advances');
+
+    // Deliberately feed the handler a known-wrong fixture option. This is
+    // local fault injection, never a production answer-source fallback.
+    await page.goto(`${origin}/lesson`);
+    const handlerDescriptor = await detectQuestion(page);
+    await page.evaluate(() => {
+        window.__wrongGradeObserved = false;
+        const bar = document.querySelector('#sa-navigation-controls');
+        // Submit bubbles here after the fixture grades the selected option.
+        bar.addEventListener('click', event => {
+            if (event.target.textContent !== 'Submit') return;
+            const chosen = [...document.querySelectorAll('.mcq-preview-option')].find(option => option.querySelector('input').checked);
+            window.__wrongGradeObserved = {
+                selected: chosen?.querySelector('#render-group').textContent.trim(),
+                lockedNext: [...bar.querySelectorAll('button')].some(button => button.disabled && button.textContent === '3 seconds'),
+            };
+        });
+    });
+    const wrongOption = LESSON_ROUNDS[0].options.find(option => !handlerDescriptor.correct.includes(option));
+    assert.ok(wrongOption, 'fixture must contain an incorrect option');
+    const outcome = await playChoiceRound(page, { ...handlerDescriptor, correct: [wrongOption] }, {
+        enter: true, timeout: 5000, shouldStop: () => false,
+    });
+    assert.deepEqual(await page.evaluate(() => window.__wrongGradeObserved), { selected: wrongOption, lockedNext: true });
+    assert.equal(outcome.status, 'advanced', JSON.stringify(outcome));
+    assert.notEqual((await detectQuestion(page)).key, handlerDescriptor.key);
+    check('wrong choice passes through playChoiceRound delayed Next polling and advances');
 }
 
 async function testNormalizedChoice(page, origin) {
