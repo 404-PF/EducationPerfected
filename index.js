@@ -183,7 +183,8 @@ function promptSecret(label, cleaner) {
                 if (byte === 13 || byte === 10) return finish(cleaner(Buffer.from(bytes).toString('utf8')));
                 if (byte === 3) {  // Ctrl+C: leave cleanly, no stack trace
                     finish(null);
-                    process.exit(130);
+                    if (process.listenerCount('SIGINT')) process.emit('SIGINT');
+                    else process.exit(130);
                 }
                 if (byte === 8 || byte === 127) {
                     // drop one whole UTF-8 character (continuation bytes, then the lead byte)
@@ -420,17 +421,56 @@ async function launchProgram() {
         toast_id: '__ep_toast',
     }
 
-    // launch browser
+    // Startup owns signal cleanup until controls are ready. Keep stdin exclusive
+    // to credential prompts; do not create the CLI reader during sign-in.
     let startupBrowser;
+    let startupSignal = null;
+    let startupShutdown = null;
+    const removeStartupSignals = () => {
+        process.removeListener('SIGINT', onStartupInt);
+        process.removeListener('SIGTERM', onStartupTerm);
+    };
+    const shutdownStartup = () => {
+        if (!startupBrowser || startupShutdown) return startupShutdown;
+        startupShutdown = (async () => {
+            let timer;
+            try {
+                await Promise.race([
+                    startupBrowser.close(),
+                    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Startup shutdown timed out')), 3000); }),
+                ]);
+            } catch {
+                startupBrowser.process()?.kill();
+                startupBrowser.disconnect();
+            } finally {
+                clearTimeout(timer);
+                removeStartupSignals();
+                process.exit(startupSignal === 'SIGINT' ? 130 : 143);
+            }
+        })();
+        return startupShutdown;
+    };
+    const onStartupSignal = signal => {
+        startupSignal ||= signal;
+        // A raw credential prompt has no echo and must relinquish the terminal.
+        if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
+        shutdownStartup();
+    };
+    const onStartupInt = () => onStartupSignal('SIGINT');
+    const onStartupTerm = () => onStartupSignal('SIGTERM');
+    process.on('SIGINT', onStartupInt);
+    process.on('SIGTERM', onStartupTerm);
     return puppeteer.launch({
         // test boot: no visible window, and the endpoint is printed so the
         // test can attach
         headless: TEST_BOOT ? 'shell' : false,
         defaultViewport: null,
-        handleSIGINT: false
+        handleSIGINT: false,
+        handleSIGTERM: false
     })
         .then(async browser => {
             startupBrowser = browser;
+            if (startupSignal) return shutdownStartup();
             if (TEST_BOOT) console.log(`EP_WS_ENDPOINT=${browser.wsEndpoint()}`);
             const page = (await browser.pages())[0];
 
@@ -1787,6 +1827,7 @@ async function launchProgram() {
                                 : 'Question element never returned within 20s; stopping the run.');
                             if (complete && TOGGLE) {
                                 const proven = await taskCompletionProven();
+                                if (!TOGGLE) break;
                                 const exited = await page.evaluate((exitCss, contCss) => {
                                     const button = document.querySelector(exitCss) || document.querySelector(contCss);
                                     if (!button) return false;
@@ -2206,9 +2247,16 @@ async function launchProgram() {
             await page.evaluate(installHotkeysInPage);
 
             console.log('Education Perfected V2 fully Loaded.');
+            removeStartupSignals();
             return controls;
         })
         .catch(async error => {
+            if (startupSignal) {
+                if (startupBrowser) await shutdownStartup();
+                else { removeStartupSignals(); process.exit(startupSignal === 'SIGINT' ? 130 : 143); }
+                return;
+            }
+            removeStartupSignals();
             if (startupBrowser) {
                 let timer;
                 try {

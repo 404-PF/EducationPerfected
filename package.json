@@ -10,7 +10,9 @@
     "test:handlers": "node scripts/handler-test.js",
     "cli": "node bin/cli.js",
     "test:controls": "node scripts/run-controls-test.js",
-    "test:cli": "node scripts/cli-test.js"
+    "test:cli": "node scripts/cli-test.js",
+    "test:startup": "node scripts/startup-failure-test.js && node scripts/startup-signal-test.js && node scripts/startup-signal-test.js --term",
+    "test:phase3": "npm run test:controls && npm run test:startup && npm run test:cli && node scripts/completion-stop-test.js"
   },
   "engines": {
     "node": ">=22.12.0"

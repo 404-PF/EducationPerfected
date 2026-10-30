@@ -3,6 +3,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
+const { cleanupTestProcess } = require('./test-process-cleanup');
 
 (async () => {
     const server = createServer();
@@ -50,12 +51,19 @@ const { createServer } = require('./mock-ep');
         await command('stop', '"state":"stopped"');
         assert.equal(await page.evaluate(() => window.angular.element(document.querySelector('.multi-choice-component')).scope().self.model._currentQuestion.questionIndex), keyBefore);
         await command('stop', '"state":"stopped"');
+        await command('start', '"state":"running"');
+        await page.waitForFunction(async () => (await window.epTestState()).running);
         await page.evaluate(() => {
+            window.fixtureContinueClicks = 0;
             const modal = document.createElement('div'); modal.setAttribute('uib-modal-window', 'modal-window');
             const button = document.createElement('button'); button.className = 'continue-button'; button.textContent = 'Continue';
+            button.addEventListener('click', () => { window.fixtureContinueClicks += 1; });
             modal.append(button); document.body.append(modal);
         });
+        assert.equal(await page.evaluate(async () => (await window.epTestState()).running), true, 'Modal-stop fixture must still have an active run');
         await command('stop', '"state":"stopped"');
+        assert.equal(await page.evaluate(() => window.fixtureContinueClicks), 0, 'Stop must leave grading Continue alone');
+        assert.equal(await page.evaluate(() => window.angular.element(document.querySelector('.multi-choice-component')).scope().self.model._currentQuestion.questionIndex), keyBefore);
         await page.goto(origin + '/lesson');
         await page.evaluate(() => {
             document.querySelector('.multi-choice-component').remove();
@@ -82,6 +90,7 @@ const { createServer } = require('./mock-ep');
         await command('mode auto', '"mode":"auto"');
         await command('start', '"state":"running"');
         await page.waitForFunction(() => !document.querySelector('.multi-choice-component'), { timeout: 15000 });
+        await page.waitForFunction(async () => !(await window.epTestState()).running);
         await command('status', '"state":"completed"');
         if (process.argv.includes('--external-close')) {
             await browser.close();
@@ -101,8 +110,7 @@ const { createServer } = require('./mock-ep');
     } finally {
         if (browser) await browser.close().catch(() => {});
         try {
-            if (process.platform === 'win32') require('node:child_process').execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-            else process.kill(-child.pid, 'SIGKILL');
+            cleanupTestProcess(child);
         } catch {}
         server.close();
     }
