@@ -19,7 +19,7 @@ def until(child, master, data, marker):
     deadline = time.time() + 8
     while marker not in data:
         if child.poll() is not None or time.time() > deadline:
-            raise AssertionError('Setup prompt checkpoint failed')
+            raise AssertionError('Setup prompt checkpoint failed: ' + data.decode(errors='replace'))
         if select.select([master], [], [], .1)[0]:
             data += os.read(master, 65536)
     return data
@@ -31,7 +31,7 @@ with session() as (child, master, slave, before):
     child.wait(timeout=10)
     while select.select([master], [], [], .1)[0]:
         data += os.read(master, 65536)
-    assert child.returncode == 0
+    assert child.returncode == 0, data.decode(errors='replace')
     assert b'fixture@example.test' not in data and b'fixture-only-password' not in data
     assert b'Login saved in the OS credential store.' in data
     assert termios.tcgetattr(slave)[3] & termios.ECHO == before[3] & termios.ECHO

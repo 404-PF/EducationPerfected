@@ -1,8 +1,11 @@
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const {spawnSync, spawn} = require('node:child_process');
 const assert = require('node:assert/strict');
+const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 (async () => {
- const executable=path.resolve(process.argv[2]||'build/linux-x64/educationperfected');
+ if(process.argv.length>2)throw Error('No executable override arguments accepted');
+ const executable=path.resolve(__dirname,'../build/linux-x64/educationperfected');
+ let child,closed;
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-package-integrity-'));
  try {
   const copy=path.join(root,'corrupt'), extract=path.join(root,'temp'); fs.mkdirSync(extract);
@@ -13,15 +16,17 @@ const assert = require('node:assert/strict');
   assert.deepEqual(fs.readdirSync(extract),[],'Corruption path must clean extracted native asset');
   console.log('Corrupted browser payload rejected before launch, extraction cleaned.');
   // Interrupt during hash/extraction, before handing signal ownership to browser startup.
-  const child=spawn(executable,[],{env:{...process.env,TMPDIR:extract},stdio:'ignore'});
-  const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
+  for (const signal of ['SIGTERM','SIGINT','SIGHUP']) {
+  child=spawn(executable,[],{env:{...process.env,TMPDIR:extract},stdio:'ignore',detached:process.platform!=='win32'});
+  closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
   const deadline=Date.now()+5000;
-  while(!fs.readdirSync(extract).some(name=>name.startsWith('educationperfected-'))) {
+  while(!fs.readdirSync(extract).some(name=>name.startsWith('educationperfected-') && fs.existsSync(path.join(extract,name,'keyring.node')))) {
    if(Date.now()>deadline)throw Error('Extraction checkpoint timed out');
    await new Promise(resolve=>setTimeout(resolve,1));
   }
-  child.kill('SIGTERM');const interrupted=await closed;assert.equal(interrupted.code,143);assert.equal(interrupted.signal,null);
+  child.kill(signal);const interrupted=await boundedClose(closed,10000,'Extraction interrupt did not exit');assert.equal(interrupted.code,signal==='SIGINT'?130:signal==='SIGHUP'?129:143);assert.equal(interrupted.signal,null);
   assert.deepEqual(fs.readdirSync(extract),[],'Interrupted extraction must be removed');
-  console.log('Extraction SIGTERM handled with owned temp cleanup.');
- } finally {fs.rmSync(root,{recursive:true,force:true});}
+  console.log('Extraction '+signal+' handled with owned temp cleanup.');
+  }
+ } finally {await stopChild(child,closed);fs.rmSync(root,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

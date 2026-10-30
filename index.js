@@ -447,6 +447,7 @@ async function launchProgram({ legacySignals = false } = {}) {
     const removeStartupSignals = () => {
         process.removeListener('SIGINT', onStartupInt);
         process.removeListener('SIGTERM', onStartupTerm);
+        process.removeListener('SIGHUP', onStartupHup);
     };
     const shutdownStartup = () => {
         if (!startupBrowser || startupShutdown) return startupShutdown;
@@ -460,7 +461,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                 startupBrowser.disconnect();
             } finally {
                 removeStartupSignals();
-                process.exit(startupSignal === 'SIGINT' ? 130 : 143);
+                process.exit(startupSignal === 'SIGINT' ? 130 : startupSignal === 'SIGHUP' ? 129 : 143);
             }
         })();
         return startupShutdown;
@@ -471,7 +472,7 @@ async function launchProgram({ legacySignals = false } = {}) {
             startupBrowser.process()?.kill();
             startupBrowser.disconnect();
             removeStartupSignals();
-            process.exit(startupSignal === 'SIGINT' ? 130 : 143);
+            process.exit(startupSignal === 'SIGINT' ? 130 : startupSignal === 'SIGHUP' ? 129 : 143);
         }
         if (legacyReady) console.log('Stopping and waiting for active work to finish. Interrupt again to force shutdown.');
         if (!startupSignal && !startupBrowser) console.log('Cancellation requested; waiting for browser launch before cleanup.');
@@ -482,8 +483,10 @@ async function launchProgram({ legacySignals = false } = {}) {
     };
     const onStartupInt = () => onStartupSignal('SIGINT');
     const onStartupTerm = () => onStartupSignal('SIGTERM');
+    const onStartupHup = () => onStartupSignal('SIGHUP');
     process.on('SIGINT', onStartupInt);
     process.on('SIGTERM', onStartupTerm);
+    process.on('SIGHUP', onStartupHup);
     return puppeteer.launch({
         // test boot: no visible window, and the endpoint is printed so the
         // test can attach
@@ -2283,7 +2286,7 @@ async function launchProgram({ legacySignals = false } = {}) {
         .catch(async error => {
             if (startupSignal) {
                 if (startupBrowser) await shutdownStartup();
-                else { removeStartupSignals(); process.exit(startupSignal === 'SIGINT' ? 130 : 143); }
+                else { removeStartupSignals(); process.exit(startupSignal === 'SIGINT' ? 130 : startupSignal === 'SIGHUP' ? 129 : 143); }
                 return;
             }
             removeStartupSignals();

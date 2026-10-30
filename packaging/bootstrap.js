@@ -10,23 +10,22 @@ async function main() {
     fs.chmodSync(dir, 0o700);
     const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
     process.on('exit', cleanup);
-    const onInt = () => process.exit(130), onTerm = () => process.exit(143);
-    process.on('SIGINT', onInt); process.on('SIGTERM', onTerm);
-    const handoffSignals = () => { process.removeListener('SIGINT', onInt); process.removeListener('SIGTERM', onTerm); };
+    const onInt = () => process.exit(130), onTerm = () => process.exit(143), onHup = () => process.exit(129);
+    process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
+    const handoffSignals = () => { process.removeListener('SIGINT', onInt); process.removeListener('SIGTERM', onTerm); process.removeListener('SIGHUP', onHup); };
     try {
         const manifest = JSON.parse(getAsset('manifest', 'utf8'));
         const file = path.join(dir, 'keyring.node');
         fs.writeFileSync(file, Buffer.from(getAsset('native')), { mode: 0o600 });
         require('../lib/native-binding').setPackagedBinding(createRequire(process.execPath)(file));
         const args = process.argv.slice(2);
-        const cli = require('../bin/cli');
         if (args.includes('--help') || args.includes('-h')) {
             console.log('EducationPerfected\nUsage: educationperfected [--setup | --forget-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit');
             return;
         }
         if (args.includes('--setup') || args.includes('--forget-credentials')) {
             handoffSignals();
-            await cli.credentialCommand(args.includes('--setup') ? '--setup' : '--forget-credentials');
+            await require('../bin/cli').credentialCommand(args.includes('--setup') ? '--setup' : '--forget-credentials');
             return;
         }
         const fd = fs.openSync(process.execPath, 'r');
@@ -46,7 +45,7 @@ async function main() {
         await pipeline(fs.createReadStream(process.execPath, { start: offset, end: offset + length - 1 }), createGunzip(), unpackTar(dir));
         process.env.PUPPETEER_EXECUTABLE_PATH = path.join(dir, manifest.executable);
         handoffSignals();
-        await cli.runCli();
+        await require('../bin/cli').runCli();
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }
 }
-main().catch(() => { console.error('EducationPerfected could not start. Check browser dependencies and the OS credential store.'); process.exitCode = 1; });
+main().catch(error => { console.error('EducationPerfected could not start. ' + require('../lib/diagnostics').diagnostic(error, 'Startup')); process.exitCode = 1; });

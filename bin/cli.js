@@ -18,6 +18,7 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
     terminal.on('SIGINT', onSignal);
     process.on('SIGINT', onSignal);
     process.on('SIGTERM', onSignal);
+    process.on('SIGHUP', onSignal);
     print();
     try {
         for await (const line of terminal) {
@@ -39,6 +40,7 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
         try { await quit(); } finally {
             process.removeListener('SIGINT', onSignal);
             process.removeListener('SIGTERM', onSignal);
+            process.removeListener('SIGHUP', onSignal);
         }
     }
 }
@@ -53,13 +55,13 @@ async function credentialCommand(command, { store, prompt = promptCredentials, o
     // Setup has no browser signal owner. Restore raw input even on SIGTERM.
     const interrupted = signal => {
         if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
-        process.exit(signal === 'SIGINT' ? 130 : 143);
+        process.exit(signal === 'SIGINT' ? 130 : signal === 'SIGHUP' ? 129 : 143);
     };
-    const onInt = () => interrupted('SIGINT'), onTerm = () => interrupted('SIGTERM');
+    const onInt = () => interrupted('SIGINT'), onTerm = () => interrupted('SIGTERM'), onHup = () => interrupted('SIGHUP');
     let record;
-    process.on('SIGINT', onInt); process.on('SIGTERM', onTerm);
+    process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
     try { record = await prompt(undefined, { setup: true }); } finally {
-        process.removeListener('SIGINT', onInt); process.removeListener('SIGTERM', onTerm);
+        process.removeListener('SIGINT', onInt); process.removeListener('SIGTERM', onTerm); process.removeListener('SIGHUP', onHup);
     }
     if (!record) { output.write('Setup cancelled; no login saved.\n'); return; }
     await store.save(record);
