@@ -354,12 +354,14 @@ async function testSubmitReadiness(page, origin) {
             const submit = [...bar.querySelectorAll('button')].find(b => b.textContent === 'Submit' && b.offsetParent !== null);
             document.querySelector('.multi-choice-component').addEventListener('click', () => {
                 submit.disabled = true;
+                if (variant === 'missing') submit.remove();
                 if (variant === 'timeout' || variant === 'stop') return;
                 setTimeout(() => {
                     if (variant === 'stale') window.angular.element().scope().self.model._currentQuestion.questionIndex += 1;
                     if (variant === 'ambiguous') {
                         const duplicate = document.createElement('button'); duplicate.textContent = 'Submit'; bar.append(duplicate);
                     }
+                    if (variant === 'missing') bar.append(submit);
                     submit.disabled = false;
                 }, 300);
             }, true);
@@ -370,6 +372,51 @@ async function testSubmitReadiness(page, origin) {
     assert.equal((await playChoiceRound(page, d, { enter: true, timeout: 1200, shouldStop: () => false })).status, 'advanced');
     assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
     check('Submit readiness waits for delayed enable and advances');
+    d = await setup('missing');
+    assert.equal((await playChoiceRound(page, d, { enter: true, timeout: 1200, shouldStop: () => false })).status, 'advanced');
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
+    check('Submit readiness waits for a removed and reinserted control and grades once');
+    d = await setup('timeout');
+    const capStart = performance.now();
+    const capped = await playChoiceRound(page, d, { enter: true, timeout: 6000, shouldStop: () => false });
+    const capElapsed = performance.now() - capStart;
+    assert.equal(capped.status, 'stopped');
+    assert.match(capped.message, /Submit button was not found/);
+    assert.ok(capElapsed >= 2900 && capElapsed < 5500, `readiness cap elapsed ${capElapsed}ms`);
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 0);
+    check('Submit readiness caps a longer round timeout at three seconds without grading');
+    for (const stage of ['evaluate', 'getProperty', 'asElement']) {
+        d = await setup('enabled');
+        let lookupFailures = 0;
+        const lookupPage = new Proxy(page, {
+            get(target, key) {
+                if (key === 'evaluateHandle') return async (...args) => {
+                    const outer = await target.evaluateHandle(...args);
+                    if (lookupFailures || args[1] !== 'Submit') return outer;
+                    const evaluate = outer.evaluate.bind(outer);
+                    outer.evaluate = async (...values) => {
+                        const result = await evaluate(...values);
+                        if (stage === 'evaluate' && result === 'ready') { lookupFailures += 1; throw new Error('lookup only'); }
+                        return result;
+                    };
+                    const getProperty = outer.getProperty.bind(outer);
+                    outer.getProperty = async name => {
+                        if (stage === 'getProperty') { lookupFailures += 1; throw new Error('lookup only'); }
+                        const property = await getProperty(name);
+                        if (stage === 'asElement') property.asElement = () => { lookupFailures += 1; throw new Error('lookup only'); };
+                        return property;
+                    };
+                    return outer;
+                };
+                const value = Reflect.get(target, key);
+                return typeof value === 'function' ? value.bind(target) : value;
+            },
+        });
+        assert.equal((await playChoiceRound(lookupPage, d, { enter: true, timeout: 1200, shouldStop: () => false })).status, 'advanced');
+        assert.equal(lookupFailures, 1);
+        assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
+    }
+    check('Submit readiness retries demonstrable pre-invocation lookup failures and grades once');
     for (const variant of ['stale', 'ambiguous', 'timeout']) {
         d = await setup(variant);
         const result = await playChoiceRound(page, d, { enter: true, timeout: 600, shouldStop: () => false });
