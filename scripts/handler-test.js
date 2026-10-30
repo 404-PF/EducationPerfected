@@ -576,11 +576,14 @@ async function main() {
         // for the child browser endpoint, before program has been assigned.
         const cleanup = Promise.all([
             program ? program.browser.close().catch(() => {}) : Promise.resolve(),
-            browser ? (launched ? browser.close() : browser.disconnect()) : Promise.resolve(),
+            browser ? (launched ? browser.close() : (async () => {
+                if (page) await page.close().catch(() => {});
+                await browser.disconnect();
+            })()) : Promise.resolve(),
         ]).catch(() => {});
         // Chrome may have its own process group, so the connected integration
         // browser must also close over CDP. Bound cleanup in case CDP is stuck.
-        Promise.race([cleanup, new Promise(resolve => setTimeout(resolve, 3000))])
+        void Promise.race([cleanup, new Promise(resolve => setTimeout(resolve, 3000))])
             .finally(() => {
                 for (const child of programChildren) stopProgramChild(child);
                 process.exit(code);
