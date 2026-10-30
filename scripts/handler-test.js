@@ -417,6 +417,29 @@ async function testSubmitReadiness(page, origin) {
         assert.equal(await page.evaluate(() => window.__readinessGrades), 1);
     }
     check('Submit readiness retries demonstrable pre-invocation lookup failures and grades once');
+    d = await setup('enabled');
+    let repeatedFailures = 0;
+    const failingLookupPage = new Proxy(page, {
+        get(target, key) {
+            if (key === 'evaluateHandle') return async (...args) => {
+                const outer = await target.evaluateHandle(...args);
+                if (args[1] === 'Submit') outer.getProperty = async () => {
+                    repeatedFailures += 1;
+                    throw new Error('private diagnostic payload must not escape');
+                };
+                return outer;
+            };
+            const value = Reflect.get(target, key);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
+    const failedLookup = await playChoiceRound(failingLookupPage, d, { enter: true, timeout: 600, shouldStop: () => false });
+    assert.equal(failedLookup.status, 'stopped');
+    assert.match(failedLookup.message, /Submit control lookup failed before any click was invoked/);
+    assert.doesNotMatch(failedLookup.message, /not found|private diagnostic payload/);
+    assert.ok(repeatedFailures >= 2);
+    assert.equal(await page.evaluate(() => window.__readinessGrades), 0);
+    check('Repeated Submit lookup failures stop without grading and report a safe diagnostic category');
     for (const variant of ['stale', 'ambiguous', 'timeout']) {
         d = await setup(variant);
         const result = await playChoiceRound(page, d, { enter: true, timeout: 600, shouldStop: () => false });
