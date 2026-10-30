@@ -7,6 +7,7 @@
 const { execFileSync } = require('node:child_process');
 const { existsSync, readFileSync } = require('node:fs');
 const path = require('node:path');
+const { diagnostic } = require('../lib/diagnostics');
 
 const ROOT = path.join(__dirname, '..');
 const MIN_NODE = readMinNode();
@@ -194,10 +195,13 @@ function main() {
     }
 
     try {
-        require(path.join(ROOT, 'index.js'));
+        require(path.join(ROOT, 'index.js')).launchProgram().catch(error => {
+            console.error(diagnostic(error, 'EducationPerfected startup'));
+            process.exitCode = 1;
+        });
         return 0;
     } catch (error) {
-        console.error(error);
+        console.error(diagnostic(error, 'Launcher'));
         return 1;
     }
 }

@@ -3,6 +3,8 @@
 const puppeteer = require('puppeteer');
 const { detectQuestion } = require('./lib/detect-question');
 const { playChoiceRound } = require('./lib/choice-handler');
+const { createRunControls } = require('./lib/run-controls');
+const { diagnostic } = require('./lib/diagnostics');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -340,7 +342,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-(async () => {
+async function launchProgram() {
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -419,7 +421,8 @@ async function resolveCredentials(watchForSession) {
     }
 
     // launch browser
-    puppeteer.launch({
+    let startupBrowser;
+    return puppeteer.launch({
         // test boot: no visible window, and the endpoint is printed so the
         // test can attach
         headless: TEST_BOOT ? 'shell' : false,
@@ -427,6 +430,7 @@ async function resolveCredentials(watchForSession) {
         handleSIGINT: false
     })
         .then(async browser => {
+            startupBrowser = browser;
             if (TEST_BOOT) console.log(`EP_WS_ENDPOINT=${browser.wsEndpoint()}`);
             const page = (await browser.pages())[0];
 
@@ -677,6 +681,7 @@ async function resolveCredentials(watchForSession) {
             let RUNNING = null;  // promise handle of the run currently executing, or null
             let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
+            let runReason = 'stopped';
 
             // How long to wait for EP to move on to the next question after a submission.
             // EP round-trips (large class, slow backend, transient lag) can legitimately
@@ -1623,6 +1628,7 @@ async function resolveCredentials(watchForSession) {
                     if (result.status === 'advanced') return TOGGLE;
                     if (result.status === 'aborted') return false;
                     if (result.status === 'complete') {
+                        if (await taskCompletionProven()) runReason = 'completed';
                         console.log('Lesson completed.');
                         return false;
                     }
@@ -1641,6 +1647,18 @@ async function resolveCredentials(watchForSession) {
                     return false;
                 }
 
+            // A generic Continue/modal is not proof that the task ended. Status
+            // uses a narrower signal than legacy navigation: no question plus
+            // a visible exit control, while this run still intends to answer.
+            async function taskCompletionProven() {
+                if (!TOGGLE || await detectQuestion(page) !== null) return false;
+                const exitVisible = await page.evaluate(css => {
+                    const button = document.querySelector(css);
+                    return !!button && !button.hidden && (button.offsetParent !== null || button.getClientRects().length > 0);
+                }, DIR.exit_button_css).catch(() => false);
+                return TOGGLE && exitVisible;
+            }
+
             /**
  * Main answer loop: runs until TOGGLE is false, task completes, or an error occurs.
  * Handles cleanup, modal resolution, and page-gone errors. Restart-safe.
@@ -1650,6 +1668,7 @@ async function resolveCredentials(watchForSession) {
                 if (RUNNING !== null) throw Error("Tried to initiate answerLoop while it is already running");
 
                 TOGGLE = true;
+                runReason = 'stopped';
                 lastSubmitted = null;
                 typedSubmissionsByKey.clear();
                 futileStop = false;  // a manual restart after a futility stop gets a fresh bounded run
@@ -1694,6 +1713,7 @@ async function resolveCredentials(watchForSession) {
                     await CLEANUP;
                     console.log('answerLoop Exited.');
                 }
+                return { reason: runReason };
             }
 
             /**
@@ -1766,12 +1786,14 @@ async function resolveCredentials(watchForSession) {
                                 ? 'Question element gone; task completion confirmed. Ending the run.'
                                 : 'Question element never returned within 20s; stopping the run.');
                             if (complete && TOGGLE) {
+                                const proven = await taskCompletionProven();
                                 const exited = await page.evaluate((exitCss, contCss) => {
                                     const button = document.querySelector(exitCss) || document.querySelector(contCss);
                                     if (!button) return false;
                                     button.click();
                                     return true;
                                 }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
+                                if (exited && proven && TOGGLE) runReason = 'completed';
                                 console.log(exited ? 'Clicked the task exit/continue button.' : 'The completion controls vanished; stopping the run.');
                             }
                             break;
@@ -2031,10 +2053,11 @@ async function resolveCredentials(watchForSession) {
                 TOGGLE = true;
                 const myRun = answerLoop()
                     .catch(e => {
-                        // log only: answerLoop's own finally already cleared TOGGLE on every
+                        // answerLoop's own finally already cleared TOGGLE on every
                         // path that can reach this handler, and a stale TOGGLE = false here
                         // would cancel a newer run spawned while the old cleanup was pending
-                        console.error(e);
+                        console.error(diagnostic(e, 'Answer loop'));
+                        throw e;
                     })
                     .finally(() => {
                         // backstop: a run that crashed outside answerLoop's finally must
@@ -2046,6 +2069,7 @@ async function resolveCredentials(watchForSession) {
                         if (RUNNING === myRun) RUNNING = null;
                     });
                 RUNNING = myRun;
+                return myRun;
             }
 
             /**
@@ -2054,12 +2078,16 @@ async function resolveCredentials(watchForSession) {
  * @returns {Promise<void>}
  */
             async function toggleLoop() {
-                if (RUNNING) {
-                    TOGGLE = false;
-                    console.log("Stopping answerLoop.");
+                if (controls.status().state === 'running') {
+                    console.log('Stopping answerLoop.');
+                    await controls.stop();
+                } else if (['stopped', 'error', 'completed'].includes(controls.status().state)) {
+                    console.log('Starting answerLoop.');
+                    controls.start();
+                } else if (controls.status().state === 'closed') {
+                    await notifyControl('The browser is closed; open a new session before starting again.');
                 } else {
-                    console.log("Starting answerLoop.");
-                    startLoop();
+                    await notifyControl(`Answer control is ${controls.status().state}; wait until stopped before starting again.`);
                 }
             }
 
@@ -2067,16 +2095,20 @@ async function resolveCredentials(watchForSession) {
  * Toggles between auto mode (auto-submit Enter) and semi-auto mode (user presses Enter).
  * @returns {Promise<void>}
  */
+            async function notifyControl(message) {
+                console.log(message);
+                try { await alert(message); } catch { console.warn('Browser notification could not be shown.'); }
+            }
+
             async function toggleAuto() {
-                if (ENTER) {
-                    ENTER = false;
-                    console.log("Switched to semi-auto mode.");
-                    await alert("Switched to semi-auto mode.");
-                } else {
-                    ENTER = true;
-                    console.log("Switched to auto mode.");
-                    await alert("Switched to auto mode.");
-                }
+                try { await controls.mode(ENTER ? 'semi' : 'auto'); }
+                catch { await notifyControl('Stop the run before changing mode.'); return; }
+                await notifyControl(ENTER ? 'Switched to auto mode.' : 'Switched to semi-auto mode.');
+            }
+
+            async function refreshControl() {
+                try { await controls.refresh(); }
+                catch { await notifyControl('Word refresh failed or a run is still active; stop the run and check the task-starter word lists.'); }
             }
 
             /**
@@ -2124,21 +2156,26 @@ async function resolveCredentials(watchForSession) {
                 }, msg, DIR.toast_id);
             }
 
+            const controls = createRunControls({
+                run: startLoop,
+                requestStop: () => { TOGGLE = false; },
+                setMode: value => { ENTER = value === 'auto'; },
+                refresh: refreshWords,
+                close: () => browser.close(),
+            });
+            browser.on('disconnected', () => controls.browserClosed());
+
             // Expose API functions to the page (for hotkey event listeners to call).
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
-            await page.exposeFunction('refresh', refreshWords);
+            await page.exposeFunction('refresh', refreshControl);
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
             // from log text or exposed during normal runs.
             if (TEST_BOOT) {
-                await page.exposeFunction('epTestState', () => ({ running: RUNNING !== null }));
-                await page.exposeFunction('epTestStop', async () => {
-                    TOGGLE = false;
-                    if (RUNNING) await RUNNING;
-                    if (CLEANUP) await CLEANUP;
-                });
+                await page.exposeFunction('epTestState', () => ({ running: ['running', 'stopping'].includes(controls.status().state) }));
+                await page.exposeFunction('epTestStop', () => controls.stop());
             }
 
             /**
@@ -2169,5 +2206,32 @@ async function resolveCredentials(watchForSession) {
             await page.evaluate(installHotkeysInPage);
 
             console.log('Education Perfected V2 fully Loaded.');
+            return controls;
+        })
+        .catch(async error => {
+            if (startupBrowser) {
+                let timer;
+                try {
+                    await Promise.race([
+                        startupBrowser.close(),
+                        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Browser close timed out')), 3000); }),
+                    ]);
+                }
+                catch {
+                    // close() can fail on a broken control connection. The
+                    // owned browser child is still ours to terminate.
+                    startupBrowser.process()?.kill();
+                    startupBrowser.disconnect();
+                } finally { clearTimeout(timer); }
+            }
+            throw error;
         });
-})();
+}
+
+module.exports = { launchProgram };
+if (require.main === module) {
+    launchProgram().catch(error => {
+        console.error(diagnostic(error, 'EducationPerfected startup'));
+        process.exitCode = 1;
+    });
+}

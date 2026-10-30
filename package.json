@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node bin/launch.js",
     "smoke": "node scripts/smoke-test.js",
-    "test:handlers": "node scripts/handler-test.js"
+    "test:handlers": "node scripts/handler-test.js",
+    "cli": "node bin/cli.js",
+    "test:controls": "node scripts/run-controls-test.js",
+    "test:cli": "node scripts/cli-test.js"
   },
   "engines": {
     "node": ">=22.12.0"
