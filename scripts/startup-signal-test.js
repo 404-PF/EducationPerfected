@@ -21,7 +21,7 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
             const deadline = Date.now() + 12000;
             timer = setInterval(() => {
                 if (output.includes('Log in manually in the opened browser window.')) { clearInterval(timer); resolve(); }
-                else if (child.exitCode !== null || Date.now() >= deadline) { clearInterval(timer); reject(new Error('Startup checkpoint failed')); }
+                else if (child.exitCode !== null || child.signalCode !== null || Date.now() >= deadline) { clearInterval(timer); reject(new Error('Startup checkpoint failed: ' + output)); }
             }, 20);
         });
         assert.equal(output.includes('Commands: start'), false);
@@ -30,6 +30,7 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
         const closed = new Promise(resolve => child.once('close', (code, sig) => resolve({ code, signal: sig })));
         child.kill(signal);
         const result = await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Startup signal did not exit')), 8000); })]);
+        assert.equal(result.signal, null, 'Signal must be handled rather than kill the child');
         assert.equal(result.code, signal === 'SIGINT' ? 130 : 143);
         await assert.rejects(async () => {
             browser = await puppeteer.connect({ browserWSEndpoint: endpoint });

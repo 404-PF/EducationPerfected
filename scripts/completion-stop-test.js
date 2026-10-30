@@ -20,9 +20,12 @@ const { createServer } = require('./mock-ep');
     };
     console.log = (...args) => { if (String(args[0]).includes('No credentials provided')) loginReady = true; log(...args); };
     try {
+        let launchFailure;
         const launch = require('../index').launchProgram();
+        launch.catch(error => { launchFailure = error; });
         const deadline = Date.now() + 12000;
         while (!browser || !loginReady) {
+            if (launchFailure) throw launchFailure;
             if (Date.now() >= deadline) throw new Error('Local login checkpoint timed out');
             await new Promise(resolve => setTimeout(resolve, 10));
         }
