@@ -220,3 +220,14 @@ and is not part of this repository.
 This project does not claim any license and does not grant any permission for the use of Education Perfect's services
 or for automated access to them. Use of the service may be subject to [Education Perfect's terms of service](https://www.educationperfect.com/).
 The code and documentation here are provided as-is for educational and hobby purposes.
+
+
+## CLI credential setup (source build)
+
+Run `node bin/cli.js --setup` in a terminal to save your login in the native OS credential store. Both fields use hidden input. Empty input cancels without changing the saved login. Run `node bin/cli.js --forget-credentials` to remove this app's saved login. These commands do not open a browser or submit an answer.
+
+The native store uses Windows Credential Manager, macOS Keychain, or Linux Secret Service. On Linux, an unlocked Secret Service session (for example GNOME Keyring or KWallet) is required; there is no plaintext or nonpersistent kernel-keyring fallback. If the store is unavailable, ordinary browser/manual login still works. Never put a password in a command argument.
+
+A saved login is read as one versioned record. Existing environment-variable and optional legacy keytar inputs are retained for source-build compatibility. Setup does not delete older legacy-keytar entries. `--forget-credentials` removes only the new record, so older inputs may still supply a login.
+
+This is source-build work, not a packaged release. The native Node binding has a Linux x64 disposable-session test; Windows, macOS and ARM runtime checks are still pending. Browser bundling, native module extraction, signing/distribution and five-target release checks must pass before claiming standalone support. Run `npm run test:store` for isolated adapter/setup contract tests; those tests never access a real credential store.

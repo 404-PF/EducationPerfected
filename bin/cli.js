@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const readline = require('node:readline');
-const { launchProgram } = require('../index');
+const { launchProgram, promptCredentials } = require('../index');
 const { diagnostic } = require('../lib/diagnostics');
 
 async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram } = {}) {
@@ -42,9 +42,34 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
         }
     }
 }
-module.exports = { runCli };
+async function credentialCommand(command, { store, prompt = promptCredentials, output = process.stdout } = {}) {
+    store ||= require('../lib/credential-store').createCredentialStore();
+    if (command === '--forget-credentials') {
+        const removed = await store.remove();
+        output.write(removed ? 'Saved login removed from the OS credential store.\n' : 'No saved login was found.\n');
+        return;
+    }
+    output.write('Save a login in your OS credential store. Input is hidden; nothing is saved in this folder.\n');
+    // Setup has no browser signal owner. Restore raw input even on SIGTERM.
+    const interrupted = signal => {
+        if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
+        process.exit(signal === 'SIGINT' ? 130 : 143);
+    };
+    const onInt = () => interrupted('SIGINT'), onTerm = () => interrupted('SIGTERM');
+    let record;
+    process.on('SIGINT', onInt); process.on('SIGTERM', onTerm);
+    try { record = await prompt(); } finally {
+        process.removeListener('SIGINT', onInt); process.removeListener('SIGTERM', onTerm);
+    }
+    if (!record) { output.write('Setup cancelled; no login saved.\n'); return; }
+    await store.save(record);
+    output.write('Login saved in the OS credential store. Run the CLI to sign in.\n');
+}
+module.exports = { runCli, credentialCommand };
 if (require.main === module) {
-    if (process.argv.includes('--help') || process.argv.includes('-h')) {
-        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js\nCommands: start, stop, status, mode auto, mode semi, refresh, quit\nDoes not start answering until start is entered.');
+    if (process.argv.includes('--setup') || process.argv.includes('--forget-credentials')) {
+        credentialCommand(process.argv.includes('--setup') ? '--setup' : '--forget-credentials').catch(() => { console.error('Credential setup failed. Unlock the OS credential store and try again; no plaintext fallback is used.'); process.exitCode = 1; });
+    } else if (process.argv.includes('--help') || process.argv.includes('-h')) {
+        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit\nDoes not start answering until start is entered.');
     } else runCli().catch(error => { console.error(diagnostic(error, 'EducationPerfected CLI')); process.exitCode = 1; });
 }

@@ -9,6 +9,7 @@
     "smoke": "node scripts/smoke-test.js",
     "test:handlers": "node scripts/handler-test.js",
     "cli": "node bin/cli.js",
+    "test:store": "node scripts/native-store-test.js",
     "test:controls": "node scripts/run-controls-test.js",
     "test:cli": "node scripts/cli-test.js",
     "test:startup": "node scripts/startup-failure-test.js && node scripts/startup-signal-test.js && node scripts/startup-signal-test.js --term && node scripts/startup-signal-test.js --legacy && node scripts/startup-signal-test.js --legacy --term && node scripts/startup-signal-test.js --legacy --launcher && node scripts/startup-signal-test.js --legacy --launcher --term && node scripts/pending-launch-signal-test.js && node scripts/legacy-drain-signal-test.js",
@@ -18,6 +19,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
+    "@napi-rs/keyring": "2.1.2",
     "puppeteer": "25.16.0"
   }
 }

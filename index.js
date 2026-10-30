@@ -10,8 +10,7 @@ const { diagnostic } = require('./lib/diagnostics');
 // Credentials are never stored in this (or any other tracked) file. They are read at
 // runtime, the first source that yields a value for BOTH fields wins:
 //   1. the EP_EMAIL / EP_PASSWORD environment variables
-//   2. the OS keychain (macOS Keychain, Windows Credential Manager, libsecret), under
-//      the service name below, when the optional `keytar` module is installed
+//   2. the native OS credential store, then optional legacy `keytar` entries
 //   3. an interactive prompt on the terminal, when run attached to a TTY. The browser
 //      window is already sitting on EP's login page then, so the prompt is raced
 //      against the logged-in signal on the page: a manual login that completes first
@@ -131,7 +130,6 @@ function promptSecret(label, cleaner) {
             resolve(result);
         };
         if (!stdin.isTTY) return finish(null);
-        process.stderr.write(label);
         // Raw mode is what suppresses echo; without it the password would be printed,
         // so a terminal that cannot do raw mode gets no prompt at all.
         if (typeof stdin.setRawMode !== 'function') {
@@ -198,6 +196,7 @@ function promptSecret(label, cleaner) {
         stdin.resume();
         stdin.on('data', onData);
         armed = true;   // listener attached: finish() now owns the full undo
+        process.stderr.write(label);
     });
     // Cancelling from outside takes finish()'s cleanup path but never process.exit:
     // the run continues on the normal post-login wait (see racePromptAgainstLogin).
@@ -304,7 +303,7 @@ async function promptCredentials(watchForSession) {
 /**
  * Resolves credentials at runtime from the first available source:
  * 1. EP_EMAIL / EP_PASSWORD environment variables (both must be set)
- * 2. OS keychain (via keytar, both fields must be present)
+ * 2. Versioned native OS credential record, then optional legacy keytar fields
  * 3. Interactive TTY prompt (hidden input), raced against watchForSession so a manual
  *    browser login that completes while it is open cancels it
  * Returns null if no credentials are available, allowing manual login, or an object
@@ -323,6 +322,14 @@ async function resolveCredentials(watchForSession) {
         // Half a configuration is almost always a typo; say so instead of guessing
         // which half the user meant and prompting for the other.
         console.warn('Only one of EP_EMAIL / EP_PASSWORD is set (or one of them is empty); not enough for auto-login.');
+    }
+
+    // Read the versioned pair once, never a mixed email/password snapshot.
+    try {
+        const saved = await require('./lib/credential-store').createCredentialStore().read();
+        if (saved) return { ...saved, source: 'the OS credential store' };
+    } catch (error) {
+        if (error.code !== 'MODULE_NOT_FOUND') console.warn('Saved login unavailable. Unlock the OS credential store or run CLI --setup; manual login is still available.');
     }
 
     const keychainEmail = await readKeychainCredential('EP_EMAIL');
@@ -2289,7 +2296,7 @@ async function launchProgram({ legacySignals = false } = {}) {
         });
 }
 
-module.exports = { launchProgram };
+module.exports = { launchProgram, promptCredentials };
 if (require.main === module) {
     launchProgram({ legacySignals: true }).catch(error => {
         console.error(diagnostic(error, 'EducationPerfected startup'));
