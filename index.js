@@ -310,6 +310,9 @@ async function promptCredentials(watchForSession) {
  * @returns {Promise<{email: string, password: string, source: string}|{sessionDetected: true}|null>}
  */
 async function resolveCredentials(watchForSession) {
+    // Test boot must never consult env credentials, the OS keychain, or a
+    // terminal prompt. The local harness performs its own inert mock login.
+    if (process.env.EP_TEST_BOOT === '1') return null;
     const email = cleanEmail(process.env.EP_EMAIL);
     const password = cleanPassword(process.env.EP_PASSWORD);
     if (email && password) return { email, password, source: 'EP_EMAIL/EP_PASSWORD' };
@@ -405,9 +408,6 @@ async function resolveCredentials(watchForSession) {
         // the live app (Italian Smart Lesson + Listening/Dictation, 2026-10-30);
         // lib/detect-question.js carries the full markup notes, including why the
         // per-option ids are unusable and where EP ships the answers client-side.
-        choice_option_css: 'div.mcq-preview-option',
-        voice_speaker_css: '.voice-speaker',
-        lesson_container_css: '#ep-question-container',
 
         exit_button_css: 'button.exit-button',
         exit_continue_button_css: 'button.continue-button',
@@ -682,7 +682,8 @@ async function resolveCredentials(watchForSession) {
             // EP round-trips (large class, slow backend, transient lag) can legitimately
             // exceed 5s, so a fixed 5s timeout used to abort the whole task on one slow
             // round. Keep generous, and retry the round once before giving up.
-            const ADVANCE_TIMEOUT = 15000;
+            const ADVANCE_TIMEOUT = TEST_BOOT && Number(process.env.EP_TEST_ADVANCE_TIMEOUT) > 0
+                ? Number(process.env.EP_TEST_ADVANCE_TIMEOUT) : 15000;
 
             // question -> ordered candidate answers (most-preferred first), seeded from
             // the word lists and enriched by what wrong-answer modals prove.
@@ -1068,7 +1069,7 @@ async function resolveCredentials(watchForSession) {
                 // being typed: the detected question then belonged to an item different from
                 // the one graded, and every later occurrence of those words was mis-answered
                 // while "learning" wrote the wrong pairing back again.
-                if (modalQuestion !== question) {
+                if (!/^(audio|typed):/.test(question) && modalQuestion !== question) {
                     console.warn(`Round skew: read question "${question}" but EP graded "${modalQuestion}". Learning only the graded pairing.`);
                 }
                 // EP just graded `answer` wrong for modalQuestion: that exact pairing must
@@ -1397,7 +1398,7 @@ async function resolveCredentials(watchForSession) {
                             return shown(exitCss) || shown(contCss);
                         }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
                         if (complete) return 'advanced';
-                    } else if (current.kind === 'text' || current.key !== key) {
+                    } else if (typeof current.key === 'string' && current.key !== key) {
                         return 'advanced';
                     }
                     // A cleared answer box is deliberately NOT an advance signal here
@@ -1469,7 +1470,6 @@ async function resolveCredentials(watchForSession) {
                     await alert(message);
                     return false;
                 }
-                typedSubmissionsByKey.set(key, submissions + 1);
                 const answers = (descriptor.answers || []).filter(a => typeof a === 'string' && a.trim() !== '');
                 const rejected = rejectedDict[key] || new Set();
                 const answer = answers.find(a => !rejected.has(a));
@@ -1498,7 +1498,13 @@ async function resolveCredentials(watchForSession) {
                     return true;
                 }
 
-                if (ENTER) await page.keyboard.press('Enter');
+                // Recheck the actual value after scope detection, immediately
+                // before Enter. No submission slot is consumed by a lost box.
+                if (await answerBoxValue() !== answer || !TOGGLE) return true;
+                if (ENTER) {
+                    typedSubmissionsByKey.set(key, submissions + 1);
+                    await page.keyboard.press('Enter');
+                }
                 lastSubmitted = { question: key, answer };
 
                 let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer);
@@ -1525,6 +1531,17 @@ async function resolveCredentials(watchForSession) {
                         }
                         if (!TOGGLE) return false;
                     }
+                    const retryQuestion = await detectQuestion(page);
+                    if (!retryQuestion || retryQuestion.key !== key) return true;
+                    if (await answerBoxValue() !== answer || !TOGGLE) return true;
+                    const retryCount = typedSubmissionsByKey.get(key) || 0;
+                    if (retryCount >= 2) {
+                        const message = `EP has not accepted ${retryCount} submissions for ${key}; stopping instead of resubmitting.`;
+                        console.error(message);
+                        await alert(message);
+                        return false;
+                    }
+                    typedSubmissionsByKey.set(key, retryCount + 1);
                     await page.keyboard.press('Enter');
                     outcome = await waitForAdvanceKey(key, ADVANCE_TIMEOUT, answer);
                     if (outcome === 'timeout') {
@@ -1634,6 +1651,7 @@ async function resolveCredentials(watchForSession) {
 
                 TOGGLE = true;
                 lastSubmitted = null;
+                typedSubmissionsByKey.clear();
                 futileStop = false;  // a manual restart after a futility stop gets a fresh bounded run
                 console.log("answerLoop entered.");
 
@@ -2112,6 +2130,16 @@ async function resolveCredentials(watchForSession) {
             await page.exposeFunction('refresh', refreshWords);
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
+            // Harness-only observability and idempotent stop, never inferred
+            // from log text or exposed during normal runs.
+            if (TEST_BOOT) {
+                await page.exposeFunction('epTestState', () => ({ running: RUNNING !== null }));
+                await page.exposeFunction('epTestStop', async () => {
+                    TOGGLE = false;
+                    if (RUNNING) await RUNNING;
+                    if (CLEANUP) await CLEANUP;
+                });
+            }
 
             /**
              * Installs the hotkey keyup listener on the page document.

@@ -20,7 +20,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { createServer, LESSON_ROUNDS, AUDIO_ROUNDS } = require('./mock-ep');
 const { detectQuestion } = require('../lib/detect-question');
-const { matchChoiceOption, playChoiceRound } = require('../lib/choice-handler');
+const { matchChoiceOption, playChoiceRound, clickVisibleButton } = require('../lib/choice-handler');
 
 const CHECKS = [];
 function check(name) {
@@ -239,9 +239,132 @@ async function testAudioGateSignals(page, origin) {
     check('audio gate signals: assigned/missing/wrong-type/malformed/null/numeric contexts stop, manual beats list, explicit auto passes, unexpected mode unsupported');
 }
 
+async function testDetectorRegressions(page, origin) {
+    for (const route of ['/audio', '/lesson', '/typed-fixture']) {
+        await page.goto(`${origin}${route === '/typed-fixture' ? '/audio' : route}`);
+        if (route === '/typed-fixture') {
+            await page.evaluate(() => { document.querySelector('.voice-speaker').remove(); });
+        }
+        const original = await page.evaluate(() => {
+            const q = window.angular.element().scope().self.model._currentQuestion;
+            return { contentID: q.contentID, questionIndex: q.questionIndex };
+        });
+        for (const field of ['contentID', 'questionIndex']) {
+            for (const bad of [null, NaN, Infinity, '0', -1, {}, []]) {
+                await page.evaluate(({ field, bad, original }) => {
+                    const q = window.angular.element().scope().self.model._currentQuestion;
+                    Object.assign(q, original); q[field] = bad;
+                }, { field, bad, original });
+                assert.equal((await detectQuestion(page)).kind, 'unsupported', `${route}: invalid ${field}`);
+            }
+        }
+    }
+    await page.goto(`${origin}/audio`);
+    await page.evaluate(() => {
+        const stale = document.createElement('div');
+        stale.className = 'multi-choice-component'; stale.setAttribute('role', 'radiogroup'); stale.hidden = true;
+        document.body.prepend(stale);
+    });
+    assert.equal((await detectQuestion(page)).kind, 'audio');
+    await page.goto(`${origin}/lesson`);
+    for (const v of [false, 'false', true, 'true', undefined]) {
+        await page.evaluate(value => { window.angular.element().scope().self.model._currentQuestion.questionDef.Components[0].AllowMultiSelect = value; }, v);
+        assert.equal((await detectQuestion(page)).multi, v !== false && v !== 'false');
+    }
+    const failed = await detectQuestion({ evaluate: async () => { throw new TypeError('bad question state'); } });
+    assert.equal(failed.kind, 'unsupported'); assert.match(failed.reason, /bad question state/);
+    check('detector rejects malformed IDs, ignores hidden roots, parses multi-select explicitly and reports evaluation errors');
+}
+
+async function testUnkeyedChoiceTransition(page, origin) {
+    await page.goto(`${origin}/lesson`);
+    const descriptor = await detectQuestion(page);
+    const timer = setTimeout(() => page.evaluate(() => {
+        document.querySelector('.multi-choice-component').remove();
+        const qt = document.createElement('span'); qt.id = 'question-text'; qt.textContent = 'unkeyed transition'; document.body.append(qt);
+    }), 100);
+    let stopped = false; const stop = setTimeout(() => { stopped = true; }, 500);
+    const result = await playChoiceRound(page, descriptor, { enter: false, timeout: 1000, shouldStop: () => stopped });
+    clearTimeout(timer); clearTimeout(stop);
+    assert.equal(result.status, 'aborted', 'unkeyed text/unsupported reads must not claim advancement');
+    check('choice advancement requires a new keyed descriptor, not an unkeyed transition');
+}
+
+async function testControlAssociation(page, origin) {
+    await page.goto(`${origin}/lesson`);
+    const descriptor = await detectQuestion(page);
+    await page.evaluate(() => {
+        const b = document.createElement('button'); b.textContent = 'Submit';
+        b.onclick = () => { window.__unrelatedClicked = true; }; document.body.append(b);
+    });
+    const outcome = await playChoiceRound(page, descriptor, { enter: true, timeout: 1000, shouldStop: () => false });
+    assert.equal(outcome.status, 'advanced');
+    assert.equal(await page.evaluate(() => !!window.__unrelatedClicked), false);
+    await page.goto(`${origin}/lesson`);
+    const d = await detectQuestion(page);
+    await page.evaluate(() => {
+        const b = document.createElement('button'); b.textContent = 'Submit';
+        document.querySelector('#sa-navigation-controls').append(b);
+    });
+    assert.equal(await clickVisibleButton(page, 'Submit', d), 'ambiguous');
+    await page.evaluate(() => {
+        const original = window.angular;
+        window.angular = { element: el => el && el.id === 'sa-navigation-controls'
+            ? { scope: () => ({ self: { model: { gameMode: 3, _currentQuestion: {} } } }) } : original.element(el) };
+    });
+    assert.equal(await clickVisibleButton(page, 'Submit', d), 'unassociated');
+    await page.goto(`${origin}/lesson`);
+    const final = await detectQuestion(page);
+    await page.evaluate(() => { window.angular.element().scope().self.model.gameMode = 2; });
+    assert.equal(await clickVisibleButton(page, 'Submit', final), 'unassociated');
+    check('SA controls require the same model and round; unrelated buttons ignored, ambiguous/model-mismatch/assessment controls refused');
+    await page.goto(`${origin}/lesson`);
+    const keyed = await detectQuestion(page);
+    await page.evaluate(() => {
+        const original = window.angular;
+        const choice = document.querySelector('.multi-choice-component');
+        window.angular = { element: el => el === choice
+            ? { scope: () => ({ self: { model: { shadowOnly: true } } }) } : original.element(el) };
+    });
+    assert.equal((await detectQuestion(page)).key, keyed.key);
+    assert.equal(await clickVisibleButton(page, 'Submit', keyed), 'clicked');
+    check('per-node inner shadow model is skipped for both detection and associated controls');
+    await page.goto(`${origin}/lesson`);
+    const stale = await detectQuestion(page);
+    await page.evaluate(() => { window.angular.element().scope().self.model._currentQuestion.questionIndex += 1; });
+    assert.equal(await clickVisibleButton(page, 'Submit', stale), 'unassociated');
+    assert.equal(await clickVisibleButton(page, 'Next Question', stale), 'unassociated');
+    check('stale keyed descriptor refuses both Submit and Next even with the same model and bar');
+
+}
+
+async function testNormalizedChoice(page, origin) {
+    await page.goto(`${origin}/lesson`);
+    await page.evaluate(() => {
+        const m = window.angular.element().scope().self.model;
+        m._currentQuestion.questionDef.Components[0].Options.find(o => o.Correct === 'true').TextTemplate = '@@009900@' + "l'" + '@@';
+        [...document.querySelectorAll('.mcq-preview-option')].find(o => o.querySelector('#render-group').textContent.trim() === "l'").querySelector('#render-group').textContent = '@@009900@' + "l'" + '@@';
+    });
+    const d = await detectQuestion(page);
+    let stop = false; const timer = setTimeout(() => { stop = true; }, 250);
+    await playChoiceRound(page, d, { enter: false, timeout: 1000, shouldStop: () => stop });
+    clearTimeout(timer);
+    assert.ok(await page.$eval('input:checked', el => el.parentElement.textContent.includes("l'")));
+    check('click-time choice normalization matches the detector markup rules');
+}
+
 // ---------------------------------------------------------------------------
 // integration tests: the REAL index.js answer loop against the mock
 // ---------------------------------------------------------------------------
+
+function stopProgramChild(child) {
+    // A boot failure can happen before a websocket is available. Kill the
+    // child's process group on POSIX so Chromium is not orphaned in that case.
+    try {
+        if (process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL');
+        else child.kill('SIGKILL');
+    } catch { /* already exited */ }
+}
 
 async function bootRealProgram(origin) {
     const childEnv = { ...process.env };
@@ -253,61 +376,57 @@ async function bootRealProgram(origin) {
         env: {
             ...childEnv,
             EP_TEST_BOOT: '1',
+            EP_TEST_ADVANCE_TIMEOUT: '1000',
             EP_LOGIN_URL: `${origin}/app/login`,
             EP_LOGIN_HOST: '127.0.0.1',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
     });
     let output = '';
     child.stdout.on('data', d => { output += d; });
     child.stderr.on('data', d => { output += d; });
-    const wsEndpoint = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`index.js did not print its endpoint. Output so far:\n${output}`)), 60000);
-        child.stdout.on('data', () => {
-            const match = output.match(/EP_WS_ENDPOINT=(\S+)/);
-            if (match) { clearTimeout(timer); resolve(match[1]); }
+    let browser;
+    try {
+        const wsEndpoint = await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`index.js did not print its endpoint. Output so far:\n${output}`)), 60000);
+            child.stdout.on('data', () => {
+                const match = output.match(/EP_WS_ENDPOINT=(\S+)/);
+                if (match) { clearTimeout(timer); resolve(match[1]); }
+            });
+            child.on('exit', code => { clearTimeout(timer); reject(new Error(`index.js exited early (${code}). Output:\n${output}`)); });
+            child.on('error', e => { clearTimeout(timer); reject(e); });
         });
-        child.on('exit', code => reject(new Error(`index.js exited early (${code}). Output:\n${output}`)));
-    });
-    const browser = await puppeteer.connect({ browserWSEndpoint: wsEndpoint, defaultViewport: null });
-    const page = (await browser.pages())[0];
+        browser = await puppeteer.connect({ browserWSEndpoint: wsEndpoint, defaultViewport: null });
+        const page = (await browser.pages())[0];
 
-    // log in through the mock (any credentials pass), so the program finishes
-    // startup and exposes its controls
-    await page.waitForSelector('#loginId', { timeout: 15000 });
-    await page.type('#loginId', 'someone@example.com');
-    await page.type('#password', 'not-a-real-password');
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => { }),
-        page.evaluate(() => {
-            const button = [...document.querySelectorAll('button')]
-                .find(b => b.closest('form') && (b.innerText || '').trim() === 'Log in');
-            button.click();
-        }),
-    ]);
-    await page.waitForFunction(() => typeof window.startAnswer === 'function', { timeout: 15000 });
-    return { child, browser, page, output: () => output };
+        // log in through the mock (any credentials pass), so the program finishes
+        // startup and exposes its controls
+        await page.waitForSelector('#loginId', { timeout: 15000 });
+        await page.type('#loginId', 'someone@example.com');
+        await page.type('#password', 'not-a-real-password');
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => { }),
+            page.evaluate(() => {
+                const button = [...document.querySelectorAll('button')]
+                    .find(b => b.closest('form') && (b.innerText || '').trim() === 'Log in');
+                button.click();
+            }),
+        ]);
+        await page.waitForFunction(() => typeof window.startAnswer === 'function', { timeout: 15000 });
+        return { child, browser, page, output: () => output };
+    } catch (e) {
+        if (browser) await browser.close().catch(() => {});
+        stopProgramChild(child);
+        throw e;
+    }
 }
 
 async function drive(page, route, seconds, output) {
     await page.goto(`http://127.0.0.1:${ROUTE_PORT}${route}`, { waitUntil: 'domcontentloaded' });
-    const mark = output().length;
     await page.evaluate(() => window.startAnswer());   // Alt+S equivalent
-    await new Promise(r => setTimeout(r, seconds * 1000));
-    // startAnswer() is a TOGGLE: stop only if the loop is actually still
-    // running - after a self-stop (completion, a bound, a rejection) one more
-    // call would RESTART it
-    const log = output().slice(mark);
-    const started = log.lastIndexOf('Starting answerLoop.');
-    const stopped = Math.max(
-        log.lastIndexOf('Stopping answerLoop.'),
-        log.lastIndexOf('Lesson completed.'),
-        log.lastIndexOf('stopping'),
-        log.lastIndexOf('Stopping.'),
-    );
-    if (started > stopped) {
-        await page.evaluate(() => window.startAnswer()).catch(() => { });
-    }
+    await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: seconds * 1000 }).catch(() => {});
+    await page.evaluate(() => window.epTestStop());
 }
 
 let ROUTE_PORT = 0;
@@ -324,6 +443,75 @@ async function testRealLoopAsyncLesson(page, output) {
     assert.ok(output().includes('Lesson completed.'), `run did not complete. Program output:
 ${output()}`);
     check('real loop: 800ms slide gap is not mistaken for completion, and the run completes');
+}
+
+async function testRealAudioFlow(page, output) {
+    for (const [route, mode] of [['/audio', 2], ['/dictation', 3]]) {
+        const mark = output().length;
+        await drive(page, route, 8, output);
+        const log = output().slice(mark);
+        assert.ok(log.includes(`audio:173943:0:${mode}`));
+        assert.ok(log.includes(`audio:173944:1:${mode}`));
+        assert.ok(page.url().endsWith('/learning/dashboard'), `audio mode ${mode} did not finish: ${page.url()}\n${log}`);
+    }
+    check('real loop answers and advances both Listening and Dictation fixture rounds');
+}
+
+async function testRestartBound(page, output) {
+    await drive(page, '/audio-reject', 8, output);
+    const before = await page.evaluate(() => window.__submissions.length);
+    assert.equal(before, 2);
+    await page.evaluate(() => window.startAnswer());
+    await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__submissions.length), 4);
+    check('manual restart gets a fresh per-run bound on the same audio item');
+}
+
+async function testTypedSubmitRaces(page, origin) {
+    // Change the input during the fresh scope read AFTER enterAnswer verified
+    // it. The final value guard must skip Enter, retype, and submit only the
+    // shipped answer. The fixture records every Enter, including wrong ones.
+    await page.goto(`${origin}/audio-reject`);
+    await page.evaluate(() => {
+        const m = window.angular.element().scope().self.model;
+        const q = m._currentQuestion;
+        let rewritten = false;
+        Object.defineProperty(m, '_currentQuestion', { get() {
+            const box = document.querySelector('#answer-text');
+            if (!rewritten && box && box.value === 'Ho la febbre') {
+                rewritten = true; box.value = 'unexpected rewrite'; window.__rewritten = true;
+            }
+            return q;
+        }});
+    });
+    await page.evaluate(() => window.startAnswer());
+    await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
+    const state = await page.evaluate(() => ({ rewritten: window.__rewritten, values: window.__submissions.map(s => s.value) }));
+    assert.equal(state.rewritten, true);
+    assert.deepEqual(state.values, ['Ho la febbre', 'Ho la febbre']);
+    check('typed final-value race never submits rewritten input or consumes a false submission slot');
+
+    // During the bounded retry's fresh scope read, advance to another item.
+    // Old answer must not get an Enter on the new item (then gate the new
+    // round off so the test can distinguish old-answer leakage).
+    await page.goto(`${origin}/audio-reject`);
+    await page.evaluate(() => {
+        const m = window.angular.element().scope().self.model;
+        const q = m._currentQuestion;
+        let changed = false;
+        Object.defineProperty(m, '_currentQuestion', { get() {
+            if (!changed && window.__submissions.length === 1 && document.querySelector('#answer-text').value === 'Ho la febbre') {
+                changed = true; q.questionIndex = 1; q.contentID = 999;
+                q.validAnswers = [{ outputString: 'different answer' }];
+                m.sectionData = { activityGroup: { isAutoMarked: false } };
+            }
+            return q;
+        }});
+    });
+    await page.evaluate(() => window.startAnswer());
+    await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__submissions.length), 1);
+    check('retry rechecks round identity and never submits the previous answer on a changed item');
 }
 
 async function testRealLoopAssignedAudio(page, output) {
@@ -369,6 +557,8 @@ async function testRealLoopQuietRejection(page, output) {
 }
 
 async function main() {
+    const phase = process.argv[2] || 'all';
+    assert.ok(['all', 'unit', 'integration'].includes(phase), `Unknown test phase: ${phase}`);
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     ROUTE_PORT = server.address().port;
@@ -396,7 +586,6 @@ async function main() {
             return request.abort();
         });
 
-        const phase = process.argv[2] || 'all';
         if (phase === 'all' || phase === 'unit') {
             // handler level
             await testChoiceFlow(page, origin);
@@ -407,12 +596,19 @@ async function main() {
             await testUnsupportedChoice(page, origin);
             await testAudioDetection(page, origin);
             await testAudioGateSignals(page, origin);
+            await testDetectorRegressions(page, origin);
+            await testNormalizedChoice(page, origin);
+            await testUnkeyedChoiceTransition(page, origin);
+            await testControlAssociation(page, origin);
         }
 
         if (phase === 'all' || phase === 'integration') {
             // integration level: the real program's loop
             program = await bootRealProgram(origin);
             await testRealLoopAsyncLesson(program.page, program.output);
+            await testRealAudioFlow(program.page, program.output);
+            await testRestartBound(program.page, program.output);
+            await testTypedSubmitRaces(program.page, origin);
             await testRealLoopAssignedAudio(program.page, program.output);
             await testRealLoopMalformedAudio(program.page, program.output);
             await testRealLoopQuietRejection(program.page, program.output);
@@ -421,8 +617,8 @@ async function main() {
         console.log(`\nAll ${CHECKS.length} checks passed.`);
     } finally {
         if (program) {
-            try { program.child.kill('SIGKILL'); } catch { /* already gone */ }
-            try { await program.browser.disconnect(); } catch { /* already gone */ }
+            try { await program.browser.close(); } catch { /* already gone */ }
+            stopProgramChild(program.child);
         }
         if (page) { try { await page.close(); } catch { /* already gone */ } }
         if (browser) {

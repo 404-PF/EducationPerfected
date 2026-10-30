@@ -155,13 +155,14 @@ const lessonPage = (asyncTransitions) => PAGE(`
             <div id="slide-host"></div>
             <button class="exit-button" hidden onclick="location.href='/learning/dashboard'">Exit</button>
         </div>
+        <div id="sa-navigation-controls"></div>
     </main>
     <script>
         const rounds = ${JSON.stringify(LESSON_ROUNDS)};
         const asyncTransitions = ${asyncTransitions ? 'true' : 'false'};
         let index = 0;
         // the AngularJS scope stub: detect-question reads scope.self.model
-        const SELF = { model: { _currentQuestion: null, sectionData: { activityGroup: { isAutoMarked: true } } } };
+        const SELF = { model: { _currentQuestion: null, gameMode: 3, sectionData: { activityGroup: { isAutoMarked: true } } } };
         window.angular = { element: () => ({ scope: () => ({ self: SELF }) }) };
 
         const host = document.getElementById('slide-host');
@@ -169,6 +170,7 @@ const lessonPage = (asyncTransitions) => PAGE(`
 
         function unmount() {
             host.innerHTML = '';
+            document.getElementById('sa-navigation-controls').innerHTML = '';
             SELF.model._currentQuestion = null;
         }
 
@@ -178,6 +180,7 @@ const lessonPage = (asyncTransitions) => PAGE(`
                 exit.hidden = false;
                 return;
             }
+            document.getElementById('sa-navigation-controls').innerHTML = '';
             const round = rounds[index];
             SELF.model._currentQuestion = {
                 contentID: round.contentID,
@@ -248,8 +251,7 @@ const lessonPage = (asyncTransitions) => PAGE(`
             host.appendChild(group);
             host.appendChild(mc);
             host.appendChild(hiddenSubmit);
-            host.appendChild(submit);
-            host.appendChild(next);
+            document.getElementById('sa-navigation-controls').append(submit, next);
         }
         render();
     </script>`);
@@ -266,7 +268,7 @@ const AUDIO_ROUNDS = [
     { contentID: 173944, answer: 'Sto bene' },
 ];
 
-const audioPage = PAGE(`
+const audioPage = (mode = 2) => PAGE(`
     <main>
         <div id="ep-question-container" class="question-container">
             <div class="voice-speaker"><span id="question-text" style="display:none"></span></div>
@@ -296,7 +298,7 @@ const audioPage = PAGE(`
                 contentID: rounds[index].contentID,
                 questionIndex: index,
                 validAnswers: [{ outputString: rounds[index].answer }],
-                translationMode: 2,
+                translationMode: ${mode},
             };
             box.value = '';
             box.focus();
@@ -377,7 +379,8 @@ function createServer() {
         }
         if (url.pathname === '/lesson') return send(lessonPage(false));
         if (url.pathname === '/lesson-async') return send(lessonAsyncPage);
-        if (url.pathname === '/audio') return send(audioPage);
+        if (url.pathname === '/audio') return send(audioPage(2));
+        if (url.pathname === '/dictation') return send(audioPage(3));
         if (url.pathname === '/audio-reject') return send(audioRejectPage(LIST_SELF_TEST_VALUE));
         // negative gate fixture: the same audio task but ASSIGNED (_taskID set)
         // - the self-test list signal is absent, so the run must stop unanswered
