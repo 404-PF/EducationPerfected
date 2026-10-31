@@ -6,6 +6,7 @@ const { playChoiceRound } = require('./lib/choice-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { diagnostic } = require('./lib/diagnostics');
 const { createTestCdpDiagnostic } = require('./lib/test-cdp-diagnostic');
+const { navigateForLogin } = require('./lib/test-navigation-cause');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -539,7 +540,7 @@ async function launchProgram({ legacySignals = false } = {}) {
  */
             const reachLoginForm = async () => {
                 console.log('Opening EP page...');
-                await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+                await navigateForLogin(page, DIR.login_url, TEST_BOOT);
                 console.log('Waiting for login page to load...');
                 try {
                     // No retry loop on purpose: waitForSelector already keeps polling and
