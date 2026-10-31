@@ -1,18 +1,38 @@
 {
   "name": "educationperfected",
-  "version": "2.2.0",
+  "version": "2026.0.0",
   "private": true,
   "description": "Automates Education Perfect language and Dash tasks with Puppeteer.",
   "license": "UNLICENSED",
   "scripts": {
     "start": "node bin/launch.js",
     "smoke": "node scripts/smoke-test.js",
-    "test:handlers": "node scripts/handler-test.js"
+    "test:handlers": "node scripts/handler-test.js",
+    "cli": "node bin/cli.js",
+    "release:check": "node scripts/release-gate.js",
+    "test:release-gate": "node scripts/release-gate-test.js",
+    "build:linux-dev": "node packaging/build-linux.js",
+    "test:packaged": "node scripts/sea-checksum-test.js && node scripts/packaged-cli-test.js && node scripts/packaged-integrity-test.js",
+    "test:store:integration": "sh scripts/native-store-integration.sh",
+    "test:store:pty": "python3 scripts/setup-pty-test.py",
+    "test:store": "node scripts/native-store-test.js",
+    "test:controls": "node scripts/run-controls-test.js",
+    "test:cli": "node scripts/cli-test.js",
+    "test:startup": "node scripts/startup-failure-test.js && node scripts/startup-signal-test.js && node scripts/startup-signal-test.js --term && node scripts/startup-signal-test.js --legacy && node scripts/startup-signal-test.js --legacy --term && node scripts/startup-signal-test.js --legacy --launcher && node scripts/startup-signal-test.js --legacy --launcher --term && node scripts/pending-launch-signal-test.js && node scripts/legacy-drain-signal-test.js && node scripts/legacy-drain-signal-test.js --force",
+    "test:phase3": "npm run test:controls && npm run test:startup && npm run test:cli && node scripts/completion-stop-test.js",
+    "build:windows-dev": "node packaging/build-windows.js",
+    "test:packaged-harness": "node scripts/fixture-cleanup-errors-test.js && node scripts/packaged-windows-binding-test.js && node scripts/bootstrap-cleanup-test.js && node scripts/build-target-test.js"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "dependencies": {
+    "@napi-rs/keyring": "2.1.2",
+    "modern-tar": "0.8.6",
     "puppeteer": "25.16.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6"
   }
 }

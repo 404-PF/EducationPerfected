@@ -1,15 +1,16 @@
-// v2.2.0
+// V2026 (package version 2026.0.0)
 
 const puppeteer = require('puppeteer');
 const { detectQuestion } = require('./lib/detect-question');
 const { playChoiceRound } = require('./lib/choice-handler');
+const { createRunControls } = require('./lib/run-controls');
+const { diagnostic } = require('./lib/diagnostics');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
 // runtime, the first source that yields a value for BOTH fields wins:
 //   1. the EP_EMAIL / EP_PASSWORD environment variables
-//   2. the OS keychain (macOS Keychain, Windows Credential Manager, libsecret), under
-//      the service name below, when the optional `keytar` module is installed
+//   2. the native OS credential store, then optional legacy `keytar` entries
 //   3. an interactive prompt on the terminal, when run attached to a TTY. The browser
 //      window is already sitting on EP's login page then, so the prompt is raced
 //      against the logged-in signal on the page: a manual login that completes first
@@ -129,7 +130,6 @@ function promptSecret(label, cleaner) {
             resolve(result);
         };
         if (!stdin.isTTY) return finish(null);
-        process.stderr.write(label);
         // Raw mode is what suppresses echo; without it the password would be printed,
         // so a terminal that cannot do raw mode gets no prompt at all.
         if (typeof stdin.setRawMode !== 'function') {
@@ -181,7 +181,8 @@ function promptSecret(label, cleaner) {
                 if (byte === 13 || byte === 10) return finish(cleaner(Buffer.from(bytes).toString('utf8')));
                 if (byte === 3) {  // Ctrl+C: leave cleanly, no stack trace
                     finish(null);
-                    process.exit(130);
+                    if (process.listenerCount('SIGINT')) process.emit('SIGINT');
+                    else process.exit(130);
                 }
                 if (byte === 8 || byte === 127) {
                     // drop one whole UTF-8 character (continuation bytes, then the lead byte)
@@ -195,6 +196,7 @@ function promptSecret(label, cleaner) {
         stdin.resume();
         stdin.on('data', onData);
         armed = true;   // listener attached: finish() now owns the full undo
+        process.stderr.write(label);
     });
     // Cancelling from outside takes finish()'s cleanup path but never process.exit:
     // the run continues on the normal post-login wait (see racePromptAgainstLogin).
@@ -266,9 +268,9 @@ async function racePromptAgainstLogin(prompt, sessionWatch) {
  *   the first prompt, and raced against both.
  * @returns {Promise<{email: string, password: string}|PROMPT_CANCELLED_BY_LOGIN|null>}
  */
-async function promptCredentials(watchForSession) {
+async function promptCredentials(watchForSession, { setup = false } = {}) {
     if (!process.stdin.isTTY) {
-        console.log('Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
+        console.log(setup ? 'Setup requires a terminal with hidden input; no login saved.' : 'Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
         return null;
     }
     // The watcher is started, not tested: watchForSession() hands back a Promise, which
@@ -284,7 +286,7 @@ async function promptCredentials(watchForSession) {
             : racePromptAgainstLogin(prompt, sessionWatch);
     };
 
-    const emailPrompt = promptSecret('EP email (leave empty to log in manually): ', cleanEmail);
+    const emailPrompt = promptSecret(setup ? 'EP email (leave empty to cancel setup): ' : 'EP email (leave empty to log in manually): ', cleanEmail);
     const email = await race(emailPrompt);
     if (email === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (email === null) return null;
@@ -292,7 +294,7 @@ async function promptCredentials(watchForSession) {
     const password = await race(passwordPrompt);
     if (password === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (password === null) {
-        console.log('No password entered; log in manually in the opened browser window.');
+        console.log(setup ? 'No password entered; setup cancelled.' : 'No password entered; log in manually in the opened browser window.');
         return null;
     }
     return { email, password };
@@ -301,7 +303,7 @@ async function promptCredentials(watchForSession) {
 /**
  * Resolves credentials at runtime from the first available source:
  * 1. EP_EMAIL / EP_PASSWORD environment variables (both must be set)
- * 2. OS keychain (via keytar, both fields must be present)
+ * 2. Versioned native OS credential record, then optional legacy keytar fields
  * 3. Interactive TTY prompt (hidden input), raced against watchForSession so a manual
  *    browser login that completes while it is open cancels it
  * Returns null if no credentials are available, allowing manual login, or an object
@@ -322,6 +324,14 @@ async function resolveCredentials(watchForSession) {
         console.warn('Only one of EP_EMAIL / EP_PASSWORD is set (or one of them is empty); not enough for auto-login.');
     }
 
+    // Read the versioned pair once, never a mixed email/password snapshot.
+    try {
+        const saved = await require('./lib/credential-store').createCredentialStore().read();
+        if (saved) return { ...saved, source: 'the OS credential store' };
+    } catch (error) {
+        console.warn('Saved login unavailable (' + (error.code || 'store failure') + '). Unlock the OS credential store or run CLI --setup; manual login is still available.');
+    }
+
     const keychainEmail = await readKeychainCredential('EP_EMAIL');
     const keychainPassword = await readKeychainCredential('EP_PASSWORD');
     if (keychainEmail && keychainPassword) {
@@ -340,7 +350,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-(async () => {
+async function launchProgram({ legacySignals = false } = {}) {
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -418,15 +428,78 @@ async function resolveCredentials(watchForSession) {
         toast_id: '__ep_toast',
     }
 
-    // launch browser
-    puppeteer.launch({
+    // Startup owns signal cleanup until controls are ready. Keep stdin exclusive
+    // to credential prompts; do not create the CLI reader during sign-in.
+    let startupBrowser;
+    let startupSignal = null;
+    const exitCodeFor = signal => signal === 'SIGINT' ? 130 : signal === 'SIGHUP' ? 129 : 143;
+    let startupShutdown = null;
+    let legacyReady = false;
+    const closeSignalBrowser = async () => {
+        let timer;
+        try {
+            await Promise.race([
+                startupBrowser.close(),
+                new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Browser shutdown timed out')), 3000); }),
+            ]);
+        } finally { clearTimeout(timer); }
+    };
+    let signalClose = closeSignalBrowser;
+    const removeStartupSignals = () => {
+        process.removeListener('SIGINT', onStartupInt);
+        process.removeListener('SIGTERM', onStartupTerm);
+        process.removeListener('SIGHUP', onStartupHup);
+    };
+    const shutdownStartup = () => {
+        if (!startupBrowser || startupShutdown) return startupShutdown;
+        startupShutdown = (async () => {
+            try {
+                // Ready legacy controls must drain before the browser-close timeout
+                // starts. Startup still has only a browser to close.
+                await signalClose();
+            } catch {
+                startupBrowser.process()?.kill();
+                startupBrowser.disconnect();
+            } finally {
+                removeStartupSignals();
+                process.exit(exitCodeFor(startupSignal));
+            }
+        })();
+        return startupShutdown;
+    };
+    const onStartupSignal = signal => {
+        if (startupSignal && legacyReady) {
+            console.error('Second interrupt received; forcing browser shutdown. Pending work may not finish cleanup.');
+            startupBrowser.process()?.kill();
+            startupBrowser.disconnect();
+            removeStartupSignals();
+            process.exit(exitCodeFor(startupSignal));
+        }
+        if (legacyReady) console.log('Stopping and waiting for active work to finish. Interrupt again to force shutdown.');
+        if (!startupSignal && !startupBrowser) console.log('Cancellation requested; waiting for browser launch before cleanup.');
+        startupSignal ||= signal;
+        // A raw credential prompt has no echo and must relinquish the terminal.
+        if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
+        shutdownStartup();
+    };
+    const onStartupInt = () => onStartupSignal('SIGINT');
+    const onStartupTerm = () => onStartupSignal('SIGTERM');
+    const onStartupHup = () => onStartupSignal('SIGHUP');
+    process.on('SIGINT', onStartupInt);
+    process.on('SIGTERM', onStartupTerm);
+    process.on('SIGHUP', onStartupHup);
+    return puppeteer.launch({
         // test boot: no visible window, and the endpoint is printed so the
         // test can attach
         headless: TEST_BOOT ? 'shell' : false,
         defaultViewport: null,
-        handleSIGINT: false
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false
     })
         .then(async browser => {
+            startupBrowser = browser;
+            if (startupSignal) return shutdownStartup();
             if (TEST_BOOT) console.log(`EP_WS_ENDPOINT=${browser.wsEndpoint()}`);
             const page = (await browser.pages())[0];
 
@@ -677,6 +750,7 @@ async function resolveCredentials(watchForSession) {
             let RUNNING = null;  // promise handle of the run currently executing, or null
             let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
+            let runReason = 'stopped';
 
             // How long to wait for EP to move on to the next question after a submission.
             // EP round-trips (large class, slow backend, transient lag) can legitimately
@@ -1623,6 +1697,7 @@ async function resolveCredentials(watchForSession) {
                     if (result.status === 'advanced') return TOGGLE;
                     if (result.status === 'aborted') return false;
                     if (result.status === 'complete') {
+                        if (await taskCompletionProven()) runReason = 'completed';
                         console.log('Lesson completed.');
                         return false;
                     }
@@ -1641,6 +1716,18 @@ async function resolveCredentials(watchForSession) {
                     return false;
                 }
 
+            // A generic Continue/modal is not proof that the task ended. Status
+            // uses a narrower signal than legacy navigation: no question plus
+            // a visible exit control, while this run still intends to answer.
+            async function taskCompletionProven() {
+                if (!TOGGLE || await detectQuestion(page) !== null) return false;
+                const exitVisible = await page.evaluate(css => {
+                    const button = document.querySelector(css);
+                    return !!button && !button.hidden && (button.offsetParent !== null || button.getClientRects().length > 0);
+                }, DIR.exit_button_css).catch(() => false);
+                return TOGGLE && exitVisible;
+            }
+
             /**
  * Main answer loop: runs until TOGGLE is false, task completes, or an error occurs.
  * Handles cleanup, modal resolution, and page-gone errors. Restart-safe.
@@ -1650,6 +1737,7 @@ async function resolveCredentials(watchForSession) {
                 if (RUNNING !== null) throw Error("Tried to initiate answerLoop while it is already running");
 
                 TOGGLE = true;
+                runReason = 'stopped';
                 lastSubmitted = null;
                 typedSubmissionsByKey.clear();
                 futileStop = false;  // a manual restart after a futility stop gets a fresh bounded run
@@ -1694,6 +1782,7 @@ async function resolveCredentials(watchForSession) {
                     await CLEANUP;
                     console.log('answerLoop Exited.');
                 }
+                return { reason: runReason };
             }
 
             /**
@@ -1766,12 +1855,15 @@ async function resolveCredentials(watchForSession) {
                                 ? 'Question element gone; task completion confirmed. Ending the run.'
                                 : 'Question element never returned within 20s; stopping the run.');
                             if (complete && TOGGLE) {
+                                const proven = await taskCompletionProven();
+                                if (!TOGGLE) break;
                                 const exited = await page.evaluate((exitCss, contCss) => {
                                     const button = document.querySelector(exitCss) || document.querySelector(contCss);
                                     if (!button) return false;
                                     button.click();
                                     return true;
                                 }, DIR.exit_button_css, DIR.exit_continue_button_css).catch(() => false);
+                                if (exited && proven && TOGGLE) runReason = 'completed';
                                 console.log(exited ? 'Clicked the task exit/continue button.' : 'The completion controls vanished; stopping the run.');
                             }
                             break;
@@ -2031,10 +2123,11 @@ async function resolveCredentials(watchForSession) {
                 TOGGLE = true;
                 const myRun = answerLoop()
                     .catch(e => {
-                        // log only: answerLoop's own finally already cleared TOGGLE on every
+                        // answerLoop's own finally already cleared TOGGLE on every
                         // path that can reach this handler, and a stale TOGGLE = false here
                         // would cancel a newer run spawned while the old cleanup was pending
-                        console.error(e);
+                        console.error(diagnostic(e, 'Answer loop'));
+                        throw e;
                     })
                     .finally(() => {
                         // backstop: a run that crashed outside answerLoop's finally must
@@ -2046,6 +2139,7 @@ async function resolveCredentials(watchForSession) {
                         if (RUNNING === myRun) RUNNING = null;
                     });
                 RUNNING = myRun;
+                return myRun;
             }
 
             /**
@@ -2054,12 +2148,16 @@ async function resolveCredentials(watchForSession) {
  * @returns {Promise<void>}
  */
             async function toggleLoop() {
-                if (RUNNING) {
-                    TOGGLE = false;
-                    console.log("Stopping answerLoop.");
+                if (controls.status().state === 'running') {
+                    console.log('Stopping answerLoop.');
+                    await controls.stop();
+                } else if (['stopped', 'error', 'completed'].includes(controls.status().state)) {
+                    console.log('Starting answerLoop.');
+                    controls.start();
+                } else if (controls.status().state === 'closed') {
+                    await notifyControl('The browser is closed; open a new session before starting again.');
                 } else {
-                    console.log("Starting answerLoop.");
-                    startLoop();
+                    await notifyControl(`Answer control is ${controls.status().state}; wait until stopped before starting again.`);
                 }
             }
 
@@ -2067,16 +2165,20 @@ async function resolveCredentials(watchForSession) {
  * Toggles between auto mode (auto-submit Enter) and semi-auto mode (user presses Enter).
  * @returns {Promise<void>}
  */
+            async function notifyControl(message) {
+                console.log(message);
+                try { await alert(message); } catch { console.warn('Browser notification could not be shown.'); }
+            }
+
             async function toggleAuto() {
-                if (ENTER) {
-                    ENTER = false;
-                    console.log("Switched to semi-auto mode.");
-                    await alert("Switched to semi-auto mode.");
-                } else {
-                    ENTER = true;
-                    console.log("Switched to auto mode.");
-                    await alert("Switched to auto mode.");
-                }
+                try { await controls.mode(ENTER ? 'semi' : 'auto'); }
+                catch { await notifyControl('Stop the run before changing mode.'); return; }
+                await notifyControl(ENTER ? 'Switched to auto mode.' : 'Switched to semi-auto mode.');
+            }
+
+            async function refreshControl() {
+                try { await controls.refresh(); }
+                catch { await notifyControl('Word refresh failed or a run is still active; stop the run and check the task-starter word lists.'); }
             }
 
             /**
@@ -2124,21 +2226,26 @@ async function resolveCredentials(watchForSession) {
                 }, msg, DIR.toast_id);
             }
 
+            const controls = createRunControls({
+                run: startLoop,
+                requestStop: () => { TOGGLE = false; },
+                setMode: value => { ENTER = value === 'auto'; },
+                refresh: refreshWords,
+                close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
+            });
+            browser.on('disconnected', () => controls.browserClosed());
+
             // Expose API functions to the page (for hotkey event listeners to call).
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
-            await page.exposeFunction('refresh', refreshWords);
+            await page.exposeFunction('refresh', refreshControl);
             await page.exposeFunction('startAnswer', toggleLoop);
             await page.exposeFunction('toggleMode', toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
             // from log text or exposed during normal runs.
             if (TEST_BOOT) {
-                await page.exposeFunction('epTestState', () => ({ running: RUNNING !== null }));
-                await page.exposeFunction('epTestStop', async () => {
-                    TOGGLE = false;
-                    if (RUNNING) await RUNNING;
-                    if (CLEANUP) await CLEANUP;
-                });
+                await page.exposeFunction('epTestState', () => ({ running: ['running', 'stopping'].includes(controls.status().state) }));
+                await page.exposeFunction('epTestStop', () => controls.stop());
             }
 
             /**
@@ -2168,6 +2275,46 @@ async function resolveCredentials(watchForSession) {
             await page.evaluateOnNewDocument(installHotkeysInPage);
             await page.evaluate(installHotkeysInPage);
 
-            console.log('Education Perfected V2 fully Loaded.');
+            console.log('Education Perfected V2026 fully Loaded.');
+            if (legacySignals) {
+                // Legacy entrypoints have no CLI signal owner. Keep this owner
+                // and drain shared controls before closing the owned browser.
+                signalClose = () => controls.close();
+                legacyReady = true;
+                browser.once('disconnected', () => { if (!startupSignal) removeStartupSignals(); });
+            } else removeStartupSignals();
+            return controls;
+        })
+        .catch(async error => {
+            if (startupSignal) {
+                if (startupBrowser) await shutdownStartup();
+                else { removeStartupSignals(); process.exit(exitCodeFor(startupSignal)); }
+                return;
+            }
+            removeStartupSignals();
+            if (startupBrowser) {
+                let timer;
+                try {
+                    await Promise.race([
+                        startupBrowser.close(),
+                        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Browser close timed out')), 3000); }),
+                    ]);
+                }
+                catch {
+                    // close() can fail on a broken control connection. The
+                    // owned browser child is still ours to terminate.
+                    startupBrowser.process()?.kill();
+                    startupBrowser.disconnect();
+                } finally { clearTimeout(timer); }
+            }
+            throw error;
         });
-})();
+}
+
+module.exports = { launchProgram, promptCredentials };
+if (require.main === module) {
+    launchProgram({ legacySignals: true }).catch(error => {
+        console.error(diagnostic(error, 'EducationPerfected startup'));
+        process.exitCode = 1;
+    });
+}

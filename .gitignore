@@ -7,3 +7,8 @@ node_modules/
 .env
 .env.*
 credentials.json
+# Generated standalone development builds (never source or credentials).
+build/
+
+# Exact-commit release attestations are reviewed out of band, never fixture claims.
+release/evidence.json
