@@ -20,7 +20,9 @@ for (const status of ['skipped', 'fixture-only', 'not-run', 'failed', 'pending']
 const stale = complete(); stale.targets['windows-x64']['console-shutdown'].sourceCommit = 'b'.repeat(40);
 assert.deepEqual(validate(stale, commit), [label + ': source commit mismatch']);
 assert.ok(validate(complete(), 'b'.repeat(40)).includes('Evidence schema/source commit mismatch'));
-for (const value of [undefined, '', 'fixture-report', 'http://example.invalid/proof', 'https://user:password@example.invalid/proof', './absent-report']) {
+// Literal insecure URL is a negative control; no request is sent.
+const rejectedPlainHttp = 'http://example.invalid/proof'; // NOSONAR: test requires rejecting clear-text evidence URLs.
+for (const value of [undefined, '', 'fixture-report', rejectedPlainHttp, 'https://user:password@example.invalid/proof', './absent-report']) {
     const evidence = complete(); evidence.targets['linux-arm64']['clean-machine-no-node'].evidence = value;
     assert.ok(validate(evidence, commit).some(x => x.startsWith('linux-arm64/clean-machine-no-node: missing evidence')));
 }
