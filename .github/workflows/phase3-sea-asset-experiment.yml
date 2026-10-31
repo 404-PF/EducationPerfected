@@ -57,6 +57,8 @@ jobs:
           command -v Xvfb
           command -v xvfb-run
           xvfb-run -a node scripts/packaged-cli-test.js
+      - name: Exercise SEA asset corruption and extraction interrupts
+        run: node scripts/sea-checksum-test.js && node scripts/packaged-integrity-test.js
       - name: Confirm temporary extraction cleanup
         if: always()
         run: |

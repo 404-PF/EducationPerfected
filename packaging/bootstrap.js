@@ -33,11 +33,11 @@ async function main() {
         if (browserAsset.size !== manifest.length) throw Error('Invalid browser payload size');
         const hash = createHash('sha256');
         for await (const chunk of Readable.fromWeb(browserAsset.stream())) hash.update(chunk);
-        if (hash.digest('hex') !== manifest.sha256) throw Error('Browser payload checksum mismatch');
+        if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
         await pipeline(Readable.fromWeb(browserAsset.stream()), createGunzip(), unpackTar(dir));
         process.env.PUPPETEER_EXECUTABLE_PATH = path.join(dir, manifest.executable);
         handoffSignals();
         await require('../bin/cli').runCli();
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }
 }
-main().catch(error => { console.error('EducationPerfected could not start. ' + require('../lib/diagnostics').diagnostic(error, 'Startup')); process.exitCode = 1; });
+main().catch(error => { console.error(error?.code === 'EP_BROWSER_CHECKSUM' ? 'EducationPerfected could not start. Browser payload integrity check failed (EP_BROWSER_CHECKSUM).' : 'EducationPerfected could not start. ' + require('../lib/diagnostics').diagnostic(error, 'Startup')); process.exitCode = 1; });
