@@ -15,11 +15,14 @@ async function main() {
         if (windowsBinding?.hasLiveWorkers()) {
             cleanupPending = true;
             console.error('Native credential worker has not exited; owned extraction retained.');
-            process.exitCode = 1;
+            process.exitCode ||= 1;
             return;
         }
         cleanupPending = false;
-        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {
+            console.error('Owned extraction cleanup failed; temporary files may remain.');
+            process.exitCode ||= 1;
+        } };
     process.on('exit', cleanup);
     const onInt = () => process.exit(130), onTerm = () => process.exit(143), onHup = () => process.exit(129);
     process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
@@ -60,4 +63,4 @@ async function main() {
         await require('../bin/cli').runCli();
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }
 }
-main().catch(error => { console.error(error?.code === 'EP_BROWSER_CHECKSUM' ? 'EducationPerfected could not start. Browser payload integrity check failed (EP_BROWSER_CHECKSUM).' : 'EducationPerfected could not start. ' + require('../lib/diagnostics').diagnostic(error, 'Startup')); process.exitCode = 1; });
+main().catch(error => { console.error(error?.code === 'EP_BROWSER_CHECKSUM' ? 'EducationPerfected could not start. Browser payload integrity check failed (EP_BROWSER_CHECKSUM).' : 'EducationPerfected could not start. ' + require('../lib/diagnostics').diagnostic(error, 'Startup')); process.exitCode ||= 1; });

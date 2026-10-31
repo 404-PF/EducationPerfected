@@ -19,7 +19,9 @@
     "test:controls": "node scripts/run-controls-test.js",
     "test:cli": "node scripts/cli-test.js",
     "test:startup": "node scripts/startup-failure-test.js && node scripts/startup-signal-test.js && node scripts/startup-signal-test.js --term && node scripts/startup-signal-test.js --legacy && node scripts/startup-signal-test.js --legacy --term && node scripts/startup-signal-test.js --legacy --launcher && node scripts/startup-signal-test.js --legacy --launcher --term && node scripts/pending-launch-signal-test.js && node scripts/legacy-drain-signal-test.js && node scripts/legacy-drain-signal-test.js --force",
-    "test:phase3": "npm run test:controls && npm run test:startup && npm run test:cli && node scripts/completion-stop-test.js"
+    "test:phase3": "npm run test:controls && npm run test:startup && npm run test:cli && node scripts/completion-stop-test.js",
+    "build:windows-dev": "node packaging/build-windows.js",
+    "test:packaged-harness": "node scripts/fixture-cleanup-errors-test.js && node scripts/packaged-windows-binding-test.js && node scripts/bootstrap-cleanup-test.js && node scripts/build-target-test.js"
   },
   "engines": {
     "node": ">=22.12.0"
