@@ -20,6 +20,8 @@ jobs:
           node-version: 22.23.4
       - name: Install pinned dependencies and browser
         run: npm ci
+      - name: Test packaged fixture readiness and connection ownership
+        run: node scripts/packaged-fixture-page-test.js
       - name: Test bounded sanitized CDP diagnostic
         run: node scripts/test-cdp-diagnostic-test.js
       - name: Test fixture cleanup error precedence

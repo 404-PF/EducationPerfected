@@ -9,6 +9,7 @@ const puppeteer = require('puppeteer');
 const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
 const { createTestCdpDiagnostic } = require('../lib/test-cdp-diagnostic');
+const { loginReady, selectLoginPage, disconnectController } = require('./packaged-fixture-page');
 (async () => {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const target = process.platform === 'win32' && process.arch === 'x64'
@@ -73,14 +74,13 @@ const { createTestCdpDiagnostic } = require('../lib/test-cdp-diagnostic');
    await new Promise(resolve=>setTimeout(resolve,30));
   }
  };
-  await wait(()=>/EP_WS_ENDPOINT=(\S+)/.test(text));
+  await wait(()=>loginReady(text));
   browser=await puppeteer.connect({browserWSEndpoint:text.match(/EP_WS_ENDPOINT=(\S+)/)[1],logger});
-  await browser.waitForTarget(target=>target.type()==='page');
   const command = await browser.target().createCDPSession();
   const { arguments: browserArgs } = await command.send('Browser.getBrowserCommandLine');
   assert.ok(browserArgs[0].startsWith(isolated + path.sep), 'Browser must launch from this executable extraction, never a host cache');
   await command.detach();
-  const page=(await browser.pages())[0]; await page.waitForSelector('#loginId');
+  const page=await selectLoginPage(browser,origin+'/app/login'); await page.waitForSelector('#loginId');
   await page.type('#loginId','fixture-user'); await page.type('#password','fixture-only'); await page.click('form button');
   await wait(()=>text.includes('Commands: start'));
   await page.goto(origin+'/lesson'); child.stdin.write('mode semi\nstart\n');
@@ -102,9 +102,11 @@ const { createTestCdpDiagnostic } = require('../lib/test-cdp-diagnostic');
   throw error;
  } finally {
   if(primaryError) console.error('EP_TEST_FIXTURE_PHASE=teardown-start');
-  if(browser) await browser.close().catch(()=>{});
-  if(primaryError) console.error('EP_TEST_FIXTURE_PHASE=controller-close-finished');
   await finishFixtureCleanup(primaryError, [
+   async () => {
+    try { await disconnectController(browser); }
+    finally { if(primaryError) console.error('EP_TEST_FIXTURE_PHASE=controller-disconnect-finished'); }
+   },
    () => stopChild(child,closed),
    () => new Promise(resolve => server.close(resolve)),
    () => { if(isolated) reportResidue(); },

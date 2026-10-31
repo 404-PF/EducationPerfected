@@ -665,6 +665,8 @@ async function launchProgram({ legacySignals = false } = {}) {
             };
 
             const loginForm = await reachLoginForm();
+            // Harness checkpoint: navigation + form/host validation completed by owner.
+            if (TEST_BOOT && loginForm !== null) console.log('EP_TEST_LOGIN_READY');
 
             // Whether the logged-in signal was already seen on the page before auto-login
             // could fill anything: a manual login raced the credential prompt (the prompt
