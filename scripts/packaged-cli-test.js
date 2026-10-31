@@ -8,6 +8,7 @@ const os = require('node:os');
 const puppeteer = require('puppeteer');
 const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
+const { createTestCdpDiagnostic } = require('../lib/test-cdp-diagnostic');
 (async () => {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const target = process.platform === 'win32' && process.arch === 'x64'
@@ -16,6 +17,8 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  const executable = path.resolve(__dirname, target);
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError, primaryError, text='';
+ const controllerDiagnostic=[];
+ const logger=createTestCdpDiagnostic(entry => controllerDiagnostic.push(entry));
  function reportResidue() {
   if (!isolated) return [];
   const residue = fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-'));
@@ -71,7 +74,7 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
   }
  };
   await wait(()=>/EP_WS_ENDPOINT=(\S+)/.test(text));
-  browser=await puppeteer.connect({browserWSEndpoint:text.match(/EP_WS_ENDPOINT=(\S+)/)[1]});
+  browser=await puppeteer.connect({browserWSEndpoint:text.match(/EP_WS_ENDPOINT=(\S+)/)[1],logger});
   await browser.waitForTarget(target=>target.type()==='page');
   const command = await browser.target().createCDPSession();
   const { arguments: browserArgs } = await command.send('Browser.getBrowserCommandLine');
@@ -94,6 +97,7 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
   // Emit the original checkpoint failure before cleanup can fail separately.
   console.error('Original packaged fixture failure:', error);
   console.error('Synthetic packaged child output: '+text.slice(-4000).replace(/wss?:\/\/\S+/g,'[redacted browser endpoint]'));
+  console.error('EP_TEST_CDP_CONTROLLER='+JSON.stringify(controllerDiagnostic));
   console.error('Synthetic child exit state: '+JSON.stringify({code:child?.exitCode,signal:child?.signalCode}));
   throw error;
  } finally {
@@ -107,6 +111,7 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
    () => { if(isolated) fs.rmSync(isolated,{recursive:true,force:true}); },
    () => { if(primaryError) {
     console.error('Synthetic child output after teardown: '+text.slice(-4000).replace(/wss?:\/\/\S+/g,'[redacted browser endpoint]'));
+    console.error('EP_TEST_CDP_CONTROLLER_FINAL='+JSON.stringify(controllerDiagnostic));
     console.error('Synthetic child final exit state: '+JSON.stringify({code:child?.exitCode,signal:child?.signalCode}));
    } },
   ]);

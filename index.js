@@ -5,6 +5,7 @@ const { detectQuestion } = require('./lib/detect-question');
 const { playChoiceRound } = require('./lib/choice-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { diagnostic } = require('./lib/diagnostics');
+const { createTestCdpDiagnostic } = require('./lib/test-cdp-diagnostic');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -493,6 +494,7 @@ async function launchProgram({ legacySignals = false } = {}) {
         // test can attach
         headless: TEST_BOOT ? 'shell' : false,
         dumpio: TEST_BOOT,
+        logger: TEST_BOOT ? createTestCdpDiagnostic(entry => console.error('EP_TEST_CDP_OWNER='+JSON.stringify(entry))) : undefined,
         defaultViewport: null,
         handleSIGINT: false,
         handleSIGTERM: false,

@@ -20,6 +20,8 @@ jobs:
           node-version: 22.23.4
       - name: Install pinned dependencies and browser
         run: npm ci
+      - name: Test bounded sanitized CDP diagnostic
+        run: node scripts/test-cdp-diagnostic-test.js
       - name: Test fixture cleanup error precedence
         run: node scripts/fixture-cleanup-errors-test.js
       - name: Test Windows binding worker lifecycle with synthetic workers
