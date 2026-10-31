@@ -492,6 +492,7 @@ async function launchProgram({ legacySignals = false } = {}) {
         // test boot: no visible window, and the endpoint is printed so the
         // test can attach
         headless: TEST_BOOT ? 'shell' : false,
+        dumpio: TEST_BOOT,
         defaultViewport: null,
         handleSIGINT: false,
         handleSIGTERM: false,
@@ -500,7 +501,10 @@ async function launchProgram({ legacySignals = false } = {}) {
         .then(async browser => {
             startupBrowser = browser;
             if (startupSignal) return shutdownStartup();
-            if (TEST_BOOT) console.log(`EP_WS_ENDPOINT=${browser.wsEndpoint()}`);
+            if (TEST_BOOT) {
+                console.log(`EP_WS_ENDPOINT=${browser.wsEndpoint()}`);
+                browser.process()?.once('exit',(code,signal)=>console.error('EP_TEST_BROWSER_EXIT='+JSON.stringify({code,signal})));
+            }
             const page = (await browser.pages())[0];
 
             /**
