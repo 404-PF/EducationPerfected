@@ -4,14 +4,14 @@ const assert = require('node:assert/strict');
 const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 (async () => {
  if(process.argv.length>2)throw Error('No executable override arguments accepted');
- const executable=path.resolve(__dirname,'../build/linux-x64/educationperfected');
+ const executable=path.resolve(__dirname,'../build/linux-'+process.arch+'/educationperfected');
  let child,closed;
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-package-integrity-'));
  try {
   const copy=path.join(root,'corrupt'), extract=path.join(root,'temp'); fs.mkdirSync(extract);
   fs.copyFileSync(executable,copy);fs.chmodSync(copy,0o700);
   // Find the generated archive inside the SEA asset, never by an EOF offset.
-  const archive=path.resolve(__dirname,'../build/linux-x64/browser.tar.gz');
+  const archive=path.resolve(__dirname,'../build/linux-'+process.arch+'/browser.tar.gz');
   const archiveFd=fs.openSync(archive,'r'),prefix=Buffer.alloc(64);
   let archiveSize;
   try {archiveSize=fs.fstatSync(archiveFd).size;assert.equal(fs.readSync(archiveFd,prefix,0,prefix.length,0),prefix.length);}
@@ -26,7 +26,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   const payloadOffset=matches[0];assert.ok(payloadOffset+archiveSize<=fs.statSync(copy).size);
   const hash=require('node:crypto').createHash('sha256');
   for await(const chunk of fs.createReadStream(copy,{start:payloadOffset,end:payloadOffset+archiveSize-1}))hash.update(chunk);
-  const manifest=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../build/linux-x64/manifest.json'),'utf8'));
+  const manifest=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../build/linux-'+process.arch+'/manifest.json'),'utf8'));
   assert.equal(hash.digest('hex'),manifest.sha256,'Corruption fixture must target the original browser asset');
   const fd=fs.openSync(copy,'r+'),byte=Buffer.alloc(1),corruptionOffset=payloadOffset+archiveSize-1;
   try {assert.equal(fs.readSync(fd,byte,0,1,corruptionOffset),1);byte[0]^=1;fs.writeSync(fd,byte,0,1,corruptionOffset);}
