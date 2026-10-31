@@ -11,9 +11,15 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const executable = path.resolve(__dirname, '../build/linux-x64/educationperfected');
  const server = createServer();
- let isolated, child, closed, browser, spawnError;
+ let isolated, child, closed, browser, spawnError, serverError;
  try {
- await new Promise((resolve,reject) => { server.once('error',reject); server.listen(0, '127.0.0.1', resolve); });
+ await new Promise((resolve,reject) => {
+  const onError = error => { server.removeListener('listening',onListening); reject(error); };
+  const onListening = () => { server.removeListener('error',onError); resolve(); };
+  server.once('error',onError); server.once('listening',onListening); server.listen(0, '127.0.0.1');
+ });
+ // Runtime failures must reach the fixture, not an already-settled listen promise.
+ server.on('error',error => { serverError=error; });
  const origin = `http://127.0.0.1:${server.address().port}`;
  isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-packaged-test-'));
  const home = path.join(isolated, 'home'), emptyPath = path.join(isolated, 'empty-path'), runtime = path.join(isolated, 'runtime');
@@ -30,6 +36,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
  const wait = async predicate => {
   const until=Date.now()+20000;
   while(!predicate()) {
+   if(serverError) throw serverError;
    if(spawnError) throw spawnError;
    if(child.exitCode!==null || child.signalCode!==null || Date.now()>until) throw Error('Packaged checkpoint failed: '+text);
    await new Promise(resolve=>setTimeout(resolve,30));
@@ -51,6 +58,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   child.stdin.write('stop\n'); await wait(()=>text.includes('answerLoop Exited.'));
   child.stdin.write('quit\n'); assert.equal(await boundedClose(closed,10000,'Packaged quit timed out: '+text),0,text);
   assert.equal(fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-')).length,0,'Owned extraction directory must be removed');
+  if(serverError) throw serverError;
   console.log('Packaged executable: copied outside source, fresh HOME/cache, empty PATH, embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed (host-isolation surrogate only).');
  } finally {
   if(browser) await browser.close().catch(()=>{});
