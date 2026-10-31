@@ -31,7 +31,16 @@ jobs:
       - name: Test native credential store in a private synthetic session
         run: npm run test:store:integration
       - name: Build full browser as SEA asset
-        run: npm run build:linux-dev
+        run: |
+          /usr/bin/time -v npm run build:linux-dev
+          node - <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const root = path.join('build', 'linux-' + process.arch);
+          for (const file of ['educationperfected', 'browser.tar.gz', 'main.blob']) {
+            console.log(JSON.stringify({arch: process.arch, file, bytes: fs.statSync(path.join(root, file)).size}));
+          }
+          JS
       - name: Test packaged native credential setup in a private synthetic session
         run: sh scripts/packaged-store-integration.sh
       - name: Diagnose runner browser prerequisites without weakening sandbox
@@ -68,7 +77,9 @@ jobs:
         run: |
           command -v Xvfb
           command -v xvfb-run
-          xvfb-run -a npm run test:packaged
+          xvfb-run -a node scripts/sea-checksum-test.js
+          /usr/bin/time -v xvfb-run -a node scripts/packaged-cli-test.js
+          xvfb-run -a node scripts/packaged-integrity-test.js
       - name: Confirm temporary extraction cleanup
         if: always()
         run: |
