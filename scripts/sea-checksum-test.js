@@ -9,7 +9,7 @@ async function probe(expectedHash) {
  const finished=new Promise(resolve=>{complete=resolve;});
  const fakeProcess={execPath:process.execPath,argv:['fixture','fixture'],env:{},on(){},removeListener(){},exit(){throw Error('Unexpected exit');}};
  const load=id=>{
-  if(id==='node:sea')return {getAsset:key=>key==='manifest'?JSON.stringify({length:bytes.length,sha256:expectedHash}):new ArrayBuffer(0),getAssetAsBlob:()=>new Blob([bytes])};
+  if(id==='node:sea')return {getAsset:key=>key==='manifest'?JSON.stringify({length:bytes.length,sha256:expectedHash}):new ArrayBuffer(0),getAssetAsBlob:key=>{assert.equal(key,'browser');return new Blob([bytes]);}};
   if(id==='node:module')return {createRequire:()=>()=>({})};
   if(id==='../lib/native-binding')return {setPackagedBinding(){}};
   if(id==='modern-tar/fs')return {unpackTar:()=>{unpackCalls++;throw Error('Synthetic unpack checkpoint');}};
@@ -17,7 +17,8 @@ async function probe(expectedHash) {
   if(id==='../lib/diagnostics')return {diagnostic:()=> 'Synthetic failure category'};
   return require(id);
  };
- vm.runInNewContext(source,{require:load,process:fakeProcess,Buffer,console:{error:text=>{output+=text;complete();},log(){}}},{filename:'synthetic-bootstrap.js'});
+ // Executes only the fixed sibling repository bootstrap read above, never user input.
+ vm.runInNewContext(source,{require:load,process:fakeProcess,Buffer,console:{error:text=>{output+=text;complete();},log(){}}},{filename:'synthetic-bootstrap.js'}); // NOSONAR: fixed repository source under test; no user-controlled code.
  try {await Promise.race([finished,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Synthetic bootstrap timeout')),3000);})]);}
  finally {clearTimeout(timer);}
  return {unpackCalls,cliCalls,output};
