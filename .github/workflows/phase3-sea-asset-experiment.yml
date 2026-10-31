@@ -23,7 +23,10 @@ jobs:
       - name: Build full browser as SEA asset
         run: npm run build:linux-dev
       - name: Exercise actual packaged CLI with embedded browser
-        run: node scripts/packaged-cli-test.js
+        run: |
+          command -v Xvfb
+          command -v xvfb-run
+          xvfb-run -a node scripts/packaged-cli-test.js
       - name: Confirm temporary extraction cleanup
         if: always()
         run: |
