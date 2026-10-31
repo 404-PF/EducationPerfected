@@ -15,7 +15,7 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  if (!(process.platform === 'linux' && ['x64','arm64'].includes(process.arch)) && !(process.platform === 'win32' && process.arch === 'x64')) throw Error('No packaged fixture target for this platform');
  const executable = path.resolve(__dirname, target);
  const server = createServer();
- let isolated, child, closed, browser, spawnError, serverError, primaryError;
+ let isolated, child, closed, browser, spawnError, serverError, primaryError, text='';
  function reportResidue() {
   if (!isolated) return [];
   const residue = fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-'));
@@ -58,7 +58,6 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
  const copy = path.join(isolated, process.platform === 'win32' ? 'educationperfected.exe' : 'educationperfected'); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
  child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
- let text='';
  child.once('error', error => { spawnError=error; });
  child.stdout.on('data',data=>{text+=data;}); child.stderr.on('data',data=>{text+=data;});
  closed = new Promise(resolve=>child.once('close',resolve));
@@ -94,6 +93,8 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
   primaryError = error;
   // Emit the original checkpoint failure before cleanup can fail separately.
   console.error('Original packaged fixture failure:', error);
+  console.error('Synthetic packaged child output: '+text.slice(-4000).replace(/wss?:\/\/\S+/g,'[redacted browser endpoint]'));
+  console.error('Synthetic child exit state: '+JSON.stringify({code:child?.exitCode,signal:child?.signalCode}));
   throw error;
  } finally {
   if(browser) await browser.close().catch(()=>{});
