@@ -20,6 +20,8 @@ jobs:
           node-version: 22.23.4
       - name: Install pinned dependencies and browser
         run: npm ci
+      - name: Test fixture cleanup error precedence
+        run: node scripts/fixture-cleanup-errors-test.js
       - name: Build local unsigned Windows development executable
         run: node packaging/build-windows.js
       - name: Test checksum gate with synthetic assets
