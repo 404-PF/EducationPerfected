@@ -40,3 +40,14 @@ Standard public GitHub-hosted runners offer candidate native architectures (`win
 Ubuntu 24.04 runner tests built the full SEA successfully but the separately installed Chrome for Testing also failed before packaging with "No usable sandbox". Ubuntu 22.04 tests passed without `--no-sandbox` or disabling host security settings. The Ubuntu 22 result does not establish Ubuntu 24 compatibility. Treat sandbox prerequisites as a release support-matrix check; do not silently disable the browser sandbox or global AppArmor restrictions. See https://pptr.dev/troubleshooting and https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md .
 
 Native Ubuntu 22.04 x64 and ARM64 CI passed full builds and packaged mock CLI/checksum/startup-interruption checks. The runners still have Node and shared host libraries, and native credential CRUD was not exercised by that matrix. Neither lane is complete release evidence. Ubuntu 22.04 is an interim test baseline, not a substitute for resolving Ubuntu 24.04 sandbox compatibility or selecting a supported longer-term baseline.
+
+### Reproducible development CI references (not release attestations)
+
+The architecture-aware builder/fixtures were tested on experimental source commit `6e2b50975b2e803a7bafc8a726c014e4a524d6a6`, using `.github/workflows/phase3-sea-asset-experiment.yml` on that branch, not the production PR branch. Both lanes used Node 22.23.4 and Chrome for Testing 156.0.8078.47. The production builder/CLI fixture have comment-only differences; the bootstrap, package test entrypoint, checksum VM test and integrity fixture match the tested source.
+
+| Native architecture | Host | Run and job logs |
+| --- | --- | --- |
+| ARM64 | Ubuntu 22.04 ARM64 | [Run 41164618655](https://github.com/404-PF/EducationPerfected/actions/runs/41164618655), [ARM64 job](https://github.com/404-PF/EducationPerfected/actions/runs/41164618655/job/124429410316) |
+| x64 | Ubuntu 22.04 x64 | [Run 41164618655](https://github.com/404-PF/EducationPerfected/actions/runs/41164618655), [x64 job](https://github.com/404-PF/EducationPerfected/actions/runs/41164618655/job/124429410443) |
+
+These lanes cover full SEA generation, sandboxed browser launch, packaged mock CLI with extracted-browser CDP path checks, corruption rejection and startup/hash-or-extraction signal cleanup. They do not record a complete native release gate as passed. No downloadable binary artifact was published by the workflow.
