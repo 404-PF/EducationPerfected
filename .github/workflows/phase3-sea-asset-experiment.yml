@@ -22,6 +22,36 @@ jobs:
         run: npm ci
       - name: Build full browser as SEA asset
         run: npm run build:linux-dev
+      - name: Diagnose runner browser prerequisites without weakening sandbox
+        run: |
+          browser=$(node -e 'require("puppeteer").executablePath({headless:"shell"}).then(p=>console.log(p)).catch(()=>process.exit(1))')
+          "$browser" --version
+          ldd "$browser" > /tmp/ep-browser-libraries.txt
+          if grep 'not found' /tmp/ep-browser-libraries.txt; then exit 1; fi
+          node <<'JS'
+          const puppeteer = require('puppeteer');
+          (async () => {
+            let browser, timer;
+            try {
+              browser = await puppeteer.launch({headless: 'shell', dumpio: true, timeout: 15000});
+              console.log(await browser.version());
+            } finally {
+              if (browser) {
+                const exited = new Promise(resolve => browser.process().once('exit', resolve));
+                try {
+                  await Promise.race([browser.close(), new Promise((_,reject) => {timer=setTimeout(()=>reject(new Error('Diagnostic browser close timed out')),5000);})]);
+                } finally {
+                  clearTimeout(timer);
+                  if (browser.process().exitCode === null && browser.process().signalCode === null) {
+                    browser.process().kill('SIGKILL');
+                    await Promise.race([exited,new Promise(resolve=>{timer=setTimeout(resolve,2000);})]);
+                    clearTimeout(timer);
+                  }
+                }
+              }
+            }
+          })().catch(error => { console.error(error.message); process.exitCode = 1; });
+          JS
       - name: Exercise actual packaged CLI with embedded browser
         run: |
           command -v Xvfb
