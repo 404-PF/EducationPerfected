@@ -6,7 +6,7 @@ Do not mark a check passed from this document. Record the exact source commit, O
 
 Build on the target architecture with a supported native binding and the pinned browser. The current builder supports only glibc Linux x64. Other targets need builders before their checks can run. Preserve notices beside the executable. Verify the launched browser's actual executable path points into the artifact-owned extraction, not an installed browser or host cache. Test a damaged payload, failed startup and interrupted extraction; each must fail safely and remove owned temporary files without touching unrelated files.
 
-The Linux appended archive/footer format is not a signing-compatible format claim for other operating systems. Node's macOS SEA sequence removes the original signature, injects with a Mach-O segment option, then signs. Signing changes the executable. For native ports, evaluate embedding the browser archive as a SEA asset or platform resource before final signing; verify the final signed bytes can still load and validate the payload. Do not assume the Linux EOF footer survives signing.
+The Linux development builder now puts the browser archive inside a SEA asset, not an appended EOF payload. Full-size generation and packaged integrity/CLI tests passed on a standard 16 GB Ubuntu 22.04 runner; constrained local full-size injection was killed. Build memory requirements are not yet characterized. At runtime the full browser asset is mapped by SEA; streaming the Blob does not establish the earlier file-stream memory profile, and runtime peak/minimum RAM remain unmeasured. This is not a signing-compatible format claim for other operating systems. Node's macOS SEA sequence removes the original signature, injects with a Mach-O segment option, then signs. Signing changes the executable. For native ports, retain browser data in a SEA asset or platform resource before final signing; verify the final signed executable still exposes and validates the embedded asset.
 
 ## Host-isolation surrogate versus clean-machine proof
 
@@ -34,3 +34,7 @@ Use `release/criteria.json` without silently dropping selected targets. Any narr
 - Standard hosted runner labels: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
 
 Standard public GitHub-hosted runners offer candidate native architectures (`windows-2025`, `macos-15`, `macos-15-intel`, `ubuntu-24.04`, `ubuntu-24.04-arm`). Their presence does not prove this program's credential store, console or clean-machine checks pass. No workflow or artifact upload is set up by this document.
+
+## Linux sandbox compatibility caveat
+
+Ubuntu 24.04 runner tests built the full SEA successfully but the separately installed Chrome for Testing also failed before packaging with "No usable sandbox". Ubuntu 22.04 tests passed without `--no-sandbox` or disabling host security settings. The Ubuntu 22 result does not establish Ubuntu 24 compatibility. Treat sandbox prerequisites as a release support-matrix check; do not silently disable the browser sandbox or global AppArmor restrictions. See https://pptr.dev/troubleshooting and https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md .

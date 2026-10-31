@@ -52,12 +52,11 @@ const { packTar } = require('modern-tar/fs');
  const missing = inventory.filter(item => !item.files.length);
  fs.writeFileSync(path.join(notices, 'NOT-FOR-DISTRIBUTION.txt'), 'Development artifact only. License/notice completeness and project rights are NOT cleared. Missing notices: ' + missing.map(item => item.name).join(', ') + '\n');
  if (missing.length) console.warn('Development build has missing third-party notice files; distribution is blocked. See DEPENDENCY-INVENTORY.json.');
- const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { manifest: path.join(out, 'manifest.json'), native: require.resolve('@napi-rs/keyring-linux-x64-gnu') } };
+ const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { browser: archive, manifest: path.join(out, 'manifest.json'), native: require.resolve('@napi-rs/keyring-linux-x64-gnu') } };
  fs.writeFileSync(path.join(out, 'sea.json'), JSON.stringify(config));
  cp.execFileSync(process.execPath, ['--experimental-sea-config', path.join(out, 'sea.json')], { stdio: 'inherit' });
  const executable = path.join(out, 'educationperfected'); fs.copyFileSync(process.execPath, executable); fs.chmodSync(executable, 0o700);
  cp.execFileSync(process.execPath, [require.resolve('postject/dist/cli.js'), executable, 'NODE_SEA_BLOB', config.output, '--sentinel-fuse', 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'], { stdio: 'inherit' });
- const output = fs.createWriteStream(executable, { flags: 'a' }); await pipeline(fs.createReadStream(archive), output);
- const footer = Buffer.alloc(16); footer.writeBigUInt64LE(BigInt(fs.statSync(archive).size)); footer.write('EPBNDL01', 8); fs.appendFileSync(executable, footer);
+ // Browser is a SEA asset; no data is appended after executable generation.
  console.log('Development executable: ' + executable);
 })().catch(error => { console.error(error); process.exitCode = 1; });
