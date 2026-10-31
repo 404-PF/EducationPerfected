@@ -1,0 +1,29 @@
+[
+  {
+    "name": "puppeteer",
+    "version": "25.16.0",
+    "gitHead": "a207faf527ce4305b33a6c0f9706b090c21c115e",
+    "source": "https://github.com/puppeteer/puppeteer/blob/a207faf527ce4305b33a6c0f9706b090c21c115e/LICENSE",
+    "sha256": "a27ca07269b3518550b2e83aed13eadd7d14d924b5864e14889b40cf227530ca",
+    "file": "puppeteer-LICENSE",
+    "registry": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.16.0.tgz"
+  },
+  {
+    "name": "puppeteer-core",
+    "version": "25.16.0",
+    "gitHead": "a207faf527ce4305b33a6c0f9706b090c21c115e",
+    "source": "https://github.com/puppeteer/puppeteer/blob/a207faf527ce4305b33a6c0f9706b090c21c115e/LICENSE",
+    "sha256": "a27ca07269b3518550b2e83aed13eadd7d14d924b5864e14889b40cf227530ca",
+    "file": "puppeteer-core-LICENSE",
+    "registry": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.16.0.tgz"
+  },
+  {
+    "name": "@puppeteer/browsers",
+    "version": "3.2.6",
+    "gitHead": "a207faf527ce4305b33a6c0f9706b090c21c115e",
+    "source": "https://github.com/puppeteer/puppeteer/blob/a207faf527ce4305b33a6c0f9706b090c21c115e/LICENSE",
+    "sha256": "a27ca07269b3518550b2e83aed13eadd7d14d924b5864e14889b40cf227530ca",
+    "file": "@puppeteer-browsers-LICENSE",
+    "registry": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.6.tgz"
+  }
+]

@@ -35,8 +35,18 @@ const { packTar } = require('modern-tar/fs');
     fs.copyFileSync(path.join(directory, filename), path.join(notices, destination)); copied.push(destination);
    }
   }
+  if (!copied.length) {
+   const recovered = require('./notices/provenance.json').find(item => item.name === pkg.name && item.version === pkg.version);
+   if (recovered) {
+    const source = path.join(__dirname, 'notices', recovered.file);
+    const bytes = fs.readFileSync(source);
+    if (createHash('sha256').update(bytes).digest('hex') !== recovered.sha256) throw Error('Recovered notice checksum mismatch');
+    fs.copyFileSync(source, path.join(notices, recovered.file)); copied.push(recovered.file);
+   }
+  }
   inventory.push({ name: pkg.name, version: pkg.version, license: pkg.license || null, repository: pkg.repository || null, files: copied, status: copied.length ? 'files-copied-not-legally-reviewed' : 'MISSING-NOTICE-REQUIRES-REVIEW' });
  }
+ fs.copyFileSync(path.join(__dirname, 'notices/provenance.json'), path.join(notices, 'RECOVERED-NOTICE-PROVENANCE.json'));
  fs.writeFileSync(path.join(notices, 'DEPENDENCY-INVENTORY.json'), JSON.stringify(inventory, null, 2));
  fs.writeFileSync(path.join(notices, 'BROWSER.txt'), 'Chrome for Testing browser files are bundled without removal of their accompanying notices. Redistribution and project licensing review remain release gates.\n');
  const missing = inventory.filter(item => !item.files.length);

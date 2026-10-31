@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "REPLACE_WITH_EXACT_40_HEX_SOURCE_COMMIT",
+  "global": {},
+  "targets": {},
+  "note": "Deliberately incomplete. Do not mark passed from dependency availability, POSIX fixtures, skipped tests or another platform's proof. Each check needs status, sourceCommit, evidence path/URL and reviewer."
+}

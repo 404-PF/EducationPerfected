@@ -9,6 +9,8 @@
     "smoke": "node scripts/smoke-test.js",
     "test:handlers": "node scripts/handler-test.js",
     "cli": "node bin/cli.js",
+    "release:check": "node scripts/release-gate.js",
+    "test:release-gate": "node scripts/release-gate-test.js",
     "build:linux-dev": "node packaging/build-linux.js",
     "test:packaged": "node scripts/packaged-cli-test.js && node scripts/packaged-integrity-test.js",
     "test:store:integration": "sh scripts/native-store-integration.sh",

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "targets": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64", "linux-arm64"],
+  "globalChecks": ["project-rights", "browser-redistribution", "dependency-notices", "artifact-integrity"],
+  "targetChecks": ["native-build", "embedded-browser", "native-credential-save-read-delete", "console-shutdown", "clean-machine-no-node", "signing-or-explicit-unsigned-policy"],
+  "acceptedStatus": "passed",
+  "rejectedStatusExamples": ["skipped", "fixture-only", "not-run", "failed", "pending"],
+  "note": "A gate pass is evidence completeness, not permission to publish, merge, spend or change policy. Evidence must match the exact source commit."
+}
