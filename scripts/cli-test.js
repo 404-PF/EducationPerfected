@@ -1,3 +1,7 @@
+if (process.platform === 'win32' && process.argv.includes('--signal')) {
+    console.log('SKIP: child.kill SIGINT is not graceful console delivery on Windows; native validation required.');
+    process.exit(0);
+}
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const path = require('node:path');

@@ -1,3 +1,9 @@
+// Node child.kill() force-terminates Windows children; it cannot test handler drain.
+// Keep this explicit rather than treating an emulated kill as a graceful pass.
+if (process.platform === 'win32') {
+    console.log('SKIP: OS child-signal drain fixture is POSIX-only; Windows console shutdown needs native validation.');
+    process.exit(0);
+}
 // Real child + local login fixture. Never signs in to the live service.
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
