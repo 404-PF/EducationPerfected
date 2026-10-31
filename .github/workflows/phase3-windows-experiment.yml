@@ -24,6 +24,8 @@ jobs:
         run: node scripts/fixture-cleanup-errors-test.js
       - name: Test Windows binding worker lifecycle with synthetic workers
         run: node scripts/packaged-windows-binding-test.js
+      - name: Verify real native DLL worker unload without accessing credentials
+        run: node scripts/windows-native-unload-test.js
       - name: Build local unsigned Windows development executable
         run: node packaging/build-windows.js
       - name: Test checksum gate with synthetic assets
