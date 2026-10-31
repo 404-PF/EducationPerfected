@@ -13,9 +13,13 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
  const server = createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
  const origin = `http://127.0.0.1:${server.address().port}`;
  const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-packaged-test-'));
- const env = {...process.env, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
+ const home = path.join(isolated, 'home'), emptyPath = path.join(isolated, 'empty-path'), runtime = path.join(isolated, 'runtime');
+ for (const directory of [home, emptyPath, runtime]) fs.mkdirSync(directory, {mode: 0o700});
+ // A host-isolation surrogate, not certification on a separate no-Node machine.
+ const env = {...process.env, HOME:home, USERPROFILE:home, XDG_CONFIG_HOME:path.join(home,'config'), XDG_CACHE_HOME:path.join(home,'cache'), XDG_DATA_HOME:path.join(home,'data'), XDG_RUNTIME_DIR:runtime, PATH:emptyPath, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
- const child = spawn(executable, [], {env,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
+ const copy = path.join(isolated, 'educationperfected'); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
+ const child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
  let text='', browser;
  child.stdout.on('data',data=>{text+=data;}); child.stderr.on('data',data=>{text+=data;});
  const closed = new Promise(resolve=>child.once('close',resolve));
@@ -43,7 +47,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   child.stdin.write('stop\n'); await wait(()=>text.includes('answerLoop Exited.'));
   child.stdin.write('quit\n'); assert.equal(await boundedClose(closed,10000,'Packaged quit timed out: '+text),0,text);
   assert.equal(fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-')).length,0,'Owned extraction directory must be removed');
-  console.log('Packaged executable: embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed.');
+  console.log('Packaged executable: copied outside source, fresh HOME/cache, empty PATH, embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed (host-isolation surrogate only).');
  } finally {
   if(browser) await browser.close().catch(()=>{});
   try { await stopChild(child,closed); } finally {
