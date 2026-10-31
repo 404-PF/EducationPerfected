@@ -24,6 +24,12 @@ jobs:
           node-version: 22.23.4
       - name: Install pinned dependencies and browser
         run: npm ci
+      - name: Install disposable native-store test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus-x11 gnome-keyring libglib2.0-bin
+      - name: Test native credential store in a private synthetic session
+        run: npm run test:store:integration
       - name: Build full browser as SEA asset
         run: npm run build:linux-dev
       - name: Diagnose runner browser prerequisites without weakening sandbox
