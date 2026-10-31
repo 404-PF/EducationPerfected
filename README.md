@@ -247,6 +247,6 @@ OS-delivered child-signal fixtures (`startup-signal-test`, `legacy-drain-signal-
 
 The Linux development package embeds the browser as a SEA asset with a checksum checked before unpacking. Full-size build and packaged CLI/integrity fixtures passed on a standard 16 GB Ubuntu 22.04 runner. Smaller-memory full-size injection was killed, so this is not a promise that every development machine can build it. Ubuntu 24.04 sandbox compatibility remains unresolved; the Ubuntu 22.04 pass does not clear that platform's prerequisites or the native release gates. No browser sandbox bypass is enabled.
 
-The SEA runtime maps the full embedded browser asset, verifies its checksum in a complete pass, and only then extracts it. Runtime peak memory and minimum supported RAM still need measurement.
+The SEA runtime maps the full embedded browser asset, verifies its checksum in a complete pass, and only then extracts it. It uses a read-only raw asset view with bounded stream chunks instead of copying the full archive into a Blob. Short synthetic workflow-command memory observations are recorded in `release/native-validation.md`; total process-tree peak and minimum supported RAM remain unproved.
 
 Native Ubuntu 22.04 x64 and ARM64 runners passed full SEA builds and the packaged mock CLI, checksum-corruption and startup-interruption fixtures. These runs do not prove native credential save/read/delete, a separate no-Node machine, platform signatures or distribution rights. Ubuntu 24.04 sandbox compatibility and a longer-term runner baseline remain open.

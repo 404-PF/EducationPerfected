@@ -6,7 +6,7 @@ Do not mark a check passed from this document. Record the exact source commit, O
 
 Build on the target architecture with a supported native binding and the pinned browser. The current builder supports native glibc Linux x64 and ARM64. Windows and macOS targets still need builders before their checks can run. Preserve notices beside the executable. Verify the launched browser's actual executable path points into the artifact-owned extraction, not an installed browser or host cache. Test a damaged payload, failed startup and interrupted extraction; each must fail safely and remove owned temporary files without touching unrelated files.
 
-The Linux development builder now puts the browser archive inside a SEA asset, not an appended EOF payload. Full-size generation and packaged integrity/CLI tests passed on a standard 16 GB Ubuntu 22.04 runner; constrained local full-size injection was killed. Build memory requirements are not yet characterized. At runtime the full browser asset is mapped by SEA; streaming the Blob does not establish the earlier file-stream memory profile, and runtime peak/minimum RAM remain unmeasured. This is not a signing-compatible format claim for other operating systems. Node's macOS SEA sequence removes the original signature, injects with a Mach-O segment option, then signs. Signing changes the executable. For native ports, retain browser data in a SEA asset or platform resource before final signing; verify the final signed executable still exposes and validates the embedded asset.
+The Linux development builder now puts the browser archive inside a SEA asset, not an appended EOF payload. Full-size generation and packaged integrity/CLI tests passed on a standard 16 GB Ubuntu 22.04 runner; constrained local full-size injection was killed. Build minimum RAM remains unproved. At runtime the full browser asset is mapped by SEA; the read-only raw view avoids a whole-asset Blob copy, but does not establish total process-tree peak or minimum RAM. See the bounded measurements below. This is not a signing-compatible format claim for other operating systems. Node's macOS SEA sequence removes the original signature, injects with a Mach-O segment option, then signs. Signing changes the executable. For native ports, retain browser data in a SEA asset or platform resource before final signing; verify the final signed executable still exposes and validates the embedded asset.
 
 ## Host-isolation surrogate versus clean-machine proof
 
@@ -43,7 +43,7 @@ Native Ubuntu 22.04 x64 and ARM64 CI passed full builds and packaged mock CLI/ch
 
 ### Reproducible development CI references (not release attestations)
 
-The architecture-aware builder/fixtures were tested on experimental source commit `6e2b50975b2e803a7bafc8a726c014e4a524d6a6`, using `.github/workflows/phase3-sea-asset-experiment.yml` on that branch, not the production PR branch. Both lanes used Node 22.23.4 and Chrome for Testing 156.0.8078.47. The production builder/CLI fixture have comment-only differences; the bootstrap, package test entrypoint, checksum VM test and integrity fixture match the tested source.
+The architecture-aware builder/fixtures were tested on experimental source commit `6e2b50975b2e803a7bafc8a726c014e4a524d6a6`, using `.github/workflows/phase3-sea-asset-experiment.yml` on that branch, not the production PR branch. Both lanes used Node 22.23.4 and Chrome for Testing 156.0.8078.47. The production builder/CLI fixture have comment-only differences; the package test entrypoint and integrity fixture match that tested source. The bootstrap and checksum VM test were later changed and validated as recorded below.
 
 | Native architecture | Host | Run and job logs |
 | --- | --- | --- |
@@ -51,3 +51,16 @@ The architecture-aware builder/fixtures were tested on experimental source commi
 | x64 | Ubuntu 22.04 x64 | [Run 41164618655](https://github.com/404-PF/EducationPerfected/actions/runs/41164618655), [x64 job](https://github.com/404-PF/EducationPerfected/actions/runs/41164618655/job/124429410443) |
 
 These lanes cover full SEA generation, sandboxed browser launch, packaged mock CLI with extracted-browser CDP path checks, corruption rejection and startup/hash-or-extraction signal cleanup. They do not record a complete native release gate as passed. No downloadable binary artifact was published by the workflow.
+
+### Raw-asset memory experiment (not capacity certification)
+
+Experimental source `cbf8a3dbe2b5dd146978b88993edd964f68bd694` uses a read-only `getRawAsset` view, 64 KiB stream chunks and event-loop yields during checksum verification. Node 22.23.4 [implements getAssetAsBlob by constructing a Blob](https://raw.githubusercontent.com/nodejs/node/v22.23.4/lib/sea.js); the raw view avoids that whole-asset copy. The production bootstrap and checksum fixture match this experimental source. The same Node/browser versions and Ubuntu 22.04 native runner labels were used as above.
+
+[Run 41168696427](https://github.com/404-PF/EducationPerfected/actions/runs/41168696427) passed both native lanes, including packaged mock browser/controls, corruption rejection, startup SIGINT/SIGTERM/SIGHUP cleanup and packaged synthetic credential setup/delete in a private Secret Service. Setup/delete interoperability is not normal answer-path credential-read proof. The source adapter also verified the synthetic record and separate CRUD; no real account was used.
+
+| Architecture and job | Build command max RSS (KiB) / elapsed | Packaged CLI command max RSS (KiB) / elapsed | Executable bytes |
+| --- | --- | --- | --- |
+| [x64](https://github.com/404-PF/EducationPerfected/actions/runs/41168696427/job/124441765991) | 3,578,768 / 23.73 s | 282,240 / 5.57 s | 317,656,256 |
+| [ARM64](https://github.com/404-PF/EducationPerfected/actions/runs/41168696427/job/124441766185) | 3,583,900 / 17.01 s | 283,380 / 3.65 s | 318,442,624 |
+
+GNU `time -v` wraps the build command and, separately, `xvfb-run` plus the Node packaged CLI fixture controller. These are observed workflow-command high-water values, not executable-only measurements, additive process-tree peaks or minimum supported RAM. One short synthetic run per revision is not a benchmark suite or long-workload capacity test. The otherwise identical Blob baseline `de4cb09415374c54330041d5b99ac5598584798f` recorded 835,868 KiB (x64) and 842,492 KiB (ARM64) for that CLI command in [run 41167812357](https://github.com/404-PF/EducationPerfected/actions/runs/41167812357). Elapsed time did not improve consistently. No no-Node-machine, signing, distribution-rights or Ubuntu 24.04 claim follows from either run.

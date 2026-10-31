@@ -3,8 +3,9 @@ const { pipeline } = require('node:stream/promises');
 const { createGunzip } = require('node:zlib');
 const { createHash } = require('node:crypto');
 const { createRequire } = require('node:module');
-const { getAsset, getAssetAsBlob } = require('node:sea');
+const { getAsset, getRawAsset } = require('node:sea');
 const { Readable } = require('node:stream');
+const { setImmediate: nextTurn } = require('node:timers/promises');
 const { unpackTar } = require('modern-tar/fs');
 async function main() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
@@ -29,12 +30,20 @@ async function main() {
             await require('../bin/cli').credentialCommand(args.includes('--setup') ? '--setup' : '--forget-credentials');
             return;
         }
-        const browserAsset = getAssetAsBlob('browser');
-        if (browserAsset.size !== manifest.length) throw Error('Invalid browser payload size');
+        // Read-only view over the embedded asset. Never write to this memory.
+        const browserAsset = Buffer.from(getRawAsset('browser'));
+        const browserStream = () => Readable.from((async function* () {
+            for (let offset = 0; offset < browserAsset.length; offset += 65536) {
+                yield browserAsset.subarray(offset, offset + 65536);
+                // Keep startup signal handlers responsive during the full hash pass.
+                await nextTurn();
+            }
+        })());
+        if (browserAsset.length !== manifest.length) throw Error('Invalid browser payload size');
         const hash = createHash('sha256');
-        for await (const chunk of Readable.fromWeb(browserAsset.stream())) hash.update(chunk);
+        for await (const chunk of browserStream()) hash.update(chunk);
         if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
-        await pipeline(Readable.fromWeb(browserAsset.stream()), createGunzip(), unpackTar(dir));
+        await pipeline(browserStream(), createGunzip(), unpackTar(dir));
         process.env.PUPPETEER_EXECUTABLE_PATH = path.join(dir, manifest.executable);
         handoffSignals();
         await require('../bin/cli').runCli();
