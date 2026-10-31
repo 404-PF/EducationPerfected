@@ -23,7 +23,7 @@
     "build:windows-dev": "node packaging/build-windows.js",
     "test:packaged-harness": "node scripts/fixture-cleanup-errors-test.js && node scripts/packaged-windows-binding-test.js && node scripts/bootstrap-cleanup-test.js && node scripts/build-target-test.js && npm run test:macos-packaging",
     "build:macos-dev": "node packaging/build-macos.js",
-    "test:macos-packaging": "node scripts/macos-browser-layout-test.js && node scripts/macos-builder-layout-test.js && node scripts/macos-wrapper-test.js && node scripts/macos-sea-steps-test.js && node scripts/macos-bootstrap-test.js"
+    "test:macos-packaging": "node scripts/macos-browser-layout-test.js && node scripts/macos-builder-layout-test.js && node scripts/macos-wrapper-test.js && node scripts/macos-sea-steps-test.js && node scripts/macos-bootstrap-test.js && node scripts/macos-archive-roundtrip-test.js"
   },
   "engines": {
     "node": ">=22.12.0"
