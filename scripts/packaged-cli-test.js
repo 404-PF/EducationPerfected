@@ -10,27 +10,31 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 (async () => {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const executable = path.resolve(__dirname, '../build/linux-x64/educationperfected');
- const server = createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+ const server = createServer();
+ let isolated, child, closed, browser, spawnError;
+ try {
+ await new Promise((resolve,reject) => { server.once('error',reject); server.listen(0, '127.0.0.1', resolve); });
  const origin = `http://127.0.0.1:${server.address().port}`;
- const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-packaged-test-'));
+ isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-packaged-test-'));
  const home = path.join(isolated, 'home'), emptyPath = path.join(isolated, 'empty-path'), runtime = path.join(isolated, 'runtime');
  for (const directory of [home, emptyPath, runtime]) fs.mkdirSync(directory, {mode: 0o700});
  // A host-isolation surrogate, not certification on a separate no-Node machine.
  const env = {...process.env, HOME:home, USERPROFILE:home, XDG_CONFIG_HOME:path.join(home,'config'), XDG_CACHE_HOME:path.join(home,'cache'), XDG_DATA_HOME:path.join(home,'data'), XDG_RUNTIME_DIR:runtime, PATH:emptyPath, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
  const copy = path.join(isolated, 'educationperfected'); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
- const child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
- let text='', browser;
+ child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
+ let text='';
+ child.once('error', error => { spawnError=error; });
  child.stdout.on('data',data=>{text+=data;}); child.stderr.on('data',data=>{text+=data;});
- const closed = new Promise(resolve=>child.once('close',resolve));
+ closed = new Promise(resolve=>child.once('close',resolve));
  const wait = async predicate => {
   const until=Date.now()+20000;
   while(!predicate()) {
+   if(spawnError) throw spawnError;
    if(child.exitCode!==null || child.signalCode!==null || Date.now()>until) throw Error('Packaged checkpoint failed: '+text);
    await new Promise(resolve=>setTimeout(resolve,30));
   }
  };
- try {
   await wait(()=>/EP_WS_ENDPOINT=(\S+)/.test(text));
   browser=await puppeteer.connect({browserWSEndpoint:text.match(/EP_WS_ENDPOINT=(\S+)/)[1]});
   await browser.waitForTarget(target=>target.type()==='page');
@@ -51,7 +55,8 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
  } finally {
   if(browser) await browser.close().catch(()=>{});
   try { await stopChild(child,closed); } finally {
-   server.close(); fs.rmSync(isolated,{recursive:true,force:true});
+   await new Promise(resolve => server.close(resolve));
+   if(isolated) fs.rmSync(isolated,{recursive:true,force:true});
   }
  }
 })().catch(error=>{console.error(error);process.exitCode=1;});
