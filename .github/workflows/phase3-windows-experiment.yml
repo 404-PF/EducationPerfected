@@ -32,3 +32,5 @@ jobs:
         run: node scripts/sea-checksum-test.js
       - name: Exercise actual packaged Windows CLI with local fixture only
         run: node scripts/packaged-cli-test.js
+      - name: Reject actual corrupted Windows browser SEA asset
+        run: node scripts/packaged-integrity-test.js
