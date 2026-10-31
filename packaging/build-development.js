@@ -12,14 +12,9 @@ async function buildDevelopment(target) {
  const browser = await require('puppeteer').executablePath(), browserDir = path.dirname(browser);
  if (!fs.existsSync(browser)) throw Error('Chrome for Testing is not installed; run npx puppeteer browsers install chrome');
  if (path.basename(browserDir) !== target.browserDirectory || target.browserFiles.some(file => !fs.existsSync(path.join(browserDir,file)))) throw Error('Expected a Chrome for Testing payload directory');
- const archive = path.join(out, 'browser.tar.gz');
- await pipeline(packTar(browserDir), createGzip(), fs.createWriteStream(archive));
- const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
- fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: path.basename(browser) }));
- await esbuild.build({ entryPoints: [path.join(__dirname, 'bootstrap.js')], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(out, 'main.cjs'), external: ['keytar', '@napi-rs/keyring'], define: { 'process.env.NODE_ENV': '"production"' } });
  // Inventory every installed production dependency, including missing notice files.
  // This is an audit aid, not permission to redistribute an incomplete notice set.
- const notices = path.join(out, 'THIRD-PARTY-NOTICES'); fs.mkdirSync(notices, { recursive: true });
+ const notices = path.join(out, 'THIRD-PARTY-NOTICES'); fs.rmSync(notices, {recursive:true,force:true}); fs.mkdirSync(notices, { recursive: true });
  const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../package-lock.json'), 'utf8'));
  const inventory = [];
  for (const [relative, record] of Object.entries(lock.packages)) {
@@ -54,6 +49,11 @@ async function buildDevelopment(target) {
  const missing = inventory.filter(item => !item.files.length);
  fs.writeFileSync(path.join(notices, 'NOT-FOR-DISTRIBUTION.txt'), 'Development artifact only. License/notice completeness and project rights are NOT cleared. Missing notices: ' + missing.map(item => item.name).join(', ') + '\n');
  if (missing.length) console.warn('Development build has missing third-party notice files; distribution is blocked. See DEPENDENCY-INVENTORY.json.');
+ const archive = path.join(out, 'browser.tar.gz');
+ await pipeline(packTar(browserDir), createGzip(), fs.createWriteStream(archive));
+ const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
+ fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: path.basename(browser) }));
+ await esbuild.build({ entryPoints: [path.join(__dirname, 'bootstrap.js')], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(out, 'main.cjs'), external: ['keytar', '@napi-rs/keyring'], define: { 'process.env.NODE_ENV': '"production"' } });
  const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { browser: archive, manifest: path.join(out, 'manifest.json'), native: require.resolve(target.nativePackage) } };
  fs.writeFileSync(path.join(out, 'sea.json'), JSON.stringify(config));
  cp.execFileSync(process.execPath, ['--experimental-sea-config', path.join(out, 'sea.json')], { stdio: 'inherit' });
