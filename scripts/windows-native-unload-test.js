@@ -7,7 +7,7 @@ const { Worker } = require('node:worker_threads');
 (async () => {
  if (process.platform !== 'win32' || process.arch !== 'x64') throw Error('Windows x64 proof requires its native host');
  const root = fs.mkdtempSync(path.join(os.tmpdir(),'ep-native-unload-'));
- let worker, confirmedExit=false, exitObserved;
+ let worker, confirmedExit=false, exitObserved, timer;
  try {
   const file = path.join(root,'keyring.node');
   fs.copyFileSync(require.resolve('@napi-rs/keyring-win32-x64-msvc'),file);
@@ -17,7 +17,6 @@ const { Worker } = require('node:worker_threads');
   if(typeof binding.AsyncEntry !== 'function') throw Error('Missing native API');
   parentPort.once('message',()=>parentPort.close());
   parentPort.postMessage('loaded');`;
-  let timer;
   await new Promise((resolve,reject)=>{
    worker = new Worker(source,{eval:true,workerData:{file}});
    exitObserved = new Promise(done=>worker.once('exit',()=>{confirmedExit=true;done();}));
@@ -35,6 +34,7 @@ const { Worker } = require('node:worker_threads');
   fs.unlinkSync(file);assert.equal(fs.existsSync(file),false);
   console.log('Windows DLL locked while loaded, worker exited, copied DLL deleted; no credential API called (source-host proof only).');
  } finally {
+  clearTimeout(timer);
   if (worker && !confirmedExit) {
    let deadline;
    worker.unref();worker.terminate().catch(()=>{});
