@@ -7,7 +7,7 @@ const { Worker } = require('node:worker_threads');
 (async () => {
  if (process.platform !== 'win32' || process.arch !== 'x64') throw Error('Windows x64 proof requires its native host');
  const root = fs.mkdtempSync(path.join(os.tmpdir(),'ep-native-unload-'));
- let worker, confirmedExit=false;
+ let worker, confirmedExit=false, exitObserved;
  try {
   const file = path.join(root,'keyring.node');
   fs.copyFileSync(require.resolve('@napi-rs/keyring-win32-x64-msvc'),file);
@@ -20,6 +20,7 @@ const { Worker } = require('node:worker_threads');
   let timer;
   await new Promise((resolve,reject)=>{
    worker = new Worker(source,{eval:true,workerData:{file}});
+   exitObserved = new Promise(done=>worker.once('exit',()=>{confirmedExit=true;done();}));
    worker.once('message',message=>{
     try {
      assert.equal(message,'loaded');
@@ -34,6 +35,12 @@ const { Worker } = require('node:worker_threads');
   fs.unlinkSync(file);assert.equal(fs.existsSync(file),false);
   console.log('Windows DLL locked while loaded, worker exited, copied DLL deleted; no credential API called (source-host proof only).');
  } finally {
+  if (worker && !confirmedExit) {
+   let deadline;
+   worker.unref();worker.terminate().catch(()=>{});
+   try { await Promise.race([exitObserved,new Promise(resolve=>{deadline=setTimeout(resolve,2000);})]); }
+   finally {clearTimeout(deadline);}
+  }
   if (!worker || confirmedExit) fs.rmSync(root,{recursive:true,force:true});
   else console.error('Native worker exit unconfirmed; owned test extraction retained.');
  }
