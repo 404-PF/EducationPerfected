@@ -10,7 +10,16 @@ const { unpackTar } = require('modern-tar/fs');
 async function main() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
     fs.chmodSync(dir, 0o700);
-    const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+    let windowsBinding, cleanupPending = false;
+    const cleanup = () => {
+        if (windowsBinding?.hasLiveWorkers()) {
+            cleanupPending = true;
+            console.error('Native credential worker has not exited; owned extraction retained.');
+            process.exitCode = 1;
+            return;
+        }
+        cleanupPending = false;
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
     process.on('exit', cleanup);
     const onInt = () => process.exit(130), onTerm = () => process.exit(143), onHup = () => process.exit(129);
     process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
@@ -19,7 +28,9 @@ async function main() {
         const manifest = JSON.parse(getAsset('manifest', 'utf8'));
         const file = path.join(dir, 'keyring.node');
         fs.writeFileSync(file, Buffer.from(getAsset('native')), { mode: 0o600 });
-        require('../lib/native-binding').setPackagedBinding(createRequire(process.execPath)(file));
+        require('../lib/native-binding').setPackagedBinding(process.platform === 'win32'
+            ? (windowsBinding = require('../lib/packaged-windows-binding').createWindowsBinding(file, { onIdle: () => { if (cleanupPending) cleanup(); } }))
+            : createRequire(process.execPath)(file));
         const args = process.argv.slice(2);
         if (args.includes('--help') || args.includes('-h')) {
             console.log('EducationPerfected\nUsage: educationperfected [--setup | --forget-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit');

@@ -16,7 +16,7 @@ async function probe(expectedHash, declaredLength) {
   if(id==='../lib/native-binding')return {setPackagedBinding(){}};
   if(id==='modern-tar/fs')return {unpackTar:()=>{unpackCalls++;throw Error('Synthetic unpack checkpoint');}};
   if(id==='../bin/cli')return {runCli:async()=>{cliCalls++;}};
-  if(id==='../lib/diagnostics')return {diagnostic:()=> 'Synthetic failure category'};
+  if(id==='../lib/diagnostics')return {diagnostic:error=>error.message === 'Invalid browser payload size' ? 'Synthetic payload size rejection' : 'Synthetic failure category'};
   return require(id);
  };
  // Executes only the fixed sibling repository bootstrap read above, never user input.
@@ -29,7 +29,7 @@ async function probe(expectedHash, declaredLength) {
 (async()=>{
  const bad=await probe('0'.repeat(64));assert.equal(bad.unpackCalls,0);assert.equal(bad.cliCalls,0);assert.ok(bad.output.includes('EP_BROWSER_CHECKSUM'));
  const hash=createHash('sha256').update('synthetic browser asset: deliberately not gzip'.repeat(4096)).digest('hex');
- const wrongSize=await probe(hash,1);assert.equal(wrongSize.unpackCalls,0);assert.equal(wrongSize.cliCalls,0);
+ const wrongSize=await probe(hash,1);assert.equal(wrongSize.unpackCalls,0);assert.equal(wrongSize.cliCalls,0);assert.ok(wrongSize.output.includes('EducationPerfected could not start. Synthetic payload size rejection'));
  const good=await probe(hash);assert.equal(good.unpackCalls,1);assert.equal(good.cliCalls,0);assert.ok(!good.output.includes('EP_BROWSER_CHECKSUM'));
  console.log('Synthetic bootstrap: mismatched checksum rejected before unpack/browser; matching checksum reaches unpack control.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
