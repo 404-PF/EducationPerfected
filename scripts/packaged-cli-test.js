@@ -61,7 +61,26 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
   assert.equal(await page.$eval('.multi-choice-component',el=>window.angular.element(el).scope().self.model._currentQuestion.questionIndex),0);
   child.stdin.write('stop\n'); await wait(()=>text.includes('answerLoop Exited.'));
   child.stdin.write('quit\n'); assert.equal(await boundedClose(closed,10000,'Packaged quit timed out: '+text),0,text);
-  assert.equal(fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-')).length,0,'Owned extraction directory must be removed');
+  const residue = fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-'));
+  if (residue.length) {
+   // Synthetic owned-root metadata only: never print file contents or host paths.
+   const inventory = [];
+   const inspect = (directory, relative) => {
+    for (const entry of fs.readdirSync(directory, {withFileTypes:true})) {
+     if (inventory.length >= 20) return;
+     const name = path.join(relative, entry.name);
+     inventory.push({name, type:entry.isSymbolicLink()?'symlink':entry.isDirectory()?'directory':'file'});
+     if (entry.isDirectory() && !entry.isSymbolicLink()) inspect(path.join(directory,entry.name),name);
+    }
+   };
+   for (const directory of residue) {
+    const root = path.join(isolated,directory), stat = fs.lstatSync(root);
+    if (stat.isDirectory() && !stat.isSymbolicLink()) inspect(root,'owned-extraction');
+    else if (inventory.length < 20) inventory.push({name:'owned-extraction',type:stat.isSymbolicLink()?'symlink':'file'});
+   }
+   console.error('Synthetic owned extraction residue: '+JSON.stringify(inventory));
+  }
+  assert.equal(residue.length,0,'Owned extraction directory must be removed');
   if(serverError) throw serverError;
   console.log('Packaged executable: copied outside source, fresh HOME/cache, empty PATH, embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed (host-isolation surrogate only).');
  } finally {
