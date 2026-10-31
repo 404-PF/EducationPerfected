@@ -32,6 +32,8 @@ jobs:
         run: npm run test:store:integration
       - name: Build full browser as SEA asset
         run: npm run build:linux-dev
+      - name: Test packaged native credential setup in a private synthetic session
+        run: sh scripts/packaged-store-integration.sh
       - name: Diagnose runner browser prerequisites without weakening sandbox
         run: |
           browser=$(node -e 'require("puppeteer").executablePath({headless:"shell"}).then(p=>console.log(p)).catch(()=>process.exit(1))')
