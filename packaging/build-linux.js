@@ -1,4 +1,4 @@
-// Local Linux x64 development build only, not a signed release pipeline.
+// Local glibc Linux x64/arm64 development build only, not a signed release pipeline.
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const { pipeline } = require('node:stream/promises');
 const { createGzip } = require('node:zlib');
@@ -6,13 +6,13 @@ const { createHash } = require('node:crypto');
 const esbuild = require('esbuild');
 const { packTar } = require('modern-tar/fs');
 (async () => {
- if (process.platform !== 'linux' || process.arch !== 'x64' || !process.report.getReport().header.glibcVersionRuntime) throw Error('Development builder requires glibc Linux x64');
+ if (process.platform !== 'linux' || !['x64','arm64'].includes(process.arch) || !process.report.getReport().header.glibcVersionRuntime) throw Error('Development builder requires glibc Linux x64 or arm64');
  if (process.argv.length > 2) throw Error('This development builder accepts no output path arguments');
  if (process.env.PUPPETEER_EXECUTABLE_PATH) throw Error('Custom browser paths are not accepted by this development builder');
- const out = path.resolve(__dirname, '../build/linux-x64'); fs.mkdirSync(out, { recursive: true });
+ const out = path.resolve(__dirname, '../build/linux-'+process.arch); fs.mkdirSync(out, { recursive: true });
  const browser = await require('puppeteer').executablePath(), browserDir = path.dirname(browser);
  if (!fs.existsSync(browser)) throw Error('Chrome for Testing is not installed; run npx puppeteer browsers install chrome');
- if (path.basename(browserDir) !== 'chrome-linux64' || !fs.existsSync(path.join(browserDir, 'chrome_crashpad_handler')) || !fs.existsSync(path.join(browserDir, 'icudtl.dat'))) throw Error('Expected a Chrome for Testing payload directory');
+ if (path.basename(browserDir) !== (process.arch === 'x64' ? 'chrome-linux64' : 'chrome-linux-arm64') || !fs.existsSync(path.join(browserDir, 'chrome_crashpad_handler')) || !fs.existsSync(path.join(browserDir, 'icudtl.dat'))) throw Error('Expected a Chrome for Testing payload directory');
  const archive = path.join(out, 'browser.tar.gz');
  await pipeline(packTar(browserDir), createGzip(), fs.createWriteStream(archive));
  const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
@@ -52,7 +52,7 @@ const { packTar } = require('modern-tar/fs');
  const missing = inventory.filter(item => !item.files.length);
  fs.writeFileSync(path.join(notices, 'NOT-FOR-DISTRIBUTION.txt'), 'Development artifact only. License/notice completeness and project rights are NOT cleared. Missing notices: ' + missing.map(item => item.name).join(', ') + '\n');
  if (missing.length) console.warn('Development build has missing third-party notice files; distribution is blocked. See DEPENDENCY-INVENTORY.json.');
- const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { browser: archive, manifest: path.join(out, 'manifest.json'), native: require.resolve('@napi-rs/keyring-linux-x64-gnu') } };
+ const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { browser: archive, manifest: path.join(out, 'manifest.json'), native: require.resolve('@napi-rs/keyring-linux-'+process.arch+'-gnu') } };
  fs.writeFileSync(path.join(out, 'sea.json'), JSON.stringify(config));
  cp.execFileSync(process.execPath, ['--experimental-sea-config', path.join(out, 'sea.json')], { stdio: 'inherit' });
  const executable = path.join(out, 'educationperfected'); fs.copyFileSync(process.execPath, executable); fs.chmodSync(executable, 0o700);

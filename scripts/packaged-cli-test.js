@@ -1,4 +1,4 @@
-// Local fixture only. Uses the fixed build/linux-x64 development executable.
+// Local fixture only. Uses the fixed build/linux-<native arch> development executable.
 const assert = require('node:assert/strict');
 const { createServer } = require('./mock-ep');
 const { spawn } = require('node:child_process');
@@ -9,7 +9,7 @@ const puppeteer = require('puppeteer');
 const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 (async () => {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
- const executable = path.resolve(__dirname, '../build/linux-x64/educationperfected');
+ const executable = path.resolve(__dirname, '../build/linux-'+process.arch+'/educationperfected');
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError;
  try {
