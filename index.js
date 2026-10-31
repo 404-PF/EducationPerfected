@@ -1,4 +1,4 @@
-// v2.2.0
+// V2026 (package version 2026.0.0)
 
 const puppeteer = require('puppeteer');
 const { detectQuestion } = require('./lib/detect-question');
@@ -2275,7 +2275,7 @@ async function launchProgram({ legacySignals = false } = {}) {
             await page.evaluateOnNewDocument(installHotkeysInPage);
             await page.evaluate(installHotkeysInPage);
 
-            console.log('Education Perfected V2 fully Loaded.');
+            console.log('Education Perfected V2026 fully Loaded.');
             if (legacySignals) {
                 // Legacy entrypoints have no CLI signal owner. Keep this owner
                 // and drain shared controls before closing the owned browser.
