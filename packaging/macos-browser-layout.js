@@ -22,7 +22,14 @@ function macosBrowserLayout(browser,arch) {
   for(const entry of fs.readdirSync(directory,{withFileTypes:true})) {
    const file=path.join(directory,entry.name),stat=fs.lstatSync(file);
    if(stat.isSymbolicLink()) {
-    if(path.isAbsolute(fs.readlinkSync(file)))throw Error('Absolute macOS payload symlink cannot survive relocation');
+    const link=fs.readlinkSync(file);
+    if(path.isAbsolute(link))throw Error('Absolute macOS payload symlink cannot survive relocation');
+    // Reject even a temporary lexical excursion which re-enters by root name.
+    let depth=path.relative(root,path.dirname(file)).split(path.sep).filter(Boolean).length;
+    for(const component of link.split(path.sep)) {
+     if(component==='..') { if(--depth<0)throw Error('macOS payload symlink leaves archive root'); }
+     else if(component && component!=='.')depth++;
+    }
     const relative=path.relative(realRoot,fs.realpathSync(file));
     if(relative==='..' || relative.startsWith('..'+path.sep) || path.isAbsolute(relative))throw Error('macOS browser payload path escapes owned root');
    } else if(stat.isDirectory())audit(file);

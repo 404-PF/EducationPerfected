@@ -5,8 +5,8 @@ function macosExtractedExecutable(root,relative) {
  if(relative!==EXECUTABLE)throw Error('Unexpected macOS browser executable manifest path');
  const executable=path.join(root,relative),realRoot=fs.realpathSync(root),real=fs.realpathSync(executable),contained=path.relative(realRoot,real);
  if(contained==='..' || contained.startsWith('..'+path.sep) || path.isAbsolute(contained))throw Error('Extracted macOS browser executable escapes owned root');
- const stat=fs.statSync(executable);
+ const stat=fs.statSync(real);
  if(!stat.isFile() || !(stat.mode&0o111))throw Error('Extracted macOS browser executable is not an executable file');
- return executable;
+ return real;
 }
 module.exports={macosExtractedExecutable};
