@@ -2,8 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const source=fs.readFileSync(path.resolve(__dirname,'windows-native-unload-test.js'),'utf8');
 (async()=>{
- const timers=new Map(),output=[];let nextId=0,complete,removed=false;
- const finished=new Promise(resolve=>{complete=resolve;});
+ const timers=new Map(),output=[];let nextId=0,removed=false;
  class SyntheticWorker extends EventEmitter {
   constructor(){super();queueMicrotask(()=>this.emit('message','loaded'));}
   unref(){} terminate(){return Promise.resolve();} postMessage(){throw new Error('Must not reach native close protocol');}
@@ -15,9 +14,8 @@ const source=fs.readFileSync(path.resolve(__dirname,'windows-native-unload-test.
   assert.ok(id.startsWith('node:'));return require(id);
  };
  load.resolve=id=>{assert.equal(id,'@napi-rs/keyring-win32-x64-msvc');return '/synthetic-keyring.node';};
- vm.runInNewContext(source,{require:load,process:fakeProcess,console:{log(){},error:line=>{output.push(String(line));if(fakeProcess.exitCode===undefined)queueMicrotask(complete);}},
-  setTimeout:(callback,milliseconds)=>{const id=++nextId;timers.set(id,milliseconds);if(milliseconds===2000)queueMicrotask(callback);return id;},clearTimeout:id=>{timers.delete(id);}}); // NOSONAR: fixed repository test source with inert worker/filesystem/timers; no external code or native load.
- await finished;await new Promise(resolve=>setImmediate(resolve));
+ await vm.runInNewContext(source,{require:load,process:fakeProcess,console:{log(){},error:line=>{output.push(String(line));}}, // NOSONAR: fixed sibling test source, inert worker/filesystem/timers; no external input or native load.
+  setTimeout:(callback,milliseconds)=>{const id=++nextId;timers.set(id,milliseconds);if(milliseconds===2000)queueMicrotask(callback);return id;},clearTimeout:id=>{timers.delete(id);}});
  assert.equal(fakeProcess.exitCode,1,'Original loaded-DLL-lock assertion failure remains fatal');
  assert.equal(removed,false,'Unconfirmed worker retains extraction ownership');
  assert.ok(output.some(line=>line.includes('owned test extraction retained')));
