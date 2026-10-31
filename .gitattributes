@@ -1,3 +1,6 @@
 # start.sh runs under bash, which fails on CRLF line endings.
 *.sh text eol=lf
 *.cmd text eol=crlf
+
+# These upstream notice bytes are verified against exact SHA-256 provenance.
+/packaging/notices/*-LICENSE -text
