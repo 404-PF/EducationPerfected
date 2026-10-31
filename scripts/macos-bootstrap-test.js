@@ -22,9 +22,11 @@ async function probe(rejectPath) {
  vm.runInNewContext(source,{require:load,process:processFixture,Buffer,console:{error(){order.push('error');finish();}}}); // NOSONAR: fixed repository bootstrap with inert assets and synthetic dependencies, no external source.
  try {await Promise.race([completed,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Synthetic bootstrap timeout')),3000);})]);await new Promise(resolve=>setImmediate(resolve));}
  finally {clearTimeout(timer);}
+ assert.ok(order.includes('unpack'),'Bootstrap must unpack before validation');
+ assert.ok(order.includes('validate'),'Bootstrap must validate executable');
  assert.ok(order.indexOf('unpack')<order.indexOf('validate'));
  assert.equal(order.includes('cli'),!rejectPath);assert.equal(processFixture.exitCode,rejectPath?1:undefined);
  if(rejectPath)assert.equal(processFixture.env.PUPPETEER_EXECUTABLE_PATH,undefined);
- else assert.ok(order.indexOf('validate')<order.indexOf('cli'));
+ else {assert.ok(order.includes('cli'));assert.ok(order.indexOf('validate')<order.indexOf('cli'));}
 }
 (async()=>{await probe(false);await probe(true);console.log('Darwin bootstrap validates canonical executable after unpack and before CLI; invalid path fails closed with owned cleanup (synthetic only).');})().catch(error=>{console.error(error);process.exitCode=1;});
