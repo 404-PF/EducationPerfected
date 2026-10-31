@@ -15,7 +15,7 @@ async function probe(signal) {
   if(id==='modern-tar/fs')return {};
   return require(id);
  };
- vm.runInNewContext(source,{require:load,process:fakeProcess,Buffer,console:{log(){if(signal)listeners.get(signal)();},error(text){output+=text;finished();}}},{filename:'fixed-bootstrap-cleanup.js'});
+ vm.runInNewContext(source,{require:load,process:fakeProcess,Buffer,console:{log(){if(signal)listeners.get(signal)();},error(text){output+=text;finished();}}},{filename:'fixed-bootstrap-cleanup.js'}); // NOSONAR: fixed repository bootstrap with inert dependencies; no external input.
  await done;await new Promise(resolve=>setImmediate(resolve));
  assert.ok(output.includes('Owned extraction cleanup failed'));
  assert.ok(!output.includes('private path'));
