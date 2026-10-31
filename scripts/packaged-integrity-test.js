@@ -5,7 +5,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 (async () => {
  if(process.argv.length>2)throw Error('No executable override arguments accepted');
  const windows = process.platform === 'win32' && process.arch === 'x64';
- if (!['linux','win32'].includes(process.platform) || (process.platform === 'win32' && !windows)) throw Error('No native integrity target for this platform');
+ if (!(process.platform === 'linux' && ['x64','arm64'].includes(process.arch)) && !windows) throw Error('No native integrity target for this platform');
  const build=path.resolve(__dirname,windows?'../build/windows-x64':'../build/linux-'+process.arch);
  const executable=path.join(build,windows?'educationperfected.exe':'educationperfected');
  let child,closed;

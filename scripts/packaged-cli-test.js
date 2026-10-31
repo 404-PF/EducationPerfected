@@ -12,7 +12,7 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const target = process.platform === 'win32' && process.arch === 'x64'
   ? '../build/windows-x64/educationperfected.exe' : '../build/linux-'+process.arch+'/educationperfected';
- if (!['linux', 'win32'].includes(process.platform)) throw Error('No packaged fixture target for this platform');
+ if (!(process.platform === 'linux' && ['x64','arm64'].includes(process.arch)) && !(process.platform === 'win32' && process.arch === 'x64')) throw Error('No packaged fixture target for this platform');
  const executable = path.resolve(__dirname, target);
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError, primaryError;

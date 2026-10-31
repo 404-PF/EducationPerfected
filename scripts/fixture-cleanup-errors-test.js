@@ -12,6 +12,12 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  later=false;
  await assert.rejects(finishFixtureCleanup(null,[()=>{throw stop;},()=>{later=true;throw new Error('later cleanup');}],()=>{}),error=>error===stop);
  assert.equal(later,true);
+ for (const value of [null,undefined,0,false,'plain rejection']) {
+  let ran=false, caught=false;
+  try {await finishFixtureCleanup(null,[()=>Promise.reject(value),()=>{ran=true;}],()=>{});}
+  catch(error) {caught=true;assert.equal(error,value);}
+  assert.equal(caught,true);assert.equal(ran,true);
+ }
  await finishFixtureCleanup(null,[()=>{}],()=>{});
  console.log('Fixture cleanup preserves primary errors, runs later cleanup, and fails cleanup-only errors.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
