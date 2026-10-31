@@ -11,11 +11,16 @@ async function buildDevelopment(target) {
  const out = path.resolve(__dirname, '../build', target.directory); fs.mkdirSync(out, { recursive: true });
  const browser = await require('puppeteer').executablePath(), browserDir = path.dirname(browser);
  if (!fs.existsSync(browser)) throw Error('Chrome for Testing is not installed; run npx puppeteer browsers install chrome');
- if (path.basename(browserDir) !== target.browserDirectory || target.browserFiles.some(file => !fs.existsSync(path.join(browserDir,file)))) throw Error('Expected a Chrome for Testing payload directory');
+ let archiveRoot=browserDir, browserExecutable=path.basename(browser);
+ if(target.macosLayout) {
+  if(process.platform!=='darwin' || !['arm64','x64'].includes(process.arch))throw Error('macOS archive preparation requires native macOS arm64 or x64');
+  const layout=require('./macos-browser-layout').macosBrowserLayout(browser,process.arch);
+  archiveRoot=layout.archiveRoot; browserExecutable=layout.executable;
+ } else if (path.basename(browserDir) !== target.browserDirectory || target.browserFiles.some(file => !fs.existsSync(path.join(browserDir,file)))) throw Error('Expected a Chrome for Testing payload directory');
  const archive = path.join(out, 'browser.tar.gz');
- await pipeline(packTar(browserDir), createGzip(), fs.createWriteStream(archive));
+ await pipeline(packTar(archiveRoot), createGzip(), fs.createWriteStream(archive));
  const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
- fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: path.basename(browser) }));
+ fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: browserExecutable }));
  await esbuild.build({ entryPoints: [path.join(__dirname, 'bootstrap.js')], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(out, 'main.cjs'), external: ['keytar', '@napi-rs/keyring'], define: { 'process.env.NODE_ENV': '"production"' } });
  // Inventory every installed production dependency, including missing notice files.
  // This is an audit aid, not permission to redistribute an incomplete notice set.
@@ -58,7 +63,11 @@ async function buildDevelopment(target) {
  fs.writeFileSync(path.join(out, 'sea.json'), JSON.stringify(config));
  cp.execFileSync(process.execPath, ['--experimental-sea-config', path.join(out, 'sea.json')], { stdio: 'inherit' });
  const executable = path.join(out, target.executable); fs.copyFileSync(process.execPath, executable); fs.chmodSync(executable, 0o700);
+ if(target.macosLayout) {
+  require('./macos-sea-steps').finishMacosSea({executable,blob:config.output,node:process.execPath,postject:require.resolve('postject/dist/cli.js')});
+ } else {
  cp.execFileSync(process.execPath, [require.resolve('postject/dist/cli.js'), executable, 'NODE_SEA_BLOB', config.output, '--sentinel-fuse', 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'], { stdio: 'inherit' });
+ }
  // Browser is a SEA asset; no data is appended after executable generation.
  console.log('Development executable: ' + executable);
 }

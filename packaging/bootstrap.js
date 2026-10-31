@@ -58,7 +58,9 @@ async function main() {
         for await (const chunk of browserStream()) hash.update(chunk);
         if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
         await pipeline(browserStream(), createGunzip(), unpackTar(dir));
-        process.env.PUPPETEER_EXECUTABLE_PATH = path.join(dir, manifest.executable);
+        process.env.PUPPETEER_EXECUTABLE_PATH = process.platform === 'darwin'
+            ? require('./macos-extracted-executable').macosExtractedExecutable(dir, manifest.executable)
+            : path.join(dir, manifest.executable);
         handoffSignals();
         await require('../bin/cli').runCli();
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }
