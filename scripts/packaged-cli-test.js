@@ -97,12 +97,18 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
   console.error('Synthetic child exit state: '+JSON.stringify({code:child?.exitCode,signal:child?.signalCode}));
   throw error;
  } finally {
+  if(primaryError) console.error('EP_TEST_FIXTURE_PHASE=teardown-start');
   if(browser) await browser.close().catch(()=>{});
+  if(primaryError) console.error('EP_TEST_FIXTURE_PHASE=controller-close-finished');
   await finishFixtureCleanup(primaryError, [
    () => stopChild(child,closed),
    () => new Promise(resolve => server.close(resolve)),
    () => { if(isolated) reportResidue(); },
    () => { if(isolated) fs.rmSync(isolated,{recursive:true,force:true}); },
+   () => { if(primaryError) {
+    console.error('Synthetic child output after teardown: '+text.slice(-4000).replace(/wss?:\/\/\S+/g,'[redacted browser endpoint]'));
+    console.error('Synthetic child final exit state: '+JSON.stringify({code:child?.exitCode,signal:child?.signalCode}));
+   } },
   ]);
  }
 })().catch(error=>{console.error(error);process.exitCode=1;});
