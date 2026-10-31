@@ -1,0 +1,33 @@
+name: Phase 3 SEA asset experiment
+on:
+  push:
+    branches: [phase3-sea-asset-experiment]
+permissions:
+  contents: read
+concurrency:
+  group: phase3-sea-asset-experiment
+  cancel-in-progress: true
+jobs:
+  linux-x64-experiment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - name: Install pinned dependencies and browser
+        run: npm ci
+      - name: Build full browser as SEA asset
+        run: npm run build:linux-dev
+      - name: Exercise actual packaged CLI with embedded browser
+        run: node scripts/packaged-cli-test.js
+      - name: Confirm temporary extraction cleanup
+        if: always()
+        run: |
+          if find /tmp -maxdepth 1 -type d -name 'ep-packaged-test-*' -print -quit | grep -q .; then
+            echo 'Packaged test left temporary residue'
+            exit 1
+          fi

@@ -3,7 +3,8 @@ const { pipeline } = require('node:stream/promises');
 const { createGunzip } = require('node:zlib');
 const { createHash } = require('node:crypto');
 const { createRequire } = require('node:module');
-const { getAsset } = require('node:sea');
+const { getAsset, getAssetAsBlob } = require('node:sea');
+const { Readable } = require('node:stream');
 const { unpackTar } = require('modern-tar/fs');
 async function main() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
@@ -28,21 +29,12 @@ async function main() {
             await require('../bin/cli').credentialCommand(args.includes('--setup') ? '--setup' : '--forget-credentials');
             return;
         }
-        const fd = fs.openSync(process.execPath, 'r');
-        let offset, length;
-        try {
-            const size = fs.fstatSync(fd).size, footer = Buffer.alloc(16);
-            fs.readSync(fd, footer, 0, 16, size - 16);
-            if (footer.subarray(8).toString() !== 'EPBNDL01') throw Error('Missing browser payload');
-            const bytes = footer.readBigUInt64LE(0);
-            if (bytes > BigInt(Number.MAX_SAFE_INTEGER)) throw Error('Invalid browser payload size');
-            length = Number(bytes); offset = size - 16 - length;
-            if (offset < 0 || length !== manifest.length) throw Error('Invalid browser payload size');
-        } finally { fs.closeSync(fd); }
+        const browserAsset = getAssetAsBlob('browser');
+        if (browserAsset.size !== manifest.length) throw Error('Invalid browser payload size');
         const hash = createHash('sha256');
-        for await (const chunk of fs.createReadStream(process.execPath, { start: offset, end: offset + length - 1 })) hash.update(chunk);
+        for await (const chunk of Readable.fromWeb(browserAsset.stream())) hash.update(chunk);
         if (hash.digest('hex') !== manifest.sha256) throw Error('Browser payload checksum mismatch');
-        await pipeline(fs.createReadStream(process.execPath, { start: offset, end: offset + length - 1 }), createGunzip(), unpackTar(dir));
+        await pipeline(Readable.fromWeb(browserAsset.stream()), createGunzip(), unpackTar(dir));
         process.env.PUPPETEER_EXECUTABLE_PATH = path.join(dir, manifest.executable);
         handoffSignals();
         await require('../bin/cli').runCli();
