@@ -192,7 +192,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
                 except BaseException as error:cleanup=cleanup or error
     # Inspect the whole drained stream even when another operation failed. Input
     # appearance is a fixed primary and forbids native cleanup certification.
-    if any(answer.rstrip(b'\r\n') and answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):
+    if any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):
         raise ExitUnconfirmed('console-input-echoed') from RuntimeError('console-input-echoed')
     if cleanup:raise ExitUnconfirmed(fixed_stage(cleanup)) from primary
     if on_closed:on_closed()
@@ -210,5 +210,5 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     if expected not in captured:raise RuntimeError('console-status-missing')
     if any(token in captured for token in forbidden_output):raise RuntimeError('console-command-failed')
     if any(captured.count(token)!=1 for token,_ in prompts):raise RuntimeError('console-prompt-count')
-    if any(answer.rstrip(b'\r\n') and answer.rstrip(b'\r\n') in captured for _,answer in prompts):raise RuntimeError('console-input-echoed')
+    if any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in captured for _,answer in prompts):raise RuntimeError('console-input-echoed')
     return True

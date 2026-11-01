@@ -140,3 +140,35 @@ for scenario in ('cancel','save-marker'):
     if scenario=='save-marker':assert str(error)=='console-command-failed'
     else:assert error is None,(scenario,error)
 print('ConPTY empty Enter cancellation and forbidden-save acknowledgement controls passed (inert only).')
+
+# Actual transport gate combinations: ETX is a control byte, not a secret; 130
+# never becomes a generic accepted exit and neither ack may masquerade as interrupt.
+for scenario in ('interrupt','wrong-exit','cancel-ack','save-ack','password-label','secret-echo'):
+    api=API('success');original_read=api.ReadFile
+    def read_interrupt(handle,buffer,size,count,overlap):
+        result=original_read(handle,buffer,size,count,overlap)
+        if result and api.reads==2:
+            text=b'\x03'
+            text+= {'cancel-ack':b'Setup cancelled; no login saved.','save-ack':b'Login saved in the OS credential store.','password-label':b'EP password','secret-echo':b'public-answer\x03'}.get(scenario,b'')
+            c.memmove(buffer,text,len(text));count._obj.value=len(text)
+        return result
+    api.ReadFile=read_interrupt
+    def interrupt_exit(handle,code):code._obj.value=0 if scenario=='wrong-exit' else 130;return 1
+    api.GetExitCodeProcess=interrupt_exit
+    prompts=[(b'EP email',b'\x03')] if scenario!='secret-echo' else [(b'EP email',b'public-answer\x03')]
+    error=None
+    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',prompts,b'EP email',api=api,expected_exit=130,forbidden_output=(b'Setup cancelled; no login saved.',b'Login saved in the OS credential store.',b'EP password'))
+    except BaseException as caught:error=caught
+    if scenario=='interrupt':assert error is None,error
+    elif scenario=='wrong-exit':assert str(error)=='console-child-nonzero'
+    elif scenario=='secret-echo':
+        assert isinstance(error,m.ExitUnconfirmed) and str(error)=='console-input-echoed'
+    else:assert str(error)=='console-command-failed'
+api=API('success')
+def exit130(handle,code):code._obj.value=130;return 1
+api.GetExitCodeProcess=exit130
+error=None
+try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api)
+except BaseException as caught:error=caught
+assert str(error)=='console-child-nonzero'
+print('Raw ETX input requires child130 only explicitly, no acks/password prompt; default exit0 rejects130 (inert only).')

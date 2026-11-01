@@ -9,11 +9,12 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
     calls=[]
-    def run(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output):
+    def run(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
         calls.append(1)
         assert exe==str(root/'educationperfected.exe') and args==['--setup']
         assert 'EP_PASSWORD' not in env and 'EP_EMAIL' not in env and 'NODE_OPTIONS' not in env
         assert env['PATH']==str(root/'empty')
+        assert expected_exit==0
         assert forbidden_output==()
         assert prompts==[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
         if scenario in ('success','closed-failure'):on_closed()
@@ -50,8 +51,9 @@ for mode in ('cancel-email','cancel-password'):
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-cancel-helper-inert-'))
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
-    def cancel(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output):
+    def cancel(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
         assert args==['--setup']
+        assert expected_exit==0
         assert expected==b'Setup cancelled; no login saved.'
         assert forbidden_output==(b'Login saved in the OS credential store. Run the CLI to sign in.',)
         assert prompts==([(b'EP email',b'\r')] if mode=='cancel-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\r')])
@@ -62,3 +64,21 @@ for mode in ('cancel-email','cancel-password'):
         assert transport.call_count==1 and out.getvalue()=='EP_SETUP_CLOSED_SUCCESS\n'
     finally:shutil.rmtree(root)
 print('Cancellation helper modes use only fixed empty hidden-prompt input/ack/forbidden-save contracts (inert only).')
+
+
+for mode in ('interrupt-email','interrupt-password'):
+    root=pathlib.Path(tempfile.mkdtemp(prefix='ep-interrupt-helper-inert-'))
+    for name in ('home','tmp','empty'):(root/name).mkdir()
+    (root/'educationperfected.exe').write_bytes(b'inert')
+    def interrupt(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
+        assert args==['--setup'] and expected_exit==130
+        assert expected==(b'EP email' if mode=='interrupt-email' else b'EP password')
+        assert prompts==([(b'EP email',b'\x03')] if mode=='interrupt-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\x03')])
+        assert forbidden_output==((b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.',b'EP password') if mode=='interrupt-email' else (b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.'))
+        on_closed()
+    try:
+        with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),mode]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=interrupt) as transport,contextlib.redirect_stdout(io.StringIO()) as out:
+            assert m.entry()==0
+        assert transport.call_count==1 and out.getvalue()=='EP_SETUP_CLOSED_SUCCESS\n'
+    finally:shutil.rmtree(root)
+print('Interrupt helper expected child130 is mode-local; helper success remains exit0/strict receipt; both acks excluded (inert only).')

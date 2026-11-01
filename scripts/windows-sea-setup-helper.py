@@ -18,7 +18,7 @@ def setup(root, state, mode):
     if any((root/'tmp').iterdir()):raise RuntimeError('console-command-failed')
     env={k:v for k,v in os.environ.items() if k.upper() not in ('PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','EP_TEST_BOOT')}
     env.update(HOME=str(root/'home'),USERPROFILE=str(root/'home'),TEMP=str(root/'tmp'),TMP=str(root/'tmp'),TMPDIR=str(root/'tmp'),PATH=str(root/'empty'))
-    if mode not in ('save','cancel-email','cancel-password'):raise RuntimeError('host-guard')
+    if mode not in ('save','cancel-email','cancel-password','interrupt-email','interrupt-password'):raise RuntimeError('host-guard')
     prompts=[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
     saved=b'Login saved in the OS credential store. Run the CLI to sign in.'
     expected=saved
@@ -28,9 +28,16 @@ def setup(root, state, mode):
     if mode!='save':
         expected=b'Setup cancelled; no login saved.'
         forbidden=(saved,)
+    expected_exit=0
+    if mode.startswith('interrupt-'):
+        expected_exit=130
+        expected=b'EP email' if mode=='interrupt-email' else b'EP password'
+        forbidden=(saved,b'Setup cancelled; no login saved.')
+        prompts=[(b'EP email',b'\x03')] if mode=='interrupt-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\x03')]
+        if mode=='interrupt-email':forbidden+=(b'EP password',)
     state['attempted']=True
     def closed():state['closed']=True
-    conpty.run_console(str(executable),['--setup'],env,str(root/'home'),prompts,expected,on_closed=closed,forbidden_output=forbidden)
+    conpty.run_console(str(executable),['--setup'],env,str(root/'home'),prompts,expected,on_closed=closed,forbidden_output=forbidden,expected_exit=expected_exit)
 
 def entry():
     state={'attempted':False,'closed':False}

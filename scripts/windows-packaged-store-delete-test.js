@@ -27,7 +27,7 @@ async function verifyPackagedDelete() {
   delete env.EP_EMAIL; delete env.EP_PASSWORD; delete env.NODE_OPTIONS;
   const python = process.env.EP_FIXTURE_PYTHON;
   assert.ok(python && path.isAbsolute(python) && fs.statSync(python).isFile(), 'Verified Python executable required');
-  for (const mode of ['cancel-email','cancel-password','save']) {
+  for (const mode of ['interrupt-email','interrupt-password','cancel-email','cancel-password','save']) {
    assert.equal(await entry.getPassword(), null, 'Fresh absence required immediately before setup attempt');
    assert.equal(binding.hasLiveWorkers(),false,'Source worker must be idle before setup launch');
    cancellationPending = mode!=='save';
@@ -54,7 +54,7 @@ async function verifyPackagedDelete() {
     assert.equal(binding.hasLiveWorkers(),false,'Cancelled setup source verifier must be idle');
     assert.equal(fs.readdirSync(tmp).length,0,'Cancelled setup must remove native extraction');
     created=false;cancellationPending=false;
-    console.log('Windows SEA cancellation checkpoint: '+mode+' closed, no save acknowledgement, independent absence and extraction cleanup passed; no credential delete used.');
+    console.log('Windows SEA no-mutation checkpoint: '+mode+' closed, mode-specific input/ack/exit contract, independent absence and extraction cleanup passed; no credential delete used.');
    }
   }
   assert.equal(await entry.getPassword(), value, 'Production SEA setup must persist the exact synthetic pair (independent source read)');
