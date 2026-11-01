@@ -8,6 +8,7 @@ const os = require('node:os');
 const puppeteer = require('puppeteer');
 const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
+const { connectAfterLoginReady, selectLoginPage, disconnectController } = require('./packaged-fixture-page');
 (async () => {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const { executable, filename } = require('./packaged-fixture-target').packagedFixtureTarget();
@@ -64,17 +65,17 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  });
  // The previous 20s fixture deadline could preempt Puppeteer's pinned 30s
  // launch timeout. Allow it to report/settle; do not retry or alter the launch.
- const startup = await wait(()=>/EP_WS_ENDPOINT=(\S+)/.test(text), 'browser-endpoint', 45000);
- console.log('Packaged startup checkpoint: ' + JSON.stringify(startup));
-  browser=await puppeteer.connect({browserWSEndpoint:text.match(/EP_WS_ENDPOINT=(\S+)/)[1]});
-  await browser.waitForTarget(target=>target.type()==='page');
+ // No connect/pages/target/CDP observer traffic before owner's fixed marker.
+ browser = await connectAfterLoginReady({text:()=>text,child,failure:()=>serverError||spawnError,
+  connect:options=>puppeteer.connect(options)});
+ console.log('Packaged owner login-ready checkpoint arrived (instrumented sample only).');
   const command = await browser.target().createCDPSession();
   const { arguments: browserArgs } = await command.send('Browser.getBrowserCommandLine');
   const { browserIsInOwnedExtraction, browserOriginEvidence } = require('./packaged-browser-origin');
   console.log('Packaged browser origin relationship: ' + JSON.stringify(browserOriginEvidence(isolated, browserArgs[0])));
   assert.ok(browserIsInOwnedExtraction(isolated, browserArgs[0]), 'Browser must launch from this executable extraction, never a host cache');
   await command.detach();
-  const page=(await browser.pages())[0]; await page.waitForSelector('#loginId');
+  const page=await selectLoginPage(browser,origin+'/app/login');
   await page.type('#loginId','fixture-user'); await page.type('#password','fixture-only'); await page.click('form button');
   await wait(()=>text.includes('Commands: start'), 'commands-listed');
   await page.goto(origin+'/lesson'); child.stdin.write('mode semi\nstart\n');
@@ -92,8 +93,8 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
   console.error('Original packaged fixture failure:', error);
   throw error;
  } finally {
-  if(browser) await browser.close().catch(()=>{});
   await finishFixtureCleanup(primaryError, [
+   () => disconnectController(browser),
    () => stopChild(child,closed),
    () => new Promise(resolve => server.close(resolve)),
    () => { if(isolated) reportResidue(); },

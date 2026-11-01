@@ -533,7 +533,14 @@ async function launchProgram({ legacySignals = false } = {}) {
  */
             const reachLoginForm = async () => {
                 console.log('Opening EP page...');
-                await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+                const navigationStartedAt = TEST_BOOT ? Date.now() : null;
+                try {
+                    await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+                } catch (error) {
+                    // Diagnostic only: no added pre-navigation await, observer or retry.
+                    if (TEST_BOOT) require('./lib/test-navigation-cause').recordNavigationFailure(error, true, navigationStartedAt);
+                    throw error; // Preserve the owner's original failure before cleanup.
+                }
                 console.log('Waiting for login page to load...');
                 try {
                     // No retry loop on purpose: waitForSelector already keeps polling and
@@ -659,6 +666,8 @@ async function launchProgram({ legacySignals = false } = {}) {
             };
 
             const loginForm = await reachLoginForm();
+            // Owner readiness, not launch availability. No observer may attach before it.
+            if (TEST_BOOT && loginForm !== null) console.log('EP_TEST_LOGIN_READY');
 
             // Whether the logged-in signal was already seen on the page before auto-login
             // could fill anything: a manual login raced the credential prompt (the prompt
