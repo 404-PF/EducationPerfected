@@ -35,7 +35,7 @@ async function runPanel() {
  let expected;
  try {expected=await verifyArchive(path.join(build,'browser.tar.gz'),JSON.parse(fs.readFileSync(path.join(build,'manifest.json'),'utf8')));}
  catch {console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify({outcome:'uncertainty',leg:'identity',seaAttempted:false}));process.exitCode=1;return;}
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-startup-panel-'));
+ const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'ep-startup-panel-'));
  const leg=mode=>async()=>{
   const nonce=randomBytes(32).toString('hex');
   const owned=path.join(root,mode);fs.mkdirSync(owned,{mode:0o700});
