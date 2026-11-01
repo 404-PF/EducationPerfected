@@ -28,7 +28,7 @@ WAIT_OBJECT_0=0
 WAIT_TIMEOUT=258
 
 class ExitUnconfirmed(RuntimeError):pass
-FIXED_STAGES=frozenset(('process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-command-failed'))
+FIXED_STAGES=frozenset(('host-guard','node-identity','pipe-create','console-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','job-assignment-pre-resume','process-resume','process-timeout','process-exit-code','console-status-missing','console-input-echoed','Requires x64 pointer ABI','Windows SDK ABI mismatch','process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-command-failed'))
 def fixed_stage(error):
     return str(error) if type(error) in (RuntimeError,ExitUnconfirmed) and str(error) in FIXED_STAGES else 'console-command-failed'
 
@@ -38,6 +38,13 @@ def audit_abi():
     expected=[(COORD,4),(STARTUPINFO,104),(STARTUPINFOEX,112),(PROCESS_INFORMATION,24),(ACCOUNTING,48),(BASIC_LIMIT,64),(IO_COUNTERS,48),(EXTENDED_LIMIT,144)]
     if any(c.sizeof(kind)!=size for kind,size in expected) or ACCOUNTING.active.offset!=40 or BASIC_LIMIT.flags.offset!=16:
         raise RuntimeError('Windows SDK ABI mismatch')
+
+def failure_category(error):
+    stage=fixed_stage(error)
+    kind='ownership' if isinstance(error,ExitUnconfirmed) else 'argument' if isinstance(error,(TypeError,c.ArgumentError)) else 'api-unavailable' if isinstance(error,AttributeError) else 'os-error' if isinstance(error,OSError) else 'fixed-check' if stage!='console-command-failed' else 'other'
+    code=getattr(error,'winerror',None)
+    code=str(code) if code in (2,5,6,50,87,109,122,232) else 'other'
+    return 'stage='+stage+'; category='+kind+'; win32='+code
 
 def kernel32():
     audit_abi()

@@ -7,9 +7,9 @@ conpty=importlib.util.module_from_spec(spec);spec.loader.exec_module(conpty)
 
 def main():
     if sys.platform!='win32' or os.environ.get('GITHUB_ACTIONS')!='true' or os.environ.get('RUNNER_OS')!='Windows' or os.environ.get('RUNNER_ENVIRONMENT')!='github-hosted' or len(sys.argv)!=2:
-        raise RuntimeError('Requires disposable hosted Windows capability context')
+        raise RuntimeError('host-guard')
     node=pathlib.Path(sys.argv[1])
-    if not node.is_absolute() or not node.is_file() or node.name.lower()!='node.exe':raise RuntimeError('Verified Node executable required')
+    if not node.is_absolute() or not node.is_file() or node.name.lower()!='node.exe':raise RuntimeError('node-identity')
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-conpty-capability-'))
     empty=root/'empty';empty.mkdir()
     env={k:v for k,v in os.environ.items() if k.upper() not in ('PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','EP_TEST_BOOT')}
@@ -27,6 +27,6 @@ def main():
 
 if __name__=='__main__':
     try:main()
-    except BaseException:
-        print('ConPTY zero-credential capability failed; no native error or child output printed.',file=sys.stderr)
+    except BaseException as error:
+        print('ConPTY zero-credential capability failed: '+conpty.failure_category(error)+'; no native error or child output printed.',file=sys.stderr)
         sys.exit(1)

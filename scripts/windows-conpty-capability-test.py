@@ -30,3 +30,15 @@ for scenario in ['success','command-failure','exit-unconfirmed','wrong-host','mi
         assert root.exists()==(scenario=='exit-unconfirmed')
     finally:shutil.rmtree(parent)
 print('ConPTY capability inert host/identity/env/zero-credential/root-retention controls passed.')
+
+# Fixed diagnostic metadata never prints attacker/native text or filesystem details.
+for error,category in [(TypeError('sensitive-native-path'), 'argument'), (AttributeError('sensitive-native-path'), 'api-unavailable'), (OSError('sensitive-native-path'), 'os-error'), (RuntimeError('sensitive-native-path'), 'other'), (RuntimeError('process-create'), 'fixed-check'), (m.conpty.ExitUnconfirmed('job-exit-unconfirmed'), 'ownership')]:
+    text=m.conpty.failure_category(error)
+    assert 'category='+category in text and 'sensitive' not in text
+error=OSError('sensitive-native-path');error.winerror=5
+assert 'win32=5' in m.conpty.failure_category(error)
+error.winerror=123456
+assert 'win32=other' in m.conpty.failure_category(error)
+assert 'stage=host-guard' in m.conpty.failure_category(RuntimeError('host-guard'))
+assert 'stage=node-identity' in m.conpty.failure_category(RuntimeError('node-identity'))
+print('ConPTY failure classification: fixed stage/type/allowlisted Win32 code only; arbitrary native contents suppressed.')
