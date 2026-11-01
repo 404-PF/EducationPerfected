@@ -10,13 +10,7 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
     (root/'educationperfected.exe').write_bytes(b'inert')
     calls=[]
     def run(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
-        calls.append(1)
-        assert exe==str(root/'educationperfected.exe') and args==['--setup']
-        assert 'EP_PASSWORD' not in env and 'EP_EMAIL' not in env and 'NODE_OPTIONS' not in env
-        assert env['PATH']==str(root/'empty')
-        assert expected_exit==0
-        assert forbidden_output==()
-        assert prompts==[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
+        calls.append((exe,args,env,cwd,prompts,expected,forbidden_output,expected_exit))
         if scenario in ('success','closed-failure'):on_closed()
         if scenario=='closed-failure':raise RuntimeError('console-child-nonzero')
         if scenario=='uncertain':raise m.conpty.ExitUnconfirmed('job-exit-unconfirmed') from RuntimeError('process-timeout')
@@ -25,13 +19,20 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
     try:
         with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),'save']),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_PASSWORD':str(0),'EP_EMAIL':str(0),'NODE_OPTIONS':'inert'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=run),contextlib.redirect_stdout(io.StringIO()) as out:
             code=m.entry()
-        text=out.getvalue();assert calls==[1]
+        text=out.getvalue();assert len(calls)==1
+        exe,args,env,cwd,prompts,expected,forbidden_output,expected_exit=calls[0]
+        assert exe==str(root/'educationperfected.exe') and args==['--setup']
+        assert 'EP_PASSWORD' not in env and 'EP_EMAIL' not in env and 'NODE_OPTIONS' not in env
+        assert env['PATH']==str(root/'empty')
+        assert expected_exit==0
+        assert forbidden_output==()
+        assert prompts==[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
         assert code==({'success':0,'closed-failure':1}.get(scenario,20))
         assert text.endswith('EP_SETUP_CLOSED_SUCCESS\n' if scenario=='success' else 'EP_SETUP_CLOSED_FAILURE\n' if scenario=='closed-failure' else 'EP_SETUP_UNCERTAIN\n')
         assert 'private-secret' not in text and 'synthetic-sea-delete' not in text
         if scenario=='uncertain':assert 'EP_SETUP_PRIMARY=process-timeout\n' in text
     finally:shutil.rmtree(root)
-print('SEA setup helper inert prompt/privacy/closed receipt/uncertainty/primary-cause controls passed. Native setup pending.')
+print('SEA setup helper inert prompt/privacy/closed receipt/uncertainty/primary-cause controls passed. Native outcomes recorded separately.')
 
 # Exercise real text-layer translation, not StringIO's translation-free behavior.
 for initial_newline in ('\r\n','\n'):
@@ -52,16 +53,19 @@ for mode in ('cancel-email','cancel-password'):
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
     def cancel(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
-        assert args==['--setup']
-        assert expected_exit==0
-        assert expected==b'Setup cancelled; no login saved.'
-        assert forbidden_output==(b'Login saved in the OS credential store. Run the CLI to sign in.',)
-        assert prompts==([(b'EP email',b'\r')] if mode=='cancel-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\r')])
         on_closed()
     try:
         with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),mode]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=cancel) as transport,contextlib.redirect_stdout(io.StringIO()) as out:
             assert m.entry()==0
         assert transport.call_count==1 and out.getvalue()=='EP_SETUP_CLOSED_SUCCESS\n'
+        exe,args,env,cwd,prompts,expected=transport.call_args.args
+        forbidden_output=transport.call_args.kwargs['forbidden_output']
+        expected_exit=transport.call_args.kwargs['expected_exit']
+        assert args==['--setup']
+        assert expected_exit==0
+        assert expected==b'Setup cancelled; no login saved.'
+        assert forbidden_output==(b'Login saved in the OS credential store. Run the CLI to sign in.',)
+        assert prompts==([(b'EP email',b'\r')] if mode=='cancel-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\r')])
     finally:shutil.rmtree(root)
 print('Cancellation helper modes use only fixed empty hidden-prompt input/ack/forbidden-save contracts (inert only).')
 
@@ -71,14 +75,17 @@ for mode in ('interrupt-email','interrupt-password'):
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
     def interrupt(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
-        assert args==['--setup'] and expected_exit==130
-        assert expected==(b'EP email' if mode=='interrupt-email' else b'EP password')
-        assert prompts==([(b'EP email',b'\x03')] if mode=='interrupt-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\x03')])
-        assert forbidden_output==((b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.',b'EP password') if mode=='interrupt-email' else (b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.'))
         on_closed()
     try:
         with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),mode]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=interrupt) as transport,contextlib.redirect_stdout(io.StringIO()) as out:
             assert m.entry()==0
         assert transport.call_count==1 and out.getvalue()=='EP_SETUP_CLOSED_SUCCESS\n'
+        exe,args,env,cwd,prompts,expected=transport.call_args.args
+        forbidden_output=transport.call_args.kwargs['forbidden_output']
+        expected_exit=transport.call_args.kwargs['expected_exit']
+        assert args==['--setup'] and expected_exit==130
+        assert expected==(b'EP email' if mode=='interrupt-email' else b'EP password')
+        assert prompts==([(b'EP email',b'\x03')] if mode=='interrupt-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\x03')])
+        assert forbidden_output==((b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.',b'EP password') if mode=='interrupt-email' else (b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.'))
     finally:shutil.rmtree(root)
 print('Interrupt helper expected child130 is mode-local; helper success remains exit0/strict receipt; both acks excluded (inert only).')

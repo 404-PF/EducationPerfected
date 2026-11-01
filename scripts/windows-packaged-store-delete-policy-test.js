@@ -3,9 +3,10 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const {EventEmitter}=require('node:events');
 const source=fs.readFileSync(path.join(__dirname,'windows-packaged-store-delete-test.js'),'utf8');
 async function probe(scenario, fixturePath) {
- let cancelStarted=false;
- const targetMode=scenario.startsWith('cancel-email-')?'cancel-email':scenario.startsWith('password-')?'interrupt-password':'interrupt-email';
- const failureScenario=scenario.replace(/^(password-|cancel-email-)/, '');
+ let cancelStarted='';
+ const [targetMode='',failureScenario=''] = scenario.split(':');
+ const modeOrder=['interrupt-email','interrupt-password','cancel-email','cancel-password'];
+ const expectedFailureSpawns=modeOrder.indexOf(targetMode)+1;
  let record=scenario==='existing'?'untouched':null, live=false, saves=0, deletes=0, removed=0, spawns=0, polls=0, commands=[];
  const primary=Error('synthetic operation failure'), logs=[], moduleFixture={exports:{}};
  const requireFixture=id=>{
@@ -59,8 +60,8 @@ async function probe(scenario, fixturePath) {
  let error;try {await moduleFixture.exports.verifyPackagedDelete();}catch(value){error=value;}
  if(scenario==='success'){assert.equal(error,undefined);assert.equal(saves,1);assert.equal(spawns,7);assert.ok(commands[0].endsWith('windows-sea-setup-helper.py'));assert.deepEqual(commands.slice(5),['--check-credentials','--forget-credentials']);assert.equal(record,null);assert.equal(deletes,0);assert.equal(removed,1);assert.ok(polls>=3);}
  if(['setup-uncertain','setup-no-receipt'].includes(scenario)){assert.ok(error);assert.equal(deletes,0);assert.equal(removed,0);assert.ok(record);}
- if(['cancel-uncertain','cancel-closed-failure','cancel-read-failure'].includes(failureScenario)){assert.ok(error);assert.equal(deletes,0);assert.equal(removed,0);assert.equal(spawns,targetMode==='cancel-email'?3:targetMode==='interrupt-password'?2:1);}
- if(failureScenario==='cancel-mutation'){assert.ok(error);assert.equal(record,'unexpected');assert.equal(deletes,0);assert.equal(removed,0);assert.equal(spawns,targetMode==='cancel-email'?3:targetMode==='interrupt-password'?2:1);}
+ if(['cancel-uncertain','cancel-closed-failure','cancel-read-failure'].includes(failureScenario)){assert.ok(error);assert.equal(deletes,0);assert.equal(removed,0);assert.equal(spawns,expectedFailureSpawns);}
+ if(failureScenario==='cancel-mutation'){assert.ok(error);assert.equal(record,'unexpected');assert.equal(deletes,0);assert.equal(removed,0);assert.equal(spawns,expectedFailureSpawns);}
  if(scenario==='setup-pair-mismatch'){assert.ok(error);assert.equal(deletes,1);assert.equal(record,null);assert.equal(removed,1);}
  if(['file-cleanup','unknown-cleanup'].includes(scenario)){assert.match(error.message,/file cleanup failed/);assert.equal(removed,1);assert.ok(logs.some(line=>line.includes('code='+(scenario==='file-cleanup'?'EPERM; target=executable-copy':'other; target=unknown'))));assert.doesNotMatch(logs.join(' '),/sensitive-fixture|private-code|private-name|outside/);}
  if(scenario==='existing'){assert.match(error.message,/must be absent/);assert.equal(saves,0);assert.equal(spawns,0);assert.equal(deletes,0);assert.equal(record,'untouched');}
@@ -70,4 +71,13 @@ async function probe(scenario, fixturePath) {
  if(scenario==='residue'){assert.ok(error);assert.equal(saves,1);assert.equal(spawns,6);assert.equal(commands[5],'--check-credentials');assert.equal(deletes,1);assert.equal(record,null);assert.equal(removed,1);}
  if(['child-failure','child-noop'].includes(scenario)){assert.ok(error);assert.equal(deletes,1);assert.equal(record,null);assert.equal(removed,1);}
 }
-(async()=>{for(const fixturePath of [path.posix,path.win32])for(const scenario of ['cancel-email-cancel-closed-failure','password-cancel-uncertain','password-cancel-closed-failure','password-cancel-read-failure','password-cancel-mutation','cancel-uncertain','cancel-closed-failure','cancel-read-failure','cancel-mutation','setup-uncertain','setup-no-receipt','setup-pair-mismatch','read-failure','read-wrong','read-mutation','file-cleanup','unknown-cleanup','existing','success','partial','initial-read-live','cleanup-delete-live','cleanup-read-live','child-failure','child-noop','residue','child-live'])await probe(scenario,fixturePath);console.log('Windows SEA deletion fixture ownership/absence/primary failure/retention controls passed (inert only).');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{
+ const ordinary=['setup-uncertain','setup-no-receipt','setup-pair-mismatch','read-failure','read-wrong','read-mutation','file-cleanup','unknown-cleanup','existing','success','partial','initial-read-live','cleanup-delete-live','cleanup-read-live','child-failure','child-noop','residue','child-live'];
+ const modes=['interrupt-email','interrupt-password','cancel-email','cancel-password'];
+ const failures=['cancel-uncertain','cancel-closed-failure','cancel-read-failure','cancel-mutation'];
+ for(const fixturePath of [path.posix,path.win32]){
+  for(const scenario of ordinary)await probe(scenario,fixturePath);
+  for(const mode of modes)for(const failure of failures)await probe(mode+':'+failure,fixturePath);
+ }
+ console.log('Windows SEA deletion fixture ownership/absence/primary failure/retention controls passed (inert only; all4 no-write modes x all4 failure categories x both path flavors).');
+})().catch(error=>{console.error(error);process.exitCode=1;});
