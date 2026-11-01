@@ -153,3 +153,16 @@ seaAttempted=true, never a green line followed by preparation failure. Driver CL
 roots are restricted to fresh canonical OS-temp ep-startup-panel-*/source or /sea
 directories with no symlink parent/root or traversal. These checks do not turn vm
 or a privileged host into a security sandbox.
+
+### Early evidence on a failed leg
+
+The helper returns a nonce/mode-bound fixed failure stage, the last strictly ordered
+and bound driver stage observed on drained output, an allowlisted transport status,
+and its observed-closure flag. The panel prints only these validated fields. Missing,
+duplicate, malformed, stale, extra or out-of-order evidence stays unknown. A stage
+means that marker was observed, not that the operation following it succeeded.
+`spawn-entered` and `spawn-returned` refer to the CLI owner spawn call, not proof of
+browser creation. No raw child output, paths, exception text or credentials are
+printed. This adds observation only: budgets, cleanup decisions and source-first
+stop-on-uncertainty behavior are unchanged. Callback delivery does not certify
+closure. Inert/static tests are not native driver execution or a cause finding.

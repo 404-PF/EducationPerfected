@@ -8,15 +8,19 @@ const {pipeline}=require('node:stream/promises'),{createGunzip}=require('node:zl
 const {unpackTar}=require('modern-tar/fs');
 const {Readable}=require('node:stream');
 const {validateLegRoot}=require('./windows-startup-root');
+function driverStage(mode,nonce,stage) {console.log('EP_DIAGNOSTIC_DRIVER_STAGE='+JSON.stringify({nonce,mode,stage}));}
 async function runLeg(root,mode,nonce) {
  if(process.platform!=='win32'||process.arch!=='x64'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Windows')throw Error('Diagnostic host guard');
+ driverStage(mode,nonce,'host-checked');
  assert.ok(['source','sea'].includes(mode));assert.match(nonce,/^[a-f0-9]{64}$/);
- root=validateLegRoot(root,mode);
+ root=validateLegRoot(root,mode);driverStage(mode,nonce,'leg-root-checked');
  assert.deepEqual(fs.readdirSync(root),[],'Diagnostic leg must begin empty');
  const build=path.resolve(__dirname,'../build/windows-x64');
  const manifest=JSON.parse(fs.readFileSync(path.join(build,'manifest.json'),'utf8'));
  // Reads before process creation. No missing-file/cache/system fallback.
+ driverStage(mode,nonce,'archive-check-entered');
  const verified=await readVerifiedArchive(path.join(build,'browser.tar.gz'),manifest);
+ driverStage(mode,nonce,'archive-verified');
  const expected=verified.identity;
  let sourceReceipt='';
  if(mode==='source')require('../lib/test-browser-identity').emitBrowserIdentity(manifest,line=>{sourceReceipt=line;});
@@ -27,9 +31,10 @@ async function runLeg(root,mode,nonce) {
  assert.equal(manifest.executable,path.basename(manifest.executable));
  assert.equal(path.isAbsolute(manifest.executable),false);
  if(mode==='source') {
+  driverStage(mode,nonce,'unpack-entered');
   const extraction=fs.mkdtempSync(path.join(tmp,'educationperfected-source-'));
   await pipeline(Readable.from([verified.bytes]),createGunzip(),unpackTar(extraction));
-  sourceExecutable=path.join(extraction,manifest.executable);assertOwnedBrowser(tmp,sourceExecutable);
+  sourceExecutable=path.join(extraction,manifest.executable);assertOwnedBrowser(tmp,sourceExecutable);driverStage(mode,nonce,'unpacked');
  }
  const server=require('./mock-ep').createServer();let child,closed,browser,text='',serverError,spawnError,primary;
  const result={nonce,mode,receipt:null,observedVersion:null,owned:false,ready:false,cleanupCertain:false,navigationCategory:'unobserved'};
@@ -41,13 +46,15 @@ async function runLeg(root,mode,nonce) {
   let executable,args;
   if(mode==='source'){executable=process.execPath;args=[path.resolve(__dirname,'../bin/cli.js')];}
   else {executable=path.join(root,'educationperfected.exe');fs.copyFileSync(path.join(build,'educationperfected.exe'),executable);args=[];}
+  driverStage(mode,nonce,'spawn-entered');
   child=spawn(executable,args,{env,cwd:home,stdio:['pipe','pipe','pipe']});
+  driverStage(mode,nonce,'spawn-returned');
   closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
   child.once('error',error=>{spawnError=error;});
   const capture=chunk=>{if(spawnError)return;text+=chunk.toString();if(Buffer.byteLength(text)>65536){text='';spawnError=Error('Diagnostic output limit');}};
   child.stdout.on('data',capture);child.stderr.on('data',capture);
   const ready=await connectAfterLoginReady({text:()=>text,child,failure:()=>spawnError||serverError,connect:options=>require('puppeteer').connect(options)});
-  browser=ready.browser;result.ready=true;
+  browser=ready.browser;result.ready=true;driverStage(mode,nonce,'ready-observed');
   console.log('EP_DIAGNOSTIC_READY_CHECKPOINT='+JSON.stringify(ready.checkpoint));
   // All observer calls are after owner marker, never on endpoint availability.
   const command=await browser.target().createCDPSession();let argv;
@@ -60,7 +67,7 @@ async function runLeg(root,mode,nonce) {
   await page.type('#loginId','fixture-user');await page.type('#password','fixture-only');await page.click('form button');
   await require('./packaged-checkpoint').waitForPackagedCheckpoint(()=>text.includes('Commands: start'),{child,failure:()=>spawnError||serverError,name:'diagnostic-cli-ready',milliseconds:20000});
   child.stdin.write('quit\n');
-  const status=await boundedClose(closed,10000,'Diagnostic owner quit uncertainty');assert.equal(status.code,0);assert.equal(status.signal,null);
+  const status=await boundedClose(closed,10000,'Diagnostic owner quit uncertainty');assert.equal(status.code,0);assert.equal(status.signal,null);driverStage(mode,nonce,'owner-closed');
  } catch(error) {primary=error;}
  finally {
   // Neither driver nor wrapper proves global browser tree closure. Disposable VM teardown is a backstop.
@@ -78,11 +85,13 @@ async function runLeg(root,mode,nonce) {
  const residue=fs.readdirSync(tmp);
  if(mode==='source') {assert.equal(residue.length,1);assert.ok(residue[0].startsWith('educationperfected-source-'));fs.rmSync(path.join(tmp,residue[0]),{recursive:true,force:true});}
  assert.deepEqual(fs.readdirSync(tmp),[]);
- result.cleanupCertain=true;return result;
+ result.cleanupCertain=true;driverStage(mode,nonce,'leg-complete');return result;
 }
 module.exports={runLeg};
 if(require.main===module)(async()=>{
- if(process.argv.length!==5)throw Error('Diagnostic arguments');const mode=process.argv[3],nonce=process.argv[4],root=validateLegRoot(process.argv[2],mode);
+ if(process.argv.length!==5)throw Error('Diagnostic arguments');const mode=process.argv[3],nonce=process.argv[4];
+ if(!['source','sea'].includes(mode)||!/^[a-f0-9]{64}$/.test(nonce))throw Error('Diagnostic arguments');
+ driverStage(mode,nonce,'cli-entry');const root=validateLegRoot(process.argv[2],mode);driverStage(mode,nonce,'cli-root-checked');
  try {const result=await runLeg(root,mode,nonce);fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(result),{flag:'wx',mode:0o600});console.log('EP_DIAGNOSTIC_LEG_DONE');}
  catch(error) {if(error.diagnosticResult)fs.writeFileSync(path.join(root,'failure.json'),JSON.stringify(error.diagnosticResult),{flag:'wx',mode:0o600});console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;}
 })().catch(()=>{console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;});

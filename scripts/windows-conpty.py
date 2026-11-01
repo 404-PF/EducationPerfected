@@ -78,7 +78,7 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000):
+def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
     if type(process_budget_ms) is not int or process_budget_ms not in (30000,120000):raise RuntimeError('host-guard')
     api=api or kernel32()
@@ -191,6 +191,8 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
             for handle in handles:
                 try:close(handle)
                 except BaseException as error:cleanup=cleanup or error
+    # Optional diagnostic observer only; it cannot certify closure or replace failures.
+    if on_drain:on_drain(bytes(output))
     # Inspect the whole drained stream even when another operation failed. Input
     # appearance is a fixed primary and forbids native cleanup certification.
     if any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):

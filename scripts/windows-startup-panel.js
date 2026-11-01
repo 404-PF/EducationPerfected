@@ -8,6 +8,20 @@ function strictJobReceipt(result,nonce) {
  return /^[a-f0-9]{64}$/.test(nonce) && !result.error && result.status===0 && result.signal===null && result.stderr==='' &&
   result.stdout==='EP_DIAGNOSTIC_JOB_NONCE='+nonce+'\nEP_DIAGNOSTIC_JOB_OBSERVED_CLOSED=true\nEP_DIAGNOSTIC_JOB_OUTCOME=success\n';
 }
+function failureEvidence(result,mode,nonce) {
+ const unknown={stage:'unknown',driverStage:'unknown',transportStage:'unobserved',closed:'unknown'};
+ if(result.error||result.status!==20||result.signal!==null||result.stderr!==''||typeof result.stdout!=='string'||result.stdout.includes('\r'))return unknown;
+ const lines=result.stdout.split('\n');
+ if(lines.length!==4||lines[3]!==''||lines[2]!=='EP_DIAGNOSTIC_JOB_OUTCOME=uncertainty'||!lines[0].startsWith('EP_DIAGNOSTIC_JOB_FAILURE='))return unknown;
+ try {
+  const value=JSON.parse(lines[0].slice('EP_DIAGNOSTIC_JOB_FAILURE='.length));
+  const stages=['helper-entry','arguments','root-check','node-check','driver-check','transport','result-check','result-parse','result-binding'];
+  const driver=['unknown','cli-entry','cli-root-checked','host-checked','leg-root-checked','archive-check-entered','archive-verified','unpack-entered','unpacked','spawn-entered','spawn-returned','ready-observed','owner-closed','leg-complete'];
+  const transport=['unobserved','system-identity','host-guard','node-identity','pipe-create','console-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','job-assignment-pre-resume','process-resume','process-timeout','process-exit-code','console-status-missing','console-input-echoed','Requires x64 pointer ABI','Windows SDK ABI mismatch','process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-child-nonzero','console-command-failed'];
+  if(Object.keys(value).sort().join(',')!=='closed,driverStage,mode,nonce,stage,transportStage'||value.nonce!==nonce||value.mode!==mode||!stages.includes(value.stage)||!driver.includes(value.driverStage)||!transport.includes(value.transportStage)||typeof value.closed!=='boolean'||lines[1]!=='EP_DIAGNOSTIC_JOB_OBSERVED_CLOSED='+value.closed)return unknown;
+  return {stage:value.stage,driverStage:value.driverStage,transportStage:value.transportStage,closed:value.closed};
+ }catch{return unknown;}
+}
 function readBoundResult(owned,mode,nonce) {
  if(fs.readdirSync(owned).filter(name=>name==='result.json'||name==='failure.json').join(',')!=='result.json')throw Error('Diagnostic missing or conflicting result');
  const file=path.join(owned,'result.json');const stat=fs.lstatSync(file);
@@ -44,6 +58,7 @@ async function runPanel() {
   const result=spawnSync(python,[helper,owned,process.execPath,mode,nonce],{encoding:'utf8',timeout:155000,maxBuffer:4096,windowsHide:true});
   // No raw helper/child output or filesystem exceptions are printed.
   if(!strictJobReceipt(result,nonce)) {
+   console.log('EP_DIAGNOSTIC_EARLY_EVIDENCE='+JSON.stringify(failureEvidence(result,mode,nonce)));
    let category='unobserved';
    try {
     const file=path.join(owned,'failure.json');const stat=fs.lstatSync(file);
@@ -62,5 +77,5 @@ async function runPanel() {
  console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify(finalOutcome));
  if(finalOutcome.outcome==='uncertainty'){console.log('EP_DIAGNOSTIC_ROOT_RETAINED=true');process.exitCode=1;}
 }
-module.exports={strictJobReceipt,readBoundResult,probeRootRename,finishPanel,runPanel};
+module.exports={failureEvidence,strictJobReceipt,readBoundResult,probeRootRename,finishPanel,runPanel};
 if(require.main===module)runPanel().catch(()=>{console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify({outcome:'uncertainty',leg:'preparation',seaAttempted:false}));process.exitCode=1;});

@@ -195,3 +195,15 @@ for invalid in (0,90000,120001,True,'120000',None):
         except RuntimeError as error:assert str(error)=='host-guard'
         else:raise AssertionError('Invalid process budget accepted')
 print('ConPTY fixed diagnostic120s vs unchangeddefault30s outer process budget, single wait and invalid-before-allocation controls passed (inert).')
+# The optional drain observer gets bytes after cleanup attempts even on a fixed failure.
+for scenario in ('success','child-nonzero','process-create','job-live'):
+    api=API(scenario);observed=[];closed=[];values=iter(range(0,6000,6));kwargs={'clock':lambda:next(values,6000)} if scenario=='job-live' else {}
+    error=None
+    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=observed.append,on_closed=lambda:closed.append(True),**kwargs)
+    except BaseException as caught:error=caught
+    assert len(observed)==1 and isinstance(observed[0],bytes)
+    if scenario=='success':assert error is None and closed==[True]
+    elif scenario=='job-live':assert isinstance(error,m.ExitUnconfirmed) and not closed
+    elif scenario=='child-nonzero':assert str(error)=='console-child-nonzero' and closed==[True]
+    else:assert str(error)=='process-create'
+print('Optional drain evidence preserved on success/fixed child/setup/closure failures without changing original failure or closure result (inert).')

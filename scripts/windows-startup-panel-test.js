@@ -18,3 +18,18 @@ try {
  let removed=false;assert.equal(finishPanel(root,success,()=>{removed=true;}),success);assert.equal(removed,true);
  console.log('Strict nonce/status/LF/duplicate receipt, stale/missing/conflicting result and negative-only root rename probe controls passed (inert; no tree-closure proof).');
 }finally{fs.rmSync(root,{recursive:true,force:true});}
+const {failureEvidence}=require('./windows-startup-panel');
+function failed(value) {return {status:20,signal:null,stderr:'',stdout:'EP_DIAGNOSTIC_JOB_FAILURE='+JSON.stringify(value)+'\nEP_DIAGNOSTIC_JOB_OBSERVED_CLOSED='+value.closed+'\nEP_DIAGNOSTIC_JOB_OUTCOME=uncertainty\n'};}
+const failure={nonce,mode:'source',stage:'transport',driverStage:'archive-check-entered',transportStage:'console-child-nonzero',closed:true};
+assert.deepEqual(failureEvidence(failed(failure),'source',nonce),{stage:'transport',driverStage:'archive-check-entered',transportStage:'console-child-nonzero',closed:true});
+const unknown={stage:'unknown',driverStage:'unknown',transportStage:'unobserved',closed:'unknown'};
+assert.deepEqual(failureEvidence({...failed(failure),stdout:failed(failure).stdout.replace('}\n','}\r\n')},'source',nonce),unknown);
+for(const change of [{nonce:'b'.repeat(64)},{mode:'sea'},{stage:'private'},{driverStage:'private'},{transportStage:'private'},{closed:'true'},{extra:'private'}])assert.deepEqual(failureEvidence(failed({...failure,...change}),'source',nonce),unknown);
+for(const change of [{error:Error('private')},{signal:'SIGTERM'},{status:0},{stderr:'private'},{stdout:failed(failure).stdout+'private\n'},{stdout:failed(failure).stdout.replace(/\n/g,'\r\n')},{stdout:failed(failure).stdout.replace('CLOSED=true','CLOSED=false')},{stdout:''}])assert.deepEqual(failureEvidence({...failed(failure),...change},'source',nonce),unknown);
+const driver=fs.readFileSync(path.join(__dirname,'windows-startup-leg.js'),'utf8');
+const ordered=["driverStage(mode,nonce,'cli-entry')","const root=validateLegRoot(process.argv[2],mode)","driverStage(mode,nonce,'cli-root-checked')"];
+let previous=-1;for(const token of ordered){const at=driver.indexOf(token);assert.ok(at>previous);previous=at;}
+const leg=driver.slice(driver.indexOf('async function runLeg'),driver.indexOf('module.exports'));
+const boundaries=["throw Error('Diagnostic host guard')","'host-checked'",'root=validateLegRoot',"'leg-root-checked'","'archive-check-entered'",'await readVerifiedArchive',"'archive-verified'","'unpack-entered'",'await pipeline',"'unpacked'","'spawn-entered'",'child=spawn',"'spawn-returned'",'await connectAfterLoginReady',"'ready-observed'",'await boundedClose',"'owner-closed'",'result.cleanupCertain=true',"'leg-complete'"];
+previous=-1;for(const token of boundaries){const at=leg.indexOf(token);assert.ok(at>previous,token);previous=at;}
+console.log('Strict failure stage/status/closure privacy and actual-source marker boundary ordering checked (inert/static; no driver execution).');
