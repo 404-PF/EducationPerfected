@@ -30,6 +30,14 @@ jobs:
         run: node scripts/packaged-windows-binding-test.js
       - name: Check native fixture cleanup policy with inert state
         run: node scripts/windows-worker-store-policy-test.js
+      - name: Check zero-credential ConPTY ownership and ABI with inert APIs
+        run: |
+          python scripts/windows-conpty-test.py
+          python scripts/windows-conpty-capability-test.py
+      - name: Check actual owned ConPTY capability before any credential mutation
+        run: |
+          $node = node -p "process.execPath"
+          python scripts/windows-conpty-capability.py $node
       - name: Exercise real synthetic native credential operations through workers
         run: node scripts/windows-native-worker-store-test.js
       - name: Check packaged deletion policy with inert state
