@@ -101,7 +101,11 @@ import os
 from unittest import mock
 captured=[]
 repo=pathlib.Path(__file__).resolve().parent.parent
-root=pathlib.Path(tempfile.mkdtemp(prefix='ep-inert-env-'))
+alias_parent=pathlib.Path(tempfile.mkdtemp(prefix='ep-inert-env-'))
+root=(alias_parent/'actual').resolve()
+root.mkdir()
+alias=alias_parent/'alias'
+alias.symlink_to(root,target_is_directory=True)
 owned=str(root/'synthetic.keychain-db')
 def mocked_run(args, **kwargs):
     if args[0]=='/usr/bin/security':
@@ -110,11 +114,11 @@ def mocked_run(args, **kwargs):
     captured.append(kwargs['env'])
     raise RuntimeError('stop before actual native credential operation')
 try:
-    with mock.patch.object(pty_fixture.sys,'platform','darwin'), mock.patch.object(pty_fixture.sys,'argv',['fixed',str(root)]), mock.patch.dict(os.environ,{'RUNNER_ENVIRONMENT':'github-hosted','HOME':'/inert-original-home'}), mock.patch.object(pty_fixture.subprocess,'run',side_effect=mocked_run), mock.patch.object(pty_fixture,'shutil_which_node',return_value='/fixed/node'):
+    with mock.patch.object(pty_fixture.sys,'platform','darwin'), mock.patch.object(pty_fixture.sys,'argv',['fixed',str(alias)]), mock.patch.dict(os.environ,{'RUNNER_ENVIRONMENT':'github-hosted','HOME':'/inert-original-home'}), mock.patch.object(pty_fixture.subprocess,'run',side_effect=mocked_run), mock.patch.object(pty_fixture,'shutil_which_node',return_value='/fixed/node'):
         try:pty_fixture.main()
         except RuntimeError as error:assert str(error)=='stop before actual native credential operation'
     assert captured[-1]['HOME']=='/inert-original-home'
     assert captured[-1]['TMPDIR']==str(root/'tmp') and captured[-1]['PATH']==str(root/'empty')
     assert captured[-2]['HOME']=='/inert-original-home'
-finally:shutil.rmtree(root)
+finally:shutil.rmtree(alias_parent)
 print('Mac native child retains runner HOME and verified metadata with owned TMP/empty PATH (inert only).')
