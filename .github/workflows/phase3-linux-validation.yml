@@ -29,8 +29,12 @@ jobs:
           uname -a
           node --version
           echo 'Development validation only. No release, clean-machine, Ubuntu 24, Windows or Mac proof.'
-      - name: Install pinned dependencies and browser
-        run: npm ci
+      - name: Install pinned dependencies without dependency lifecycle hooks
+        run: npm ci --ignore-scripts
+      - name: Install pinned Puppeteer browsers explicitly
+        run: |
+          node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+          node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell
       - name: Install disposable Secret Service and virtual display prerequisites
         run: |
           sudo apt-get update
