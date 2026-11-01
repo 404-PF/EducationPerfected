@@ -35,6 +35,21 @@ try:
     assert record['stage']==('console-command-failed' if scenario in ('private-transport-error','private-closure-error') else 'job-exit-unconfirmed' if scenario=='unconfirmed' else 'process-create' if scenario=='setup-failure' else 'console-child-nonzero' if scenario=='closed-child-failure' else 'complete')
     assert 'private' not in out.getvalue() and str(root) not in out.getvalue() and nonce not in out.getvalue()
     assert all(name not in calls[0][2] for name in ('EP_EMAIL','EP_PASSWORD','NODE_OPTIONS','NODE_EXTRA_CA_CERTS','ARBITRARY_SECRET'))
+ # Exercise the actual parent entry catch, not the ConPTY drain observer catch.
+ for exception_type in (KeyboardInterrupt,SystemExit):
+  for closure_confirmed in (False,True):
+    def interrupted_transport(exe,args,env,cwd,**kwargs):
+        kwargs['on_drain'](data)
+        if closure_confirmed:kwargs['on_closed']()
+        raise exception_type('private interrupt /private-host-path')
+    with mock.patch.object(p.sys,'platform','win32'),mock.patch.object(p.sys,'argv',['fixed',str(node)]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted'},clear=True),mock.patch.object(p.helper.conpty,'run_console',side_effect=interrupted_transport),contextlib.redirect_stdout(io.StringIO()) as out,contextlib.redirect_stderr(io.StringIO()) as err:
+        code=p.entry()
+    text=out.getvalue();assert text.count('EP_STAGE_PROBE=')==1 and len(text.splitlines())==1
+    record=json.loads(text.split('=',1)[1])
+    assert code==20 and record['outcome']=='uncertainty' and record['stage']=='console-command-failed'
+    assert record['observedClosed'] is closure_confirmed
+    assert record['strictPrefixStage']=='archive-check-entered' and record['streamObserved'] is True
+    assert 'private' not in text and str(root) not in text and nonce not in text and err.getvalue()==''
  child=pathlib.Path(__file__).with_name('windows-stage-transport-probe.js').read_text()
  assert all(token not in child for token in ('puppeteer','child_process','node:fs','require(\'fs\')'))
  assert 'process.argv.length!==2' in child

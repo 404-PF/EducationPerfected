@@ -26,6 +26,21 @@ const unknown={stage:'unknown',driverStage:'unknown',transportStage:'unobserved'
 assert.deepEqual(failureEvidence({...failed(failure),stdout:failed(failure).stdout.replace('}\n','}\r\n')},'source',nonce),unknown);
 for(const change of [{nonce:'b'.repeat(64)},{mode:'sea'},{stage:'private'},{driverStage:'private'},{transportStage:'private'},{closed:'true'},{extra:'private'}])assert.deepEqual(failureEvidence(failed({...failure,...change}),'source',nonce),unknown);
 for(const change of [{error:Error('private')},{signal:'SIGTERM'},{status:0},{stderr:'private'},{stdout:failed(failure).stdout+'private\n'},{stdout:failed(failure).stdout.replace(/\n/g,'\r\n')},{stdout:failed(failure).stdout.replace('CLOSED=true','CLOSED=false')},{stdout:''},{stdout:failed(failure).stdout.replace('OUTCOME=uncertainty','OUTCOME=success')}])assert.deepEqual(failureEvidence({...failed(failure),...change},'source',nonce),unknown);
+// Closed key set, independent of wire key insertion order. No locale sorting.
+const accepted={stage:'transport',driverStage:'archive-check-entered',transportStage:'console-child-nonzero',closed:true};
+function permutations(values){return values.length?values.flatMap((value,index)=>permutations(values.filter((_,at)=>at!==index)).map(rest=>[value,...rest])):[[]];}
+for(const keys of permutations(Object.keys(failure)))assert.deepEqual(failureEvidence(failed(Object.fromEntries(keys.map(key=>[key,failure[key]]))),'source',nonce),accepted);
+for(const key of Object.keys(failure)) {
+ const missing={...failure};delete missing[key];
+ assert.deepEqual(failureEvidence(failed(missing),'source',nonce),unknown);
+ // Keep count unchanged while replacing one required own key with an unknown key.
+ assert.deepEqual(failureEvidence(failed({...missing,unexpected:'private'}),'source',nonce),unknown);
+}
+for(const extra of ['unexpected','__proto__','constructor','toString'])assert.deepEqual(failureEvidence(failed(Object.fromEntries([...Object.entries(failure),[extra,'private']])),'source',nonce),unknown);
+for(const value of [null,[],['private'],'private',17,true]) {
+ const result={...failed(failure),stdout:'EP_DIAGNOSTIC_JOB_FAILURE='+JSON.stringify(value)+'\nEP_DIAGNOSTIC_JOB_OBSERVED_CLOSED=true\nEP_DIAGNOSTIC_JOB_OUTCOME=uncertainty\n'};
+ assert.deepEqual(failureEvidence(result,'source',nonce),unknown);
+}
 const driver=fs.readFileSync(path.join(__dirname,'windows-startup-leg.js'),'utf8');
 // Strip comments before checking exact marker calls; this remains a static source check,
 // not proof of reachability against arbitrary dead-code insertion.
