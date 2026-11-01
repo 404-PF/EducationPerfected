@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Inert Win32 transport emulation only; never opens a native API or credential."""
-import ctypes as c, importlib.util, pathlib, threading, sys
+import ctypes as c, importlib.util, pathlib, threading, sys, io, contextlib
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('conpty',pathlib.Path(__file__).with_name('windows-conpty.py'))
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);m.audit_abi()
@@ -46,7 +46,7 @@ class API:
         return 258 if self.scenario=='timeout' and not self.terminated else 0
     def TerminateProcess(self,*args):self.terminated=True;return 1
     def TerminateJobObject(self,*args):self.terminated=True;return 1
-    def GetExitCodeProcess(self,h,code):code._obj.value=0;return 1
+    def GetExitCodeProcess(self,h,code):code._obj.value=1 if self.scenario=='child-nonzero' else 0;return 1
     def QueryInformationJobObject(self,job,kind,info,size,*args):
         info._obj.active=1 if self.scenario=='job-live' else 0;return 1
     def ReadFile(self,h,buf,size,count,overlap):
@@ -58,10 +58,17 @@ class API:
         elif self.reads==2:
             if not self.ready.wait(2):raise RuntimeError('inert missing input')
             chunk=b'Login saved in the OS credential store.'+(b'public-answer' if self.scenario=='echo' else b'')
+            if self.scenario=='readiness':chunk+=b'\n'
+            if self.scenario=='readiness':chunk+=b'CONPTY_CAPABILITY stdinTTY=1 stdoutTTY=0 rawMode=1\r\n'
+            if self.scenario=='readiness-lf':chunk+=b'\nCONPTY_CAPABILITY stdinTTY=1 stdoutTTY=0 rawMode=1\n'
+            if self.scenario=='prefixed':chunk+=b'\nXCONPTY_CAPABILITY stdinTTY=1 stdoutTTY=1 rawMode=1\n'
+            if self.scenario=='trailing':chunk+=b'\nCONPTY_CAPABILITY stdinTTY=1 stdoutTTY=1 rawMode=1 extra=1\n'
+            if self.scenario=='malformed':chunk+=b'private-name stdinTTY=1 stdoutTTY=1 rawMode=1'
+            if self.scenario=='duplicate-readiness':chunk+=b'\nCONPTY_CAPABILITY stdinTTY=1 stdoutTTY=1 rawMode=1\n'*2
         else:self.console_closed.wait(2);c.set_last_error(109);return 0
         c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
     def WriteFile(self,h,data,size,count,overlap):self.writes.append(data.raw[:size]);count._obj.value=size;self.ready.set();return 1
-for scenario in ['success','assignment','console-create','timeout','echo','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap']:
+for scenario in ['success','assignment','console-create','timeout','echo','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero']:
     api=API(scenario);clock_values=iter(range(0,6000,6))
     # Only the live-job failure needs an accelerated deadline; others use real time.
     kwargs={'clock':lambda:next(clock_values,6000)} if scenario=='job-live' else {}
@@ -79,4 +86,19 @@ for scenario in ['success','assignment','console-create','timeout','echo','job-l
     if scenario=='duplicate':assert str(error)=='console-duplicate-prompt'
     if scenario=='echo':assert str(error)=='console-input-echoed'
     if scenario=='output-cap':assert str(error)=='console-output-limit'
+    if scenario=='child-nonzero':assert str(error)=='console-child-nonzero'
 print('ConPTY inert API/ABI ownership controls: creation/assignment fail closed, timeout, drained echo and job-live retention discriminated. Native Windows pending.')
+
+api=API('success');capture=io.StringIO()
+with contextlib.redirect_stdout(capture):
+    m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
+assert capture.getvalue()=='ConPTY fixed child capability: stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown; exit=zero\n'
+assert 'public-answer' not in capture.getvalue()
+print('ConPTY fixed-only child readiness and nonzero-exit classification controls passed.')
+
+for scenario,wanted in [('readiness','stdinTTY=1; stdoutTTY=0; rawMode=1'),('readiness-lf','stdinTTY=1; stdoutTTY=0; rawMode=1'),('prefixed','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown'),('trailing','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown'),('malformed','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown'),('duplicate-readiness','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown')]:
+    api=API(scenario);capture=io.StringIO()
+    with contextlib.redirect_stdout(capture):
+        m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
+    assert wanted in capture.getvalue() and 'private-name' not in capture.getvalue()
+print('ConPTY readiness parser: exact fixed marker, malformed/duplicate unknown, no arbitrary drained output.')

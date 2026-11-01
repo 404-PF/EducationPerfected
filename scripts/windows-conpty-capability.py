@@ -16,7 +16,7 @@ def main():
     env.update(HOME=str(root),USERPROFILE=str(root),TEMP=str(root),TMP=str(root),TMPDIR=str(root),PATH=str(empty))
     uncertain=False
     try:
-        conpty.run_console(str(node),[str(pathlib.Path(__file__).with_name('windows-conpty-tty-check.js').resolve())],env,str(root),[(b'CONPTY_INPUT_READY',b'inert-key\r')],b'CONPTY_TTY_RAW_INPUT_OK')
+        conpty.run_console(str(node),[str(pathlib.Path(__file__).with_name('windows-conpty-tty-check.js').resolve())],env,str(root),[(b'CONPTY_INPUT_READY',b'inert-key\r')],b'CONPTY_TTY_RAW_INPUT_OK',capability_diagnostics=True)
     except conpty.ExitUnconfirmed:
         uncertain=True
         raise

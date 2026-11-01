@@ -1,5 +1,7 @@
 // Fixed zero-credential ConPTY capability child, never imports product/native code.
-if (!process.stdin.isTTY || !process.stdout.isTTY || typeof process.stdin.setRawMode !== 'function') process.exit(1);
+const inputTTY = Boolean(process.stdin.isTTY), outputTTY = Boolean(process.stdout.isTTY), rawMode = typeof process.stdin.setRawMode === 'function';
+process.stdout.write('CONPTY_CAPABILITY stdinTTY='+Number(inputTTY)+' stdoutTTY='+Number(outputTTY)+' rawMode='+Number(rawMode)+'\n');
+if (!inputTTY || !outputTTY || !rawMode) process.exit(1);
 process.stdin.setRawMode(true);
 process.stdout.write('CONPTY_INPUT_READY\n');
 let input = '';

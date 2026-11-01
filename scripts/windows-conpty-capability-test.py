@@ -10,8 +10,9 @@ for scenario in ['success','command-failure','exit-unconfirmed','wrong-host','mi
     node=parent/'node.exe';node.write_bytes(b'inert')
     root=parent/'owned';calls=[]
     primary=m.conpty.ExitUnconfirmed('job-exit-unconfirmed') if scenario=='exit-unconfirmed' else RuntimeError('inert primary')
-    def run(exe,args,env,cwd,prompts,expected):
+    def run(exe,args,env,cwd,prompts,expected,**kwargs):
         calls.append('run')
+        assert kwargs=={'capability_diagnostics':True}
         assert exe==str(node) and args==[str(pathlib.Path(m.__file__).with_name('windows-conpty-tty-check.js').resolve())]
         assert all(k not in env for k in ('EP_EMAIL','EP_PASSWORD','EP_TEST_BOOT','NODE_OPTIONS'))
         assert env['PATH']==str(root/'empty') and env['HOME']==str(root) and cwd==str(root)
