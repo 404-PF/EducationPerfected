@@ -47,15 +47,17 @@ def main():
     env = dict(os.environ)
     for key in ('EP_EMAIL', 'EP_PASSWORD', 'NODE_OPTIONS'):
         env.pop(key, None)
-    home = root / 'home'; tmp = root / 'tmp'; empty = root / 'empty'
-    for directory in (home,tmp,empty):
+    tmp = root / 'tmp'; empty = root / 'empty'
+    for directory in (tmp,empty):
         directory.mkdir(mode=0o700)
-    env.update(HOME=str(home), TMPDIR=str(tmp), PATH=str(empty))
-    checkpoint('fresh-home-selection')
+    # User-domain keychain metadata belongs to the inherited runner HOME.
+    # Fresh HOME selects different metadata, so this lane intentionally retains it.
+    env.update(TMPDIR=str(tmp), PATH=str(empty))
+    checkpoint('inherited-home-selection')
     for keychain_command in ('default-keychain', 'list-keychains'):
         selection = subprocess.run(['/usr/bin/security', keychain_command, '-d', 'user'], env=env, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         if shlex.split(selection.stdout) != [owned]:
-            raise RuntimeError('Fresh HOME changed owned keychain selection; no credential operations allowed')
+            raise RuntimeError('Inherited HOME owned keychain selection changed; no credential operations allowed')
     def run(args):
         return subprocess.run(args, cwd=repo, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
     # Source and packaged setup each start from an independently verified absent record.
@@ -97,7 +99,7 @@ def main():
         run([node,'-e',verify_absent])
         if any(tmp.iterdir()):
             raise RuntimeError('Mac deletion extraction residue')
-    print('Mac source and SEA synthetic setup, independent source read, deletion and extraction cleanup passed (isolated keychain, no browser/no-Node/terminal certification).')
+    print('Mac source and SEA synthetic setup, independent source read, deletion and extraction cleanup passed (isolated keychain, inherited HOME, no browser/no-Node/terminal certification).')
 
 def shutil_which_node():
     import shutil

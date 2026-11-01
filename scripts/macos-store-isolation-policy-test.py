@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Inert protocol control: no security executable or credential API used."""
-import importlib.util, pathlib, tempfile, shutil
+import importlib.util, pathlib, tempfile, shutil, contextlib, io
 spec=importlib.util.spec_from_file_location('fixture',pathlib.Path(__file__).with_name('macos-isolated-store-test.py'))
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
 passphrases=[]
@@ -45,9 +45,15 @@ def probe(scenario):
                 def wait(self,timeout):raise subprocess.TimeoutExpired('inert',timeout)
             fixture.stop_group(LiveChild(),killpg=lambda pid,signum:None)
     error=None
-    try:
-        fixture.isolated_store(run,call=call,root_factory=lambda:str(root))
-    except BaseException as value:error=value
+    output=io.StringIO()
+    with contextlib.redirect_stdout(output):
+        try:
+            fixture.isolated_store(run,call=call,root_factory=lambda:str(root))
+        except BaseException as value:error=value
+    expected=[]
+    if scenario not in ['create-failure','selection-mismatch']:expected.append('Mac store parent checkpoint: owned-selection-verified')
+    if scenario not in ['restore-failure','restore-silent','child-live']:expected.append('Mac store parent checkpoint: metadata-restored-owned-keychain-removed')
+    assert output.getvalue().splitlines()==expected
     if scenario=='success':assert error is None and state['fixture']==1
     if scenario=='fixture-failure':assert error is primary
     if scenario=='create-failure':assert error is primary and state['fixture']==0
@@ -89,3 +95,26 @@ try:
 except RuntimeError:
     pass
 print('Mac PTY empty/EIO EOF, bounded drain and post-SIGKILL wait-timeout retention controls passed (inert only).')
+
+# Verify the actual child environment keeps User-domain metadata selection.
+import os
+from unittest import mock
+captured=[]
+repo=pathlib.Path(__file__).resolve().parent.parent
+root=pathlib.Path(tempfile.mkdtemp(prefix='ep-inert-env-'))
+owned=str(root/'synthetic.keychain-db')
+def mocked_run(args, **kwargs):
+    if args[0]=='/usr/bin/security':
+        captured.append(kwargs.get('env'))
+        return subprocess.CompletedProcess(args,0,stdout=repr(owned),stderr='')
+    captured.append(kwargs['env'])
+    raise RuntimeError('stop before actual native credential operation')
+try:
+    with mock.patch.object(pty_fixture.sys,'platform','darwin'), mock.patch.object(pty_fixture.sys,'argv',['fixed',str(root)]), mock.patch.dict(os.environ,{'RUNNER_ENVIRONMENT':'github-hosted','HOME':'/inert-original-home'}), mock.patch.object(pty_fixture.subprocess,'run',side_effect=mocked_run), mock.patch.object(pty_fixture,'shutil_which_node',return_value='/fixed/node'):
+        try:pty_fixture.main()
+        except RuntimeError as error:assert str(error)=='stop before actual native credential operation'
+    assert captured[-1]['HOME']=='/inert-original-home'
+    assert captured[-1]['TMPDIR']==str(root/'tmp') and captured[-1]['PATH']==str(root/'empty')
+    assert captured[-2]['HOME']=='/inert-original-home'
+finally:shutil.rmtree(root)
+print('Mac native child retains runner HOME and verified metadata with owned TMP/empty PATH (inert only).')
