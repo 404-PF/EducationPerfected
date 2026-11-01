@@ -57,6 +57,8 @@ async function buildDevelopment(target) {
  const archive = path.join(out, 'browser.tar.gz');
  await pipeline(packTar(archiveRoot), createGzip(), fs.createWriteStream(archive));
  const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
+ // browserVersion is the expected public pin, not an observed cached-binary version.
+ // The diagnostic observer must compare the actual post-ready version separately.
  fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: browserExecutable, browserVersion: require('puppeteer').PUPPETEER_REVISIONS.chrome }));
  await esbuild.build({ entryPoints: [path.join(__dirname, 'bootstrap.js')], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(out, 'main.cjs'), external: ['keytar', '@napi-rs/keyring'], define: { 'process.env.NODE_ENV': '"production"' } });
  const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { browser: archive, manifest: path.join(out, 'manifest.json'), native: require.resolve(target.nativePackage) } };

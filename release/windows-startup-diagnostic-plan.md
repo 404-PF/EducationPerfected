@@ -95,7 +95,7 @@ leg. Build manifest changes are metadata, not public release authorization.
 `startup-browser-identity.js` supplies only hash/receipt/path/equality/staging
 contracts and does not spawn, unpack or connect. Its injected leg callbacks are
 inert tests, not actual native runs. The native runner/extraction/process-closure
-implementation remains NOT PREPARED, NOT AUTHORIZED and separately review-gated.
+implementation is present but UNEXECUTED, NOT AUTHORIZED and separately review-gated.
 A future runner must configure BOTH legs as TEST_BOOT shell-mode over the FULL
 pinned Chrome archive, not compare default source shell with embedded full Chrome.
 It must source-first stop on ANY primary or identity/readiness/cleanup uncertainty
@@ -120,20 +120,36 @@ lock indicator, NOT proof no process survives. No production credential read, re
 login, remote page or answer command is performed. One browser owner per leg.
 Source first and SEA only after all required observations, at most two cold starts.
 
+The manifest browserVersion is the expected pinned Chrome version, not an observed
+cached binary version. Actual post-ready browser version must match it.
 Both owners use pipe stdio inside a ConPTY-supervised driver. Thus this is a
 ConPTY-mediated job configuration, different from the prior standalone pipe fixture,
 and TEST_BOOT shell-mode over full pinned Chrome, not production fidelity. Ordinary
 Linux/Mac regression passes do not substitute for this Windows comparison.
 
-Outer driver120s allowance =30s hash/unpack allowance +45s owner-marker bound
-+20s mock CLI-ready +10s quit +9s existing stop fallback +6s bookkeeping.
+Outer driver: 120s = 30s hash/unpack allowance + 45s owner-marker bound
++ 20s mock CLI-ready + 10s quit + 9s existing stop fallback + 6s bookkeeping.
 30s hash/unpack is an ALLOWANCE, not a pinned phase deadline; slow preparation can
-still preempt.45s marker intentionally preempts the owner's internal60s selector
-ceiling: timeout is uncertainty, not navigation cause. Browser launch30s unchanged.
-Existing credential supervisor callers keep default30s; diagnostic selects120s.
-Additional supervisor closure bound27s (5process+5job+5reader+12writer), parent155s
-with8s margin. Parent timeout always uncertainty/retain. No retries or warm legs.
+still preempt. 45s marker intentionally preempts the owner's internal 60s selector
+ceiling: timeout is uncertainty, not navigation cause. Browser launch 30s unchanged.
+Existing credential supervisor callers keep default 30s; diagnostic selects 120s.
+Additional supervisor closure bound 27s (5 process + 5 job + 5 reader + 12 writer), parent 155s
+with 8s margin. Parent timeout always uncertainty/retain. No retries or warm legs.
 
 This design remains blocked on exact runner/wrapper/privacy/inert mutation review
 and an explicit bounded native execution gate. Successful supervised observations
 will never be described as independent all-descendant process-exit certification.
+
+
+Corrective evidence boundary: source archive extraction consumes the exact in-memory
+snapshot that was hashed, never a reopened pathname. The source fixed receipt is
+emitted in-process after independent snapshot verification and parsed strictly.
+Its provenance differs from the SEA receipt observed on child stdout; neither
+substitutes for the post-ready actual browser/path check. Missing, duplicate or
+tampered records stop. Wrapper fake assertions are
+outside the helper's broad exception handler. Final panel root removal must finish
+before the single outcome line; removal failure is cleanup uncertainty with
+seaAttempted=true, never a green line followed by preparation failure. Driver CLI
+roots are restricted to fresh canonical OS-temp ep-startup-panel-*/source or /sea
+directories with no symlink parent/root or traversal. These checks do not turn vm
+or a privileged host into a security sandbox.

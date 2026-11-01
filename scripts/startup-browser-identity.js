@@ -7,17 +7,17 @@ function requireEqual(actual,expected) {
  if (!actual || Object.keys(actual).length!==keys.length || keys.some(key=>actual[key]!==expected[key]))throw Error('Diagnostic identity uncertainty');
  return actual;
 }
-async function verifyArchive(archive,manifest) {
+async function readVerifiedArchive(archive,manifest) {
  const identity=browserIdentity(manifest);
- // An absent pinned file is fatal; no resolution/search/cache/system fallback.
- let stat;
+ let stat,bytes;
  try {stat=fs.lstatSync(archive);} catch {throw Error('Diagnostic archive unavailable');}
- if (!stat.isFile()||stat.isSymbolicLink()||stat.size!==identity.length)throw Error('Diagnostic archive length or ownership uncertainty');
- const hash=createHash('sha256');
- try {for await(const chunk of fs.createReadStream(archive))hash.update(chunk);}catch{throw Error('Diagnostic archive read uncertainty');}
- if(hash.digest('hex')!==identity.sha256)throw Error('Diagnostic archive hash uncertainty');
- return identity;
+ if(!stat.isFile()||stat.isSymbolicLink()||stat.size!==identity.length)throw Error('Diagnostic archive length or ownership uncertainty');
+ // Hash the exact immutable snapshot that is later consumed, never reopen by name.
+ try {bytes=fs.readFileSync(archive);}catch{throw Error('Diagnostic archive read uncertainty');}
+ if(bytes.length!==identity.length||createHash('sha256').update(bytes).digest('hex')!==identity.sha256)throw Error('Diagnostic archive hash uncertainty');
+ return {identity,bytes};
 }
+async function verifyArchive(archive,manifest) {return (await readVerifiedArchive(archive,manifest)).identity;}
 function parseIdentityReceipt(text) {
  const lines=text.split(/\r?\n/).filter(line=>line.startsWith('EP_TEST_BROWSER_IDENTITY='));
  if(lines.length!==1)throw Error('Missing or duplicate diagnostic identity receipt');
@@ -46,4 +46,4 @@ async function runStagedPanel(source,sea,expected) {
   return {outcome:'not-reproduced-in-one-instrumented-sample',seaAttempted:true};
  } catch {return {outcome:'uncertainty',leg:'sea',seaAttempted:true};}
 }
-module.exports={verifyArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity,runStagedPanel};
+module.exports={readVerifiedArchive,verifyArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity,runStagedPanel};

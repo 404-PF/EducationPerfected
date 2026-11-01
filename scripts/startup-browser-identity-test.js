@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const {browserIdentity,emitBrowserIdentity}=require('../lib/test-browser-identity');
-const {verifyArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity,runStagedPanel}=require('./startup-browser-identity');
+const {readVerifiedArchive,verifyArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity,runStagedPanel}=require('./startup-browser-identity');
 (async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-identity-inert-'));
  try {
@@ -9,6 +9,7 @@ const {verifyArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity,r
   const manifest={length:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),browserVersion:'156.0.8078.47',executable:'private-path-do-not-print',unknown:'private-env-do-not-print'};
   const expected=browserIdentity(manifest);let line;emitBrowserIdentity(manifest,text=>{line=text;});assert.ok(!line.includes('private'));assert.deepEqual(parseIdentityReceipt(line),expected);
   assert.deepEqual(await verifyArchive(archive,manifest),expected);
+  const snapshot=await readVerifiedArchive(archive,manifest);fs.writeFileSync(archive,Buffer.alloc(bytes.length));assert.deepEqual(snapshot.bytes,bytes,'Source extraction consumes verified snapshot, not reopened replacement');fs.writeFileSync(archive,bytes);
   await assert.rejects(verifyArchive(archive,{...manifest,length:1}));
   fs.writeFileSync(archive,Buffer.alloc(bytes.length));await assert.rejects(verifyArchive(archive,manifest));
   fs.mkdirSync(path.join(root,'host-cache'));fs.writeFileSync(path.join(root,'host-cache','chrome.exe'),'inert');

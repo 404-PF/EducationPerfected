@@ -1,6 +1,6 @@
 // Inert receipt/result/probe tests only; never invokes runPanel or a child.
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {strictJobReceipt,readBoundResult,probeRootRename}=require('./windows-startup-panel');
+const {strictJobReceipt,readBoundResult,probeRootRename,finishPanel}=require('./windows-startup-panel');
 const nonce='a'.repeat(64),record={nonce,mode:'source',receipt:{},observedVersion:'Chrome/156.0.8078.47',owned:true,ready:true,cleanupCertain:true,navigationCategory:'unobserved'};
 const good={status:0,signal:null,stderr:'',stdout:'EP_DIAGNOSTIC_JOB_NONCE='+nonce+'\nEP_DIAGNOSTIC_JOB_OBSERVED_CLOSED=true\nEP_DIAGNOSTIC_JOB_OUTCOME=success\n'};
 assert.equal(strictJobReceipt(good,nonce),true);
@@ -13,5 +13,8 @@ try {
  fs.writeFileSync(file,JSON.stringify(record));assert.deepEqual(readBoundResult(owned,'source',nonce),record);
  fs.writeFileSync(path.join(owned,'failure.json'),'{}');assert.throws(()=>readBoundResult(owned,'source',nonce));fs.unlinkSync(path.join(owned,'failure.json'));
  assert.equal(probeRootRename(owned),true);assert.ok(fs.existsSync(file));fs.mkdirSync(owned+'-removability-probe');assert.throws(()=>probeRootRename(owned));
+ const success={outcome:'not-reproduced-in-one-instrumented-sample',seaAttempted:true};
+ assert.deepEqual(finishPanel(root,success,()=>{throw Error('private fs failure');}),{outcome:'uncertainty',leg:'cleanup',seaAttempted:true});
+ let removed=false;assert.equal(finishPanel(root,success,()=>{removed=true;}),success);assert.equal(removed,true);
  console.log('Strict nonce/status/LF/duplicate receipt, stale/missing/conflicting result and negative-only root rename probe controls passed (inert; no tree-closure proof).');
 }finally{fs.rmSync(root,{recursive:true,force:true});}

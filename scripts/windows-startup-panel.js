@@ -23,6 +23,10 @@ function probeRootRename(owned) {
  fs.renameSync(owned,probe);fs.renameSync(probe,owned);
  return true;
 }
+function finishPanel(root,outcome,remove=directory=>fs.rmSync(directory,{recursive:true,force:true})) {
+ if(outcome.outcome!=='not-reproduced-in-one-instrumented-sample')return outcome;
+ try {remove(root);return outcome;}catch{return {outcome:'uncertainty',leg:'cleanup',seaAttempted:true};}
+}
 async function runPanel() {
  if(process.argv.length!==2||process.platform!=='win32'||process.arch!=='x64'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Windows')throw Error('Diagnostic panel host guard');
  const python=process.env.EP_FIXTURE_PYTHON;
@@ -53,9 +57,9 @@ async function runPanel() {
   const record=readBoundResult(owned,mode,nonce);probeRootRename(owned);return record;
  };
  const outcome=await runStagedPanel(leg('source'),leg('sea'),expected);
- console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify(outcome));
- if(outcome.outcome==='not-reproduced-in-one-instrumented-sample')fs.rmSync(root,{recursive:true,force:true});
- else {console.log('EP_DIAGNOSTIC_ROOT_RETAINED=true');process.exitCode=1;}
+ const finalOutcome=finishPanel(root,outcome);
+ console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify(finalOutcome));
+ if(finalOutcome.outcome==='uncertainty'){console.log('EP_DIAGNOSTIC_ROOT_RETAINED=true');process.exitCode=1;}
 }
-module.exports={strictJobReceipt,readBoundResult,probeRootRename,runPanel};
+module.exports={strictJobReceipt,readBoundResult,probeRootRename,finishPanel,runPanel};
 if(require.main===module)runPanel().catch(()=>{console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify({outcome:'uncertainty',leg:'preparation',seaAttempted:false}));process.exitCode=1;});

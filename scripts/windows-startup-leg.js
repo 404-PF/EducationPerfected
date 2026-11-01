@@ -3,17 +3,23 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const {spawn}=require('node:child_process');
 const {boundedClose,stopChild}=require('./packaged-test-cleanup');
 const {connectAfterLoginReady,selectLoginPage,disconnectController}=require('./packaged-fixture-page');
-const {verifyArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity}=require('./startup-browser-identity');
+const {readVerifiedArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIdentity}=require('./startup-browser-identity');
 const {pipeline}=require('node:stream/promises'),{createGunzip}=require('node:zlib');
 const {unpackTar}=require('modern-tar/fs');
+const {Readable}=require('node:stream');
+const {validateLegRoot}=require('./windows-startup-root');
 async function runLeg(root,mode,nonce) {
  if(process.platform!=='win32'||process.arch!=='x64'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Windows')throw Error('Diagnostic host guard');
  assert.ok(['source','sea'].includes(mode));assert.match(nonce,/^[a-f0-9]{64}$/);
- assert.ok(path.isAbsolute(root));assert.equal(fs.lstatSync(root).isSymbolicLink(),false);root=fs.realpathSync(root);
+ root=validateLegRoot(root,mode);
+ assert.deepEqual(fs.readdirSync(root),[],'Diagnostic leg must begin empty');
  const build=path.resolve(__dirname,'../build/windows-x64');
  const manifest=JSON.parse(fs.readFileSync(path.join(build,'manifest.json'),'utf8'));
  // Reads before process creation. No missing-file/cache/system fallback.
- const expected=await verifyArchive(path.join(build,'browser.tar.gz'),manifest);
+ const verified=await readVerifiedArchive(path.join(build,'browser.tar.gz'),manifest);
+ const expected=verified.identity;
+ let sourceReceipt='';
+ if(mode==='source')require('../lib/test-browser-identity').emitBrowserIdentity(manifest,line=>{sourceReceipt=line;});
  assert.equal(expected.browserVersion,require('puppeteer').PUPPETEER_REVISIONS.chrome);
  for(const name of ['home','tmp','empty','runtime'])fs.mkdirSync(path.join(root,name),{mode:0o700});
  const home=path.join(root,'home'),tmp=path.join(root,'tmp');
@@ -22,7 +28,7 @@ async function runLeg(root,mode,nonce) {
  assert.equal(path.isAbsolute(manifest.executable),false);
  if(mode==='source') {
   const extraction=fs.mkdtempSync(path.join(tmp,'educationperfected-source-'));
-  await pipeline(fs.createReadStream(path.join(build,'browser.tar.gz')),createGunzip(),unpackTar(extraction));
+  await pipeline(Readable.from([verified.bytes]),createGunzip(),unpackTar(extraction));
   sourceExecutable=path.join(extraction,manifest.executable);assertOwnedBrowser(tmp,sourceExecutable);
  }
  const server=require('./mock-ep').createServer();let child,closed,browser,text='',serverError,spawnError,primary;
@@ -48,7 +54,7 @@ async function runLeg(root,mode,nonce) {
   try {argv=(await command.send('Browser.getBrowserCommandLine')).arguments;}finally{await command.detach();}
   result.owned=assertOwnedBrowser(tmp,argv[0]);
   result.observedVersion=await browser.version();
-  result.receipt=mode==='source'?expected:parseIdentityReceipt(text);
+  result.receipt=parseIdentityReceipt(mode==='source'?sourceReceipt:text);
   verifyLegIdentity({...result,expected});
   const page=await selectLoginPage(browser,origin+'/app/login');
   await page.type('#loginId','fixture-user');await page.type('#password','fixture-only');await page.click('form button');
@@ -76,7 +82,7 @@ async function runLeg(root,mode,nonce) {
 }
 module.exports={runLeg};
 if(require.main===module)(async()=>{
- if(process.argv.length!==5)throw Error('Diagnostic arguments');const root=process.argv[2],mode=process.argv[3],nonce=process.argv[4];
+ if(process.argv.length!==5)throw Error('Diagnostic arguments');const mode=process.argv[3],nonce=process.argv[4],root=validateLegRoot(process.argv[2],mode);
  try {const result=await runLeg(root,mode,nonce);fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(result),{flag:'wx',mode:0o600});console.log('EP_DIAGNOSTIC_LEG_DONE');}
  catch(error) {if(error.diagnosticResult)fs.writeFileSync(path.join(root,'failure.json'),JSON.stringify(error.diagnosticResult),{flag:'wx',mode:0o600});console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;}
 })().catch(()=>{console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;});
