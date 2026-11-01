@@ -27,22 +27,28 @@ async function verifyPackagedDelete() {
   const env = {...process.env, HOME:home, USERPROFILE:home, TEMP:tmp, TMP:tmp, TMPDIR:tmp, PATH:empty};
   for (const key of Object.keys(env)) if (key.toLowerCase() === 'path' && key !== 'PATH') delete env[key];
   delete env.EP_EMAIL; delete env.EP_PASSWORD; delete env.NODE_OPTIONS;
-  let text = '', spawnError;
-  child = spawn(copy, ['--forget-credentials'], {env,cwd:home,stdio:['ignore','pipe','pipe']});
-  childClosed = false;
-  closed = new Promise(resolve => child.once('close', code => {childClosed=true;resolve(code);}));
-  child.once('error', error => {spawnError=error;});
-  child.stdout.on('data', data => {text+=data;}); child.stderr.on('data', data => {text+=data;});
-  const code = await boundedClose(closed, 30000, 'Packaged credential deletion timed out');
-  assert.equal(spawnError, undefined, 'Packaged credential process must spawn');
-  assert.equal(code, 0, 'Packaged credential deletion must exit successfully');
-  assert.ok(text.includes('Saved login removed from the OS credential store.'), 'Packaged command must report an existing record deleted');
-  assert.ok(!text.includes(value) && !text.includes('synthetic-sea-delete') && !text.includes('fixture@example.test'), 'Synthetic record must never be printed');
-  assert.equal(fs.readdirSync(tmp).length, 0, 'Packaged deletion must remove its native extraction before fixture cleanup');
+  for (const command of ['--check-credentials','--forget-credentials']) {
+   console.log('Windows SEA credential checkpoint: '+(command === '--check-credentials' ? 'health-read' : 'delete'));
+   let text = '', spawnError;
+   child = spawn(copy, [command], {env,cwd:home,stdio:['ignore','pipe','pipe']});
+   childClosed = false;
+   closed = new Promise(resolve => child.once('close', code => {childClosed=true;resolve(code);}));
+   child.once('error', error => {spawnError=error;});
+   child.stdout.on('data', data => {text+=data;}); child.stderr.on('data', data => {text+=data;});
+   const code = await boundedClose(closed, 30000, 'Packaged credential command timed out');
+   assert.equal(spawnError, undefined, 'Packaged credential process must spawn');
+   assert.equal(code, 0, 'Packaged credential command must exit successfully');
+   const expected = command === '--check-credentials' ? 'Saved login is available and its record is valid.\n' : 'Saved login removed from the OS credential store.\n';
+   assert.ok(text === expected, 'Packaged command must return only fixed status text');
+   assert.equal(childClosed, true, 'Each packaged credential process must close before the next command');
+   assert.equal(binding.hasLiveWorkers(), false, 'Source worker must be idle between packaged commands');
+   assert.equal(fs.readdirSync(tmp).length, 0, 'Packaged credential command must remove its native extraction before fixture cleanup');
+   if (command === '--check-credentials') assert.equal(await entry.getPassword(), value, 'Health read must leave the independently prepared source record unchanged');
+  }
   assert.equal(await entry.getPassword(), null, 'Independent source worker must confirm packaged deletion');
   created = false;
   assert.equal(binding.hasLiveWorkers(), false);
-  console.log('Windows SEA --forget-credentials deleted a source-prepared synthetic record; independent source read, process exit and owned extraction cleanup passed. Not packaged setup/read, browser startup, console or no-Node proof.');
+  console.log('Windows SEA fresh-process health read validated record shape, then --forget-credentials deleted a source-prepared synthetic record; independent source read, process exit and owned extraction cleanup passed. Not exact saved-value, packaged setup, browser startup, console or no-Node proof.');
  } catch (error) {primary=error;}
  finally {
   try {await stopChild(child,closed);} catch {cleanupFailure=Error('Packaged child cleanup failed');}
