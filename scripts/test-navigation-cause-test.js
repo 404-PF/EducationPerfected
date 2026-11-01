@@ -7,7 +7,7 @@ const {navigationCause,recordNavigationFailure} = require('../lib/test-navigatio
  assert.ok(navigation.includes('throw error;'));
  assert.equal((navigation.match(/await /g)||[]).length,1,'No added await before readiness');
  const run=vm.runInNewContext('(async function(page,DIR,TEST_BOOT,require){'+navigation+'})',{}, {timeout:1000}); // NOSONAR: fixed exact repository navigation block above plus constant wrapper, no user/env/network source; caller supplies inert page/report only.
- const secret='http://private-user:private-pass@private-host/private-path';
+ const secret='https://private-user:private-pass@private-host/private-path';
  for (const [error,expected] of [
   [Object.assign(Error(secret),{name:'TimeoutError'}),'navigation-timeout'],
   [Error('Navigating frame was detached '+secret),'target-detached'],
@@ -24,11 +24,11 @@ const {navigationCause,recordNavigationFailure} = require('../lib/test-navigatio
   assert.deepEqual(navigationCause(error),expected);
   const output=[],order=[];
   const page={goto:async(url,options)=>{assert.equal(url,secret);assert.equal(options.waitUntil,'domcontentloaded');assert.deepEqual(Object.keys(options),['waitUntil']);order.push('goto');throw error;}};
-  await assert.rejects(run(page,{login_url:secret},true,()=>({recordNavigationFailure:(e,gate,start)=>recordNavigationFailure(e,gate,start,line=>{order.push('report');output.push(line);})})),caught=>caught===error);
-  order.push('owner-catch');assert.deepEqual(order,['goto','report','owner-catch']);
-  assert.equal(output.length,1);const detail=JSON.parse(output[0].split('=')[1]);assert.deepEqual(Object.keys(detail),['category','elapsedMs','controllerConnected','markerEmitted','browserExitCodeClass']);assert.equal(detail.category,expected);assert.ok(detail.elapsedMs>=0 && detail.elapsedMs<=120000);assert.equal(detail.controllerConnected,false);assert.equal(detail.markerEmitted,false);assert.equal(detail.browserExitCodeClass,'unobserved');assert.ok(!output[0].includes('private'));assert.ok(!output[0].includes(secret));
+  await assert.rejects(run(page,{login_url:secret},true,()=>({recordNavigationFailure:(e,gate,start)=>recordNavigationFailure(e,gate,start,line=>{order.push('report');output.push(line);})})),caught=>caught===error); // NOSONAR: calls the fixed repository navigation block compiled above, with inert page and fake require only; no external code.
+  order.push('test-rejection-observed');assert.deepEqual(order,['goto','report','test-rejection-observed']);
+  assert.equal(output.length,1);const detail=JSON.parse(output[0].split('=')[1]);assert.deepEqual(Object.keys(detail),['category','elapsedMs','controllerConnected','markerEmitted','browserExitCodeClass']);assert.equal(detail.category,expected);assert.ok(detail.elapsedMs>=0 && detail.elapsedMs<=120000);assert.equal(detail.controllerConnected,null);assert.equal(detail.markerEmitted,false);assert.equal(detail.browserExitCodeClass,'unobserved');assert.ok(!output[0].includes('private'));assert.ok(!output[0].includes(secret));
   let loads=0;
-  await assert.rejects(run(page,{login_url:secret},false,()=>{loads++;}),caught=>caught===error);
+  await assert.rejects(run(page,{login_url:secret},false,()=>{loads++;}),caught=>caught===error); // NOSONAR: calls the fixed repository navigation block compiled above, with inert page and fake require only; no external code.
   assert.equal(loads,0,'Normal boot must not load diagnostics');
   assert.doesNotThrow(()=>recordNavigationFailure(error,true,0,()=>{throw Error('Sink failed');}));
  }
@@ -36,9 +36,9 @@ const {navigationCause,recordNavigationFailure} = require('../lib/test-navigatio
  for (const [start,now,expected] of [[0,200000,120000],[10,5,0],[NaN,5,null]]) {
   let detail;recordNavigationFailure(Error(secret),true,start,line=>{detail=JSON.parse(line.split('=')[1]);},()=>now);assert.equal(detail.elapsedMs,expected);
  }
- let calls=0;await run({goto:async()=>{calls++;}}, {login_url:secret},true,()=>{throw Error('Successful goto must not load recorder');});assert.equal(calls,1);
+ let calls=0;await run({goto:async()=>{calls++;}}, {login_url:secret},true,()=>{throw Error('Successful goto must not load recorder');});assert.equal(calls,1); // NOSONAR: calls the fixed repository navigation block compiled above, with inert page and fake require only; no external code.
  const ready=source.indexOf("if (TEST_BOOT && loginForm !== null) console.log('EP_TEST_LOGIN_READY');");
  assert.ok(ready>source.indexOf('const loginForm = await reachLoginForm();'));
  assert.equal((source.match(/EP_TEST_LOGIN_READY/g)||[]).length,1);
- console.log('Inert actual-source navigation block: fixed categories, privacy, unchanged single goto, no added await, TEST_BOOT gate, original rejection identity and report-before-owner-catch. Marker after nonnull owner form. No native/startup reliability proof.');
+ console.log('Inert actual-source navigation block: fixed categories, privacy, unchanged single goto, no added await, TEST_BOOT gate, original rejection identity and report-before-test-rejection. Marker after nonnull owner form. No native/startup reliability proof.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

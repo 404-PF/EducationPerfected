@@ -14,11 +14,11 @@ cannot throw over the primary. The marker is a single fixed stdout line after a
 nonnull reachLoginForm result, not wsEndpoint or browser-launch availability.
 
 Only fixed failure fields are emitted: allowlisted category, elapsed milliseconds
-clamped to 0..120000 (null if unavailable), controllerConnected=false,
+clamped to 0..120000 (null if unavailable), controllerConnected=null (not observed),
 markerEmitted=false and browserExitCodeClass=unobserved. The last field deliberately
-does not invent an exit observed before owner cleanup. The controller boolean is
-valid for the revised packaged fixture, whose only connection is marker-gated;
-it is not a general claim about arbitrary third-party clients attaching.
+does not invent an exit observed before owner cleanup. Controller connection is deliberately unobserved by the owner recorder. The
+revised fixture separately proves its own observer is marker-gated; other
+endpoint-only harnesses or external clients are not covered by that guarantee.
 Original process/browser logs are not made privacy-safe by this record.
 
 The observer waits boundedly for both endpoint and owner marker. It sends no
@@ -68,6 +68,8 @@ physical console, clean-machine and distribution gates stay open.
 `node scripts/test-navigation-cause-test.js` executes the actual source navigation
 block against fake goto errors, checks reference identity, category/privacy,
 normal-boot lazy-import exclusion, bounded timing and marker source placement.
+Ordering is goto -> report -> test rejection observation, not an executed owner
+cleanup catch. Owner cleanup order is source-reviewed separately.
 `node scripts/packaged-fixture-page-test.js` checks connection ordering, marker
 expiry/child exit without connection, fixed endpoint/local target constraints,
 initialized Page and disconnect-only ownership. These are deterministic controls,

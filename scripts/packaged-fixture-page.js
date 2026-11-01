@@ -13,7 +13,7 @@ function requireLocalLogin(loginUrl) {
  assert.ok(url.port, 'Fixture target must have an explicit mock port');
 }
 async function connectAfterLoginReady({text, connect, child, failure, milliseconds = 45000, now, pause}) {
- await waitForPackagedCheckpoint(() => loginReady(text()), {
+ const checkpoint = await waitForPackagedCheckpoint(() => loginReady(text()), {
   child, failure, name:'owner-login-ready', milliseconds, now, pause,
  });
  const endpoint = text().match(/^EP_WS_ENDPOINT=(\S+)\r?$/m)[1];
@@ -21,7 +21,7 @@ async function connectAfterLoginReady({text, connect, child, failure, millisecon
  assert.equal(url.protocol, 'ws:'); assert.equal(url.hostname, '127.0.0.1');
  assert.ok(url.port); assert.equal(url.username + url.password + url.search + url.hash, '');
  assert.match(url.pathname, /^\/devtools\/browser\/[A-Za-z0-9-]+$/);
- return connect({browserWSEndpoint:endpoint});
+ return {browser:await connect({browserWSEndpoint:endpoint}),checkpoint};
 }
 async function selectLoginPage(browser, loginUrl) {
  requireLocalLogin(loginUrl);

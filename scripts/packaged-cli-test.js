@@ -66,9 +66,10 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
  // The previous 20s fixture deadline could preempt Puppeteer's pinned 30s
  // launch timeout. Allow it to report/settle; do not retry or alter the launch.
  // No connect/pages/target/CDP observer traffic before owner's fixed marker.
- browser = await connectAfterLoginReady({text:()=>text,child,failure:()=>serverError||spawnError,
+ const ready = await connectAfterLoginReady({text:()=>text,child,failure:()=>serverError||spawnError,
   connect:options=>puppeteer.connect(options)});
- console.log('Packaged owner login-ready checkpoint arrived (instrumented sample only).');
+ browser = ready.browser;
+ console.log('Packaged owner login-ready checkpoint: '+JSON.stringify(ready.checkpoint)+' (instrumented sample only).');
   const command = await browser.target().createCDPSession();
   const { arguments: browserArgs } = await command.send('Browser.getBrowserCommandLine');
   const { browserIsInOwnedExtraction, browserOriginEvidence } = require('./packaged-browser-origin');
