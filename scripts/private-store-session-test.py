@@ -28,10 +28,11 @@ for scenario in ['success','bus-start-failure','fixture-failure','keyring-live',
         return subprocess.CompletedProcess(args,0)
     try:
         with mock.patch.object(session.sys,'argv',['fixed']),mock.patch.object(session.sys,'platform','linux'),mock.patch.object(session.tempfile,'mkdtemp',side_effect=lambda **kw:(root.mkdir(),str(root))[1]),mock.patch.object(session.subprocess,'Popen',side_effect=popen),mock.patch.object(session.subprocess,'run',side_effect=run),mock.patch.object(session.select,'select',return_value=([] if scenario=='bus-start-failure' else [bus.stdout],[],[])),mock.patch.dict(os.environ,{'EP_EMAIL':str(0),'EP_PASSWORD':str(0),'EP_TEST_BOOT':'1','DBUS_SESSION_BUS_PID':'123'}):
-            try:session.main();assert scenario=='success'
-            except BaseException as error:
-                assert scenario!='success'
-                if scenario=='fixture-failure':assert error is primary
+            caught=None
+            try:session.main()
+            except BaseException as error:caught=error
+            assert (caught is None)==(scenario=='success')
+            if scenario=='fixture-failure':assert caught is primary
         assert root.exists()==(scenario in ['fixture-failure','keyring-live','bus-live'])
         assert bus.terminated
         if scenario!='bus-start-failure':assert keyring.terminated

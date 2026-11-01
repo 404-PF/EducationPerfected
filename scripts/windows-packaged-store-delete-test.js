@@ -52,7 +52,13 @@ async function verifyPackagedDelete() {
    catch {cleanupFailure=Error('Synthetic packaged record cleanup failed');}
   }
   if (!childClosed || binding?.hasLiveWorkers()) cleanupFailure=Error(retained);
-  else {try {fs.rmSync(root,{recursive:true,force:true});} catch {cleanupFailure ||= Error('Packaged store fixture file cleanup failed');}}
+  else {try {fs.rmSync(root,{recursive:true,force:true});} catch (error) {
+   const code = ['EPERM','EACCES','EBUSY','ENOTEMPTY','ENOENT'].includes(error?.code) ? error.code : 'other';
+   const target = typeof error?.path === 'string' ? path.relative(root,error.path) : null;
+   const kind = target === 'keyring.node' ? 'source-binding' : target === 'educationperfected.exe' ? 'executable-copy' : target === '' ? 'owned-root' : target && !target.startsWith('..') && !path.isAbsolute(target) ? 'owned-child' : 'unknown';
+   console.error('Packaged store fixture cleanup checkpoint: code='+code+'; target='+kind+'; childClosed='+childClosed+'; workersLive='+Boolean(binding?.hasLiveWorkers()));
+   cleanupFailure ||= Error('Packaged store fixture file cleanup failed');
+  }}
   if (cleanupFailure) console.error(cleanupFailure.message);
  }
  if (primary) throw primary;

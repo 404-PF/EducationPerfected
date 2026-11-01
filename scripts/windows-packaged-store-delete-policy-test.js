@@ -7,7 +7,7 @@ async function probe(scenario, fixturePath) {
  const primary=Error('synthetic operation failure'), logs=[], moduleFixture={exports:{}};
  const requireFixture=id=>{
   if(id==='node:path')return fixturePath;
-  if(id==='node:fs')return {mkdtempSync:()=>'/owned',copyFileSync(){},mkdirSync(){},readdirSync:()=>scenario==='residue'?['owned-extraction']:[],rmSync(){removed++;assert.equal(live,false);}};
+  if(id==='node:fs')return {mkdtempSync:()=>'/owned',copyFileSync(){},mkdirSync(){},readdirSync:()=>scenario==='residue'?['owned-extraction']:[],rmSync(){removed++;assert.equal(live,false);if(scenario==='file-cleanup'){const error=new Error('sensitive-fixture-native-error');error.code='EPERM';error.path=fixturePath.join('/owned','educationperfected.exe');throw error;}if(scenario==='unknown-cleanup'){const error=new Error('sensitive-fixture-native-error');error.code='private-code';error.path=fixturePath.join('/outside','private-name');throw error;}}};
   if(id==='node:os')return {tmpdir:()=>'/synthetic'};
   if(id==='./packaged-fixture-target')return {packagedFixtureTarget:()=>({executable:'/fixed/educationperfected.exe'})};
   if(id==='../lib/packaged-windows-binding')return {createWindowsBinding:()=>({hasLiveWorkers:()=>live,AsyncEntry:class {
@@ -23,9 +23,10 @@ async function probe(scenario, fixturePath) {
  vm.runInNewContext(source,{require:requireFixture,module:moduleFixture,process:{platform:'win32',arch:'x64',argv:['node','fixture'],env:{GITHUB_ACTIONS:'true',RUNNER_OS:'Windows'}},console:{log:line=>logs.push(line),error:line=>logs.push(line)}}); // NOSONAR: fixed sibling repository source, inert effects only.
  let error;try {await moduleFixture.exports.verifyPackagedDelete();}catch(value){error=value;}
  if(scenario==='success'){assert.equal(error,undefined);assert.equal(saves,1);assert.equal(spawns,1);assert.equal(record,null);assert.equal(deletes,0);assert.equal(removed,1);assert.ok(polls>=3);}
+ if(['file-cleanup','unknown-cleanup'].includes(scenario)){assert.match(error.message,/file cleanup failed/);assert.equal(removed,1);assert.ok(logs.some(line=>line.includes('code='+(scenario==='file-cleanup'?'EPERM; target=executable-copy':'other; target=unknown'))));assert.doesNotMatch(logs.join(' '),/sensitive-fixture|private-code|private-name|outside/);}
  if(scenario==='existing'){assert.match(error.message,/must be absent/);assert.equal(saves,0);assert.equal(spawns,0);assert.equal(deletes,0);assert.equal(record,'untouched');}
  if(scenario==='partial'){assert.equal(error,primary);assert.equal(deletes,1);assert.equal(record,null);}
  if(['initial-read-live','save-live','cleanup-delete-live','cleanup-read-live','child-live'].includes(scenario)){assert.equal(error,primary);assert.equal(removed,0);assert.equal(deletes,scenario.startsWith('cleanup-')?1:0);assert.ok(logs.includes('Native operation still live; owned fixture retained without concurrent credential cleanup'));}
  if(['child-failure','child-noop','residue'].includes(scenario)){assert.ok(error);assert.equal(deletes,1);assert.equal(record,null);assert.equal(removed,1);}
 }
-(async()=>{for(const fixturePath of [path.posix,path.win32])for(const scenario of ['existing','success','partial','initial-read-live','save-live','cleanup-delete-live','cleanup-read-live','child-failure','child-noop','residue','child-live'])await probe(scenario,fixturePath);console.log('Windows SEA deletion fixture ownership/absence/primary failure/retention controls passed (inert only).');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{for(const fixturePath of [path.posix,path.win32])for(const scenario of ['file-cleanup','unknown-cleanup','existing','success','partial','initial-read-live','save-live','cleanup-delete-live','cleanup-read-live','child-failure','child-noop','residue','child-live'])await probe(scenario,fixturePath);console.log('Windows SEA deletion fixture ownership/absence/primary failure/retention controls passed (inert only).');})().catch(error=>{console.error(error);process.exitCode=1;});
