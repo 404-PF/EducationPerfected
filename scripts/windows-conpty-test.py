@@ -16,7 +16,7 @@ class API:
         if self.scenario=='pipe-create':return 0
         a._obj.value=self.next;b._obj.value=self.next+1;self.next+=2;return 1
     def CloseHandle(self,h):self.closed.append(h.value);return 1
-    def CreatePseudoConsole(self,*args):args[-1]._obj.value=30;return -1 if self.scenario=='console-create' else 0
+    def CreatePseudoConsole(self,*args):args[-1]._obj.value=None if self.scenario=='console-null' else 30;return -1 if self.scenario=='console-create' else 0
     def ClosePseudoConsole(self,h):self.console_closed.set()
     def InitializeProcThreadAttributeList(self,buf,n,flags,size):
         if buf is None:size._obj.value=64;c.set_last_error(122);return 1 if self.scenario=='attribute-size' else 0
@@ -28,6 +28,7 @@ class API:
     def CreateProcessW(self,exe,command,a,b,inherit,flags,env,cwd,si,pi):
         assert not inherit and flags==0x80404
         assert command.value.endswith('--setup') and si._obj.cb==112
+        assert si._obj.flags & 0x100 and not si._obj.stdin and not si._obj.stdout and not si._obj.stderr
         assert env.value.startswith('HOME=')
         if self.scenario=='process-create':return 0
         pi._obj.process=32;pi._obj.thread=33;return 1
@@ -68,7 +69,7 @@ class API:
         else:self.console_closed.wait(2);c.set_last_error(109);return 0
         c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
     def WriteFile(self,h,data,size,count,overlap):self.writes.append(data.raw[:size]);count._obj.value=size;self.ready.set();return 1
-for scenario in ['success','assignment','console-create','timeout','echo','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero']:
+for scenario in ['success','assignment','console-create','timeout','echo','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero','console-null']:
     api=API(scenario);clock_values=iter(range(0,6000,6))
     # Only the live-job failure needs an accelerated deadline; others use real time.
     kwargs={'clock':lambda:next(clock_values,6000)} if scenario=='job-live' else {}
@@ -78,7 +79,8 @@ for scenario in ['success','assignment','console-create','timeout','echo','job-l
     assert (error is None)==(scenario=='success'),(scenario,type(error))
     if scenario in ['assignment','console-create','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume']:assert not api.resumed and not api.writes
     if scenario in ['pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume']:assert str(error)==scenario
-    if scenario=='console-create':assert str(error)=='console-create'
+    if scenario in ('console-create','console-null'):assert str(error)=='console-create'
+    if scenario=='console-null':assert not api.resumed and not api.writes and not api.assigned
     if scenario=='assignment':assert api.terminated
     if scenario=='timeout':assert api.terminated
     if scenario=='job-live':assert isinstance(error,m.ExitUnconfirmed) and str(error)=='job-exit-unconfirmed'

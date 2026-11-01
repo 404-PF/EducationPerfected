@@ -24,6 +24,7 @@ CREATE_UNICODE_ENVIRONMENT=0x400
 EXTENDED_STARTUPINFO_PRESENT=0x80000
 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE=0x20016
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE=0x2000
+STARTF_USESTDHANDLES=0x100
 WAIT_OBJECT_0=0
 WAIT_TIMEOUT=258
 
@@ -128,7 +129,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
         for a,b in ((input_read,input_write),(output_read,output_write)):
             checked(api.CreatePipe(c.byref(a),c.byref(b),None,0),'pipe-create');handles.extend((a,b))
         creation_sides=[input_read,output_write]
-        if api.CreatePseudoConsole(COORD(120,30),input_read,output_write,0,c.byref(pc))<0:raise RuntimeError('console-create')
+        if api.CreatePseudoConsole(COORD(120,30),input_read,output_write,0,c.byref(pc))!=0 or not pc.value:raise RuntimeError('console-create')
         size=SIZE_T();c.set_last_error(0)
         first=api.InitializeProcThreadAttributeList(None,1,0,c.byref(size))
         if first or c.get_last_error()!=122 or not size.value:raise RuntimeError('attribute-size')
@@ -139,6 +140,10 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
         limits=EXTENDED_LIMIT();limits.basic.flags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         checked(api.SetInformationJobObject(job,9,c.byref(limits),c.sizeof(limits)),'job-limit')
         si=STARTUPINFOEX();si.StartupInfo.cb=c.sizeof(si);si.attributes=c.cast(attributes,PTR)
+        # Redirected runner std handles otherwise get duplicated despite FALSE inheritance.
+        # Match maintained node-pty's ConPTY launch, not generic pipe inheritance.
+        si.StartupInfo.flags=STARTF_USESTDHANDLES
+        si.StartupInfo.stdin=None;si.StartupInfo.stdout=None;si.StartupInfo.stderr=None
         command=c.create_unicode_buffer(subprocess.list2cmdline([str(executable),*args]))
         environment=c.create_unicode_buffer('\0'.join(k+'='+v for k,v in sorted(env.items(),key=lambda kv:kv[0].upper()))+'\0\0')
         checked(api.CreateProcessW(str(executable),command,None,None,False,CREATE_SUSPENDED|CREATE_UNICODE_ENVIRONMENT|EXTENDED_STARTUPINFO_PRESENT,environment,str(cwd),c.byref(si.StartupInfo),c.byref(pi)),'process-create')
