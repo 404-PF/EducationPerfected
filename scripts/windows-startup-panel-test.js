@@ -25,11 +25,20 @@ assert.deepEqual(failureEvidence(failed(failure),'source',nonce),{stage:'transpo
 const unknown={stage:'unknown',driverStage:'unknown',transportStage:'unobserved',closed:'unknown'};
 assert.deepEqual(failureEvidence({...failed(failure),stdout:failed(failure).stdout.replace('}\n','}\r\n')},'source',nonce),unknown);
 for(const change of [{nonce:'b'.repeat(64)},{mode:'sea'},{stage:'private'},{driverStage:'private'},{transportStage:'private'},{closed:'true'},{extra:'private'}])assert.deepEqual(failureEvidence(failed({...failure,...change}),'source',nonce),unknown);
-for(const change of [{error:Error('private')},{signal:'SIGTERM'},{status:0},{stderr:'private'},{stdout:failed(failure).stdout+'private\n'},{stdout:failed(failure).stdout.replace(/\n/g,'\r\n')},{stdout:failed(failure).stdout.replace('CLOSED=true','CLOSED=false')},{stdout:''}])assert.deepEqual(failureEvidence({...failed(failure),...change},'source',nonce),unknown);
+for(const change of [{error:Error('private')},{signal:'SIGTERM'},{status:0},{stderr:'private'},{stdout:failed(failure).stdout+'private\n'},{stdout:failed(failure).stdout.replace(/\n/g,'\r\n')},{stdout:failed(failure).stdout.replace('CLOSED=true','CLOSED=false')},{stdout:''},{stdout:failed(failure).stdout.replace('OUTCOME=uncertainty','OUTCOME=success')}])assert.deepEqual(failureEvidence({...failed(failure),...change},'source',nonce),unknown);
 const driver=fs.readFileSync(path.join(__dirname,'windows-startup-leg.js'),'utf8');
+// Strip comments before checking exact marker calls; this remains a static source check,
+// not proof of reachability against arbitrary dead-code insertion.
+const executable=driver.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
 const ordered=["driverStage(mode,nonce,'cli-entry')","const root=validateLegRoot(process.argv[2],mode)","driverStage(mode,nonce,'cli-root-checked')"];
-let previous=-1;for(const token of ordered){const at=driver.indexOf(token);assert.ok(at>previous);previous=at;}
-const leg=driver.slice(driver.indexOf('async function runLeg'),driver.indexOf('module.exports'));
-const boundaries=["throw Error('Diagnostic host guard')","'host-checked'",'root=validateLegRoot',"'leg-root-checked'","'archive-check-entered'",'await readVerifiedArchive',"'archive-verified'","'unpack-entered'",'await pipeline',"'unpacked'","'spawn-entered'",'child=spawn',"'spawn-returned'",'await connectAfterLoginReady',"'ready-observed'",'await boundedClose',"'owner-closed'",'result.cleanupCertain=true',"'leg-complete'"];
+let previous=-1;for(const token of ordered){const at=executable.indexOf(token);assert.ok(at>previous);previous=at;}
+const leg=executable.slice(executable.indexOf('async function runLeg'),executable.indexOf('module.exports'));
+const boundaries=["throw Error('Diagnostic host guard')","driverStage(mode,nonce,'host-checked')",'root=validateLegRoot',"driverStage(mode,nonce,'leg-root-checked')","driverStage(mode,nonce,'archive-check-entered')",'await readVerifiedArchive',"driverStage(mode,nonce,'archive-verified')","driverStage(mode,nonce,'unpack-entered')",'await pipeline',"driverStage(mode,nonce,'unpacked')","driverStage(mode,nonce,'spawn-entered')",'child=spawn',"driverStage(mode,nonce,'spawn-returned')",'await connectAfterLoginReady',"driverStage(mode,nonce,'ready-observed')",'await boundedClose',"driverStage(mode,nonce,'owner-closed')",'result.cleanupCertain=true',"driverStage(mode,nonce,'leg-complete')"];
 previous=-1;for(const token of boundaries){const at=leg.indexOf(token);assert.ok(at>previous,token);previous=at;}
-console.log('Strict failure stage/status/closure privacy and actual-source marker boundary ordering checked (inert/static; no driver execution).');
+// Python owns these tuples; compare their literal members to the JS literal arrays.
+const panel=fs.readFileSync(path.join(__dirname,'windows-startup-panel.js'),'utf8');
+function members(text,pattern){const match=text.match(pattern);assert.ok(match);return [...match[1].matchAll(/'([^']*)'/g)].map(value=>value[1]);}
+const helper=fs.readFileSync(path.join(__dirname,'windows-startup-leg-helper.py'),'utf8'),transport=fs.readFileSync(path.join(__dirname,'windows-conpty.py'),'utf8');
+assert.deepEqual(members(panel,/const driver=\[([^\n]+)\];/),['unknown',...members(helper,/DRIVER_STAGES=\(([^\n]+)\)/)]);
+assert.deepEqual(members(panel,/const transport=\[([^\n]+)\];/),['unobserved',...members(transport,/FIXED_STAGES=frozenset\(\(([^\n]+)\)\)/)]);
+console.log('Strict failure stage/status/closure privacy, literal allowlist sync and comment-stripped marker ordering checked (inert/static; no dead-code reachability or driver execution proof).');

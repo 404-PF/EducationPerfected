@@ -39,7 +39,7 @@ for mode in ('source','sea'):
     for index,stage in enumerate(stages):
         data=b''.join(line(value) for value in stages[:index+1]);assert m.observed_driver_stage(data,mode,nonce)==stage
         assert m.observed_driver_stage(data+line(stage),mode,nonce)=='unknown'
-    for bad in (b'',b'private',line('host-checked'),line('cli-entry',nonce='b'*64),line('cli-entry',unknown='private'),b'EP_DIAGNOSTIC_DRIVER_STAGE=bad\n',b'prefix'+line('cli-entry')):
+    for bad in (b'',b'private',line('cli-entry')+line('archive-check-entered'),line('host-checked'),line('cli-entry',nonce='b'*64),line('cli-entry',unknown='private'),b'EP_DIAGNOSTIC_DRIVER_STAGE=bad\n',b'prefix'+line('cli-entry')):
         assert m.observed_driver_stage(bad,mode,nonce)=='unknown'
 # Every helper guard boundary is observed without running native transport.
 for scenario,expected in (('host','helper-entry'),('args','helper-entry'),('nonce','arguments'),('root','root-check'),('node','node-check'),('driver','driver-check')):

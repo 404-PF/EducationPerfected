@@ -202,8 +202,22 @@ for scenario in ('success','child-nonzero','process-create','job-live'):
     try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=observed.append,on_closed=lambda:closed.append(True),**kwargs)
     except BaseException as caught:error=caught
     assert len(observed)==1 and isinstance(observed[0],bytes)
-    if scenario=='success':assert error is None and closed==[True]
+    if scenario=='success':assert error is None and closed==[True] and b'Login saved' in observed[0]
     elif scenario=='job-live':assert isinstance(error,m.ExitUnconfirmed) and not closed
     elif scenario=='child-nonzero':assert str(error)=='console-child-nonzero' and closed==[True]
-    else:assert str(error)=='process-create'
+    else:assert str(error)=='process-create' and closed==[True] and observed[0]==b''
 print('Optional drain evidence preserved on success/fixed child/setup/closure failures without changing original failure or closure result (inert).')
+
+# A diagnostic observer is never an authority over process/cleanup results.
+for scenario in ('success','child-nonzero','process-create','job-live'):
+    api=API(scenario);values=iter(range(0,6000,6));kwargs={'clock':lambda:next(values,6000)} if scenario=='job-live' else {};closed=[];seen=[]
+    def broken_observer(data):seen.append(data);raise RuntimeError('private-observer-error')
+    error=None
+    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=broken_observer,on_closed=lambda:closed.append(True),**kwargs)
+    except BaseException as caught:error=caught
+    assert len(seen)==1
+    if scenario=='success':assert error is None and closed==[True] and b'Login saved' in seen[0]
+    elif scenario=='job-live':assert isinstance(error,m.ExitUnconfirmed) and str(error)=='job-exit-unconfirmed' and not closed
+    elif scenario=='child-nonzero':assert str(error)=='console-child-nonzero' and closed==[True]
+    else:assert str(error)=='process-create' and closed==[True] and seen[0]==b''
+print('Observer exceptions cannot replace success, primary setup/child failure or unconfirmed cleanup outcome (inert).')

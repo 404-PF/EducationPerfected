@@ -192,7 +192,9 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
                 try:close(handle)
                 except BaseException as error:cleanup=cleanup or error
     # Optional diagnostic observer only; it cannot certify closure or replace failures.
-    if on_drain:on_drain(bytes(output))
+    if on_drain:
+        try:on_drain(bytes(output))
+        except BaseException:pass # Observation must not replace primary/cleanup outcomes.
     # Inspect the whole drained stream even when another operation failed. Input
     # appearance is a fixed primary and forbids native cleanup certification.
     if any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):
