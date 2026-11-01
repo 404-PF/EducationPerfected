@@ -24,7 +24,9 @@ try {
  if(process.platform!=='win32') {const target=path.join(root,'target');fs.writeFileSync(target,'untouched');fs.unlinkSync(to);fs.symlinkSync(target,to);assert.throws(()=>invoke(fs,path,root,to),{code:'EEXIST'});assert.equal(fs.readFileSync(target,'utf8'),'untouched');}
  // Source binding only: these assertions do not prove arbitrary dead-code reachability.
  const source=fs.readFileSync(path.join(__dirname,'windows-startup-leg.js'),'utf8');
- const executableSource=source.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
+ // Count raw source conservatively: comments may cause false alarms, but URLs
+ // and quoted comment delimiters cannot hide a later writer on the same line.
+ const executableSource=source;
  assert.equal((executableSource.match(/copySeaExecutable\(build,executable\);/g)||[]).length,1);
  assert.ok(executableSource.includes("else {executable=path.join(root,'educationperfected.exe');copySeaExecutable(build,executable);args=[];}"));
  assert.equal((executableSource.match(/fs\.copyFileSync\(/g)||[]).length,1);
