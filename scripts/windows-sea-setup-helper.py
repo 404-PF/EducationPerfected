@@ -37,4 +37,10 @@ def entry():
     print('EP_SETUP_CLOSED_SUCCESS',flush=True)
     return 0
 
-if __name__=='__main__':sys.exit(entry())
+def main():
+    # A pipe's Windows TextIOWrapper otherwise translates protocol LF to CRLF.
+    # Keep the receiver strict; never normalize arbitrary child/helper output.
+    sys.stdout.reconfigure(newline='\n')
+    return entry()
+
+if __name__=='__main__':sys.exit(main())

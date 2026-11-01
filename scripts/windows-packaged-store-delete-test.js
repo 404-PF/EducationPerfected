@@ -41,7 +41,9 @@ async function verifyPackagedDelete() {
   let helperCode;
   try {helperCode = await boundedClose(closed, 60000, 'Packaged setup helper timed out');}
   catch (error) {timedOut=true;terminatedByUs=true;throw error;}
-  const receipt = require('./windows-setup-receipt').setupReceipt(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut});
+  const {setupReceipt,setupReceiptDiagnostic} = require('./windows-setup-receipt');
+  console.log(setupReceiptDiagnostic(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut,helperError}));
+  const receipt = setupReceipt(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut});
   setupCertain = receipt.certain && !helperError;
   assert.ok(setupCertain, 'Setup helper ownership certainty unconfirmed; retain owned record and root');
   assert.ok(receipt.success, 'Packaged setup helper reported a closed failure');

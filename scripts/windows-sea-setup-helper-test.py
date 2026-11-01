@@ -30,3 +30,17 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
         if scenario=='uncertain':assert 'EP_SETUP_PRIMARY=process-timeout\n' in text
     finally:shutil.rmtree(root)
 print('SEA setup helper inert prompt/privacy/closed receipt/uncertainty/primary-cause controls passed. Native setup pending.')
+
+# Exercise real text-layer translation, not StringIO's translation-free behavior.
+for initial_newline in ('\r\n','\n'):
+    for status,code in [('EP_SETUP_CLOSED_SUCCESS',0),('EP_SETUP_CLOSED_FAILURE',1),('EP_SETUP_UNCERTAIN',20)]:
+        raw=io.BytesIO()
+        stream=io.TextIOWrapper(raw,encoding='utf-8',newline=initial_newline)
+        def emit():
+            print(status,flush=True)
+            return code
+        with mock.patch.object(m,'entry',side_effect=emit),contextlib.redirect_stdout(stream):
+            assert m.main()==code
+        assert raw.getvalue()==(status+'\n').encode(),(initial_newline,raw.getvalue())
+        stream.detach()
+print('Helper wire protocol forces exact LF under Windows CRLF and POSIX text layers (inert only).')
