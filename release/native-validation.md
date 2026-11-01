@@ -103,3 +103,8 @@ Sources: [Puppeteer troubleshooting](https://pptr.dev/troubleshooting), [Chromiu
 
 
 Ubuntu24 remains an unresolved portable-package prerequisite. The current diagnostic reports known sandbox/namespace denial with fixed guidance and does not print native paths or recommend disabling the sandbox. A future fixed root-owned installation and administrator-reviewed per-app policy would be a different installation architecture, not a silent fix for user-writable random extraction. Broad user-writable path allowlists, global namespace-policy disabling and unreviewed SUID helpers are not adopted here.
+
+
+### Source resolver native-store bridge (validation pending)
+
+The Mac owned-keychain source fixture and Linux private Secret Service fixture now call the exact current credential-resolution block extracted from `index.js`, without loading browser startup. They require one actual versioned native-store read, the expected synthetic pair and its OS-store source. Environment/test-boot credentials are absent in the isolated evaluation context; warnings, legacy-store dependencies and prompt fallback fail closed. Boundary drift and duplicate reads have inert rejection controls. This is a bounded source native-store resolver check, not production SEA exact-value retrieval, the whole browser/authentication path or live EP authentication. Native results must be recorded separately before claiming this check passed. No production credential, test-boot or login-URL guard is changed.

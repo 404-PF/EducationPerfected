@@ -2,18 +2,9 @@
 # Linux only. Fresh HOME and private D-Bus session, never the user's keyring.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-EP_TEST_HOME=$(mktemp -d)
-mkdir -p "$EP_TEST_HOME/runtime"; chmod 700 "$EP_TEST_HOME/runtime"
-trap 'rm -rf "$EP_TEST_HOME"' EXIT
-HOME="$EP_TEST_HOME" XDG_DATA_HOME="$EP_TEST_HOME/data" XDG_CONFIG_HOME="$EP_TEST_HOME/config" XDG_RUNTIME_DIR="$EP_TEST_HOME/runtime" EP_STORE_TEST_ROOT="$ROOT" dbus-run-session -- sh -eu <<'PRIVATE'
-mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
-printf 'disposable-fixture-session' > "$HOME/session-input"
-gnome-keyring-daemon --foreground --unlock --components=secrets < "$HOME/session-input" > "$HOME/keyring.log" 2>&1 &
-KEYRING_PID=$!
-trap 'kill "$KEYRING_PID" 2>/dev/null || :; wait "$KEYRING_PID" 2>/dev/null || :' EXIT
-# Wait for the private Secret Service to own its bus name before tests begin.
-gdbus wait --session --timeout 5 org.freedesktop.secrets
-rm -f "$HOME/session-input"
+python3 scripts/private-store-session-test.py
+export EP_STORE_TEST_ROOT="$ROOT"
+python3 "$ROOT/scripts/private-store-session.py" <<'PRIVATE'
 cd "$EP_STORE_TEST_ROOT"
 python3 scripts/setup-pty-test.py
 # Real CLI save proof runs only within this private session, not the inert PTY file.
@@ -45,7 +36,8 @@ const { createCredentialStore } = require('./lib/credential-store');
  const record = await createCredentialStore().read();
  assert.equal(record.email, 'fixture@example.test');
  assert.equal(record.password, 'fixture-native-only');
- console.log('Real CLI setup saved the expected synthetic native record.');
+ await require('./scripts/native-resolver-proof').proveNativeResolver(createCredentialStore(), {email: 'fixture@example.test', password: 'fixture-native-only'});
+ console.log('Real CLI setup and exact production source resolver read the expected synthetic native record.');
 })().catch(() => {console.error('Native CLI record verification failed.');process.exitCode=1;});
 VERIFY
 node bin/cli.js --forget-credentials

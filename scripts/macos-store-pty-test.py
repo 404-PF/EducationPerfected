@@ -90,6 +90,8 @@ def main():
         if label == 'source':
             checkpoint('source-saved-verification')
             run([node,'-e',verify_saved])
+            checkpoint('source-native-resolver')
+            run([node,'-e',"require('./scripts/native-resolver-proof').proveNativeResolver(require('./lib/credential-store').createCredentialStore(), {email:['fixture','example.test'].join('@'),password:['synthetic','mac','only'].join('-')}).catch(()=>{process.exitCode=1})"])
         else:
             # A source Node read of a SEA-created secret timed out on BOTH native
             # architectures. Do not broaden ACLs or pretend this proves the value.
