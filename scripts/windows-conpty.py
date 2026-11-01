@@ -28,7 +28,7 @@ WAIT_OBJECT_0=0
 WAIT_TIMEOUT=258
 
 class ExitUnconfirmed(RuntimeError):pass
-FIXED_STAGES=frozenset(('host-guard','node-identity','pipe-create','console-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','job-assignment-pre-resume','process-resume','process-timeout','process-exit-code','console-status-missing','console-input-echoed','Requires x64 pointer ABI','Windows SDK ABI mismatch','process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-child-nonzero','console-command-failed'))
+FIXED_STAGES=frozenset(('system-identity','host-guard','node-identity','pipe-create','console-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','job-assignment-pre-resume','process-resume','process-timeout','process-exit-code','console-status-missing','console-input-echoed','Requires x64 pointer ABI','Windows SDK ABI mismatch','process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-child-nonzero','console-command-failed'))
 def fixed_stage(error):
     return str(error) if type(error) in (RuntimeError,ExitUnconfirmed) and str(error) in FIXED_STAGES else 'console-command-failed'
 
@@ -77,7 +77,7 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False):
+def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
     api=api or kernel32()
     handles=[];pc=HANDLE();pi=PROCESS_INFORMATION();attributes=None;attribute_ready=False
@@ -192,10 +192,10 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
         matches=re.findall(rb'^CONPTY_CAPABILITY stdinTTY=([01]) stdoutTTY=([01]) rawMode=([01])\r?$',data,re.MULTILINE)
         values=[part.decode('ascii') for part in matches[0]] if len(matches)==1 else ['unknown']*3
         fields=[name+'='+value for name,value in zip(('stdinTTY','stdoutTTY','rawMode'),values)]
-        print('ConPTY fixed child capability: '+'; '.join(fields)+'; exit='+('zero' if code.value==0 else 'nonzero'))
-    if code.value!=0:raise RuntimeError('console-child-nonzero')
+        print('ConPTY fixed child capability: '+'; '.join(fields)+'; exit='+('zero' if code.value==0 else 'nonzero')+'; exitDWORD='+str(code.value))
+    if code.value!=expected_exit:raise RuntimeError('console-child-nonzero')
     if errors:raise RuntimeError(fixed_stage(errors[0]))
-    if not writer_done.is_set() or code.value!=0:raise RuntimeError('console-command-failed')
+    if not writer_done.is_set():raise RuntimeError('console-command-failed')
     captured=bytes(output)
     if expected not in captured:raise RuntimeError('console-status-missing')
     if any(captured.count(token)!=1 for token,_ in prompts):raise RuntimeError('console-prompt-count')

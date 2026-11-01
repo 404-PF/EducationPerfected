@@ -34,6 +34,7 @@ jobs:
         run: |
           python scripts/windows-conpty-test.py
           python scripts/windows-conpty-capability-test.py
+          node scripts/windows-conpty-checker-test.js
       - name: Check actual owned ConPTY capability before any credential mutation
         run: |
           $node = node -p "process.execPath"

@@ -92,7 +92,7 @@ print('ConPTY inert API/ABI ownership controls: creation/assignment fail closed,
 api=API('success');capture=io.StringIO()
 with contextlib.redirect_stdout(capture):
     m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
-assert capture.getvalue()=='ConPTY fixed child capability: stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown; exit=zero\n'
+assert capture.getvalue()=='ConPTY fixed child capability: stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown; exit=zero; exitDWORD=0\n'
 assert 'public-answer' not in capture.getvalue()
 print('ConPTY fixed-only child readiness and nonzero-exit classification controls passed.')
 
@@ -102,3 +102,15 @@ for scenario,wanted in [('readiness','stdinTTY=1; stdoutTTY=0; rawMode=1'),('rea
         m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
     assert wanted in capture.getvalue() and 'private-name' not in capture.getvalue()
 print('ConPTY readiness parser: exact fixed marker, malformed/duplicate unknown, no arbitrary drained output.')
+
+for expected in (7,8):
+    api=API('success')
+    original=api.GetExitCodeProcess
+    def get_exit(handle,code):code._obj.value=expected;return 1
+    api.GetExitCodeProcess=get_exit
+    assert m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,expected_exit=expected)
+    error=None
+    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',api=API('child-nonzero'),expected_exit=expected)
+    except RuntimeError as caught:error=caught
+    assert str(error)=='console-child-nonzero'
+print('ConPTY ladder controls: expected exit7/8 accepted only explicitly, other nonzero exits still fail.')
