@@ -225,7 +225,7 @@ The code and documentation here are provided as-is for educational and hobby pur
 
 ## CLI credential setup (source build)
 
-Run `node bin/cli.js --setup` in a terminal to save your login in the native OS credential store. Both fields use hidden input. Empty input cancels without changing the saved login. Run `node bin/cli.js --forget-credentials` to remove this app's saved login. These commands do not open a browser or submit an answer.
+Run `node bin/cli.js --setup` in a terminal to save your login in the native OS credential store. Both fields use hidden input. Empty input cancels without changing the saved login. Run `node bin/cli.js --forget-credentials` to remove this app's saved login. Run `node bin/cli.js --check-credentials` to check whether this app's saved native record is present and valid, without showing either field or changing it. A valid or absent record exits successfully; an unavailable or malformed record exits with an error. This checks the native record only, not environment variables, older keytar entries or whether EP will accept the login. These commands do not open a browser or submit an answer. Packaged executables accept the same flags.
 
 The native store uses Windows Credential Manager, macOS Keychain, or Linux Secret Service. On Linux, an unlocked Secret Service session (for example GNOME Keyring or KWallet) is required; there is no plaintext or nonpersistent kernel-keyring fallback. If the store is unavailable, ordinary browser/manual login still works. Never put a password in a command argument.
 

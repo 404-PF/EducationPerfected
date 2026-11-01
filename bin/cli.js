@@ -46,6 +46,11 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
 }
 async function credentialCommand(command, { store, prompt = promptCredentials, output = process.stdout } = {}) {
     store ||= require('../lib/credential-store').createCredentialStore();
+    if (command === '--check-credentials') {
+        const record = await store.read();
+        output.write(record ? 'Saved login is available and its record is valid.\n' : 'No saved login was found.\n');
+        return;
+    }
     if (command === '--forget-credentials') {
         const removed = await store.remove();
         output.write(removed ? 'Saved login removed from the OS credential store.\n' : 'No saved login was found.\n');
@@ -69,9 +74,13 @@ async function credentialCommand(command, { store, prompt = promptCredentials, o
 }
 module.exports = { runCli, credentialCommand };
 if (require.main === module) {
-    if (process.argv.includes('--setup') || process.argv.includes('--forget-credentials')) {
-        credentialCommand(process.argv.includes('--setup') ? '--setup' : '--forget-credentials').catch(() => { console.error('Credential setup failed. Unlock the OS credential store and try again; no plaintext fallback is used.'); process.exitCode = 1; });
+    if (['--setup','--forget-credentials','--check-credentials'].some(command => process.argv.includes(command))) {
+        const commands = ['--setup','--forget-credentials','--check-credentials'].filter(value => process.argv.includes(value));
+        if (commands.length > 1) { console.error('Choose only one credential command.'); process.exitCode = 1; }
+        else {
+        credentialCommand(commands[0]).catch(() => { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode = 1; });
+        }
     } else if (process.argv.includes('--help') || process.argv.includes('-h')) {
-        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit\nDoes not start answering until start is entered.');
+        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit\nDoes not start answering until start is entered.');
     } else runCli().catch(error => { console.error(diagnostic(error, 'EducationPerfected CLI')); process.exitCode = 1; });
 }

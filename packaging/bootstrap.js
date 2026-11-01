@@ -36,12 +36,16 @@ async function main() {
             : createRequire(process.execPath)(file));
         const args = process.argv.slice(2);
         if (args.includes('--help') || args.includes('-h')) {
-            console.log('EducationPerfected\nUsage: educationperfected [--setup | --forget-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit');
+            console.log('EducationPerfected\nUsage: educationperfected [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit');
             return;
         }
-        if (args.includes('--setup') || args.includes('--forget-credentials')) {
+        if (['--setup','--forget-credentials','--check-credentials'].some(command => args.includes(command))) {
             handoffSignals();
-            await require('../bin/cli').credentialCommand(args.includes('--setup') ? '--setup' : '--forget-credentials');
+            const commands = ['--setup','--forget-credentials','--check-credentials'].filter(value => args.includes(value));
+            if (commands.length > 1) { console.error('Choose only one credential command.'); process.exitCode ||= 1; return; }
+            const command = commands[0];
+            try { await require('../bin/cli').credentialCommand(command); }
+            catch { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode ||= 1; }
             return;
         }
         // Read-only view over the embedded asset. Never write to this memory.

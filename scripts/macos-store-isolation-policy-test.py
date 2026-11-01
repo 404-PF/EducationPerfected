@@ -135,6 +135,10 @@ output=b'EP email EP password Login saved in the OS credential store.'
 def sequence_run(args, **kwargs):
     global record
     if args[0]=='/usr/bin/security':return subprocess.CompletedProcess(args,0,stdout=repr(owned),stderr='')
+    if args[-1]=='--check-credentials':
+        assert record is not None
+        calls.append(record+'-health')
+        return subprocess.CompletedProcess(args,0,stdout=b'Saved login is available and its record is valid.\n',stderr=b'')
     if args[-1]=='--forget-credentials':
         assert record is not None
         calls.append('source-delete' if len(args)>2 else 'sea-delete');record=None
@@ -151,6 +155,6 @@ def sequence_spawn(args, **kwargs):
 try:
     with mock.patch.object(pty_fixture.sys,'platform','darwin'), mock.patch.object(pty_fixture.sys,'argv',['fixed',str(root)]), mock.patch.dict(os.environ,{'RUNNER_ENVIRONMENT':'github-hosted','HOME':'/inert-original-home'}), mock.patch.object(pty_fixture.subprocess,'run',side_effect=sequence_run), mock.patch.object(pty_fixture.subprocess,'Popen',side_effect=sequence_spawn), mock.patch.object(pty_fixture,'shutil_which_node',return_value='/fixed/node'), mock.patch.object(pty_fixture.pty,'openpty',return_value=(10,11)), mock.patch.object(pty_fixture.select,'select',return_value=([10],[],[])), mock.patch.object(pty_fixture.os,'read',return_value=output), mock.patch.object(pty_fixture.os,'write'), mock.patch.object(pty_fixture.os,'close'), mock.patch.object(pty_fixture,'drain_pty',side_effect=lambda master,data:data):
         pty_fixture.main()
-    assert calls==['absent','source-setup','source-exact-read','source-delete','absent','absent','sea-setup','sea-delete','absent']
+    assert calls==['absent','source-setup','source-exact-read','source-health','source-delete','absent','absent','sea-setup','sea-health','sea-delete','absent']
 finally:shutil.rmtree(root)
-print('Mac credential proof scope: source exact read retained; SEA setup/delete/independent absence only, no cross-executable secret read (inert only).')
+print('Mac credential proof scope: source exact read retained; SEA setup/delete/independent absence only, own-executable health reads, no cross-executable secret read (inert only).')

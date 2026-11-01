@@ -94,8 +94,12 @@ def main():
             # A source Node read of a SEA-created secret timed out on BOTH native
             # architectures. Do not broaden ACLs or pretend this proves the value.
             checkpoint('sea-save-acknowledged-exact-record-read-unproved')
+        checkpoint(label+'-health-read')
+        health = run([*command,'--check-credentials'])
+        if health.stdout != b'Saved login is available and its record is valid.\n':
+            raise RuntimeError('Saved login health read did not confirm a valid record')
         if any(tmp.iterdir()):
-            raise RuntimeError('Mac setup extraction residue')
+            raise RuntimeError('Mac setup or health-read extraction residue')
         checkpoint(label+'-delete')
         result = run([*command,'--forget-credentials'])
         if b'Saved login removed from the OS credential store.' not in result.stdout:
@@ -104,7 +108,7 @@ def main():
         run([node,'-e',verify_absent])
         if any(tmp.iterdir()):
             raise RuntimeError('Mac deletion extraction residue')
-    print('Mac source exact synthetic save/read/delete plus SEA setup acknowledgement/delete/source absence/extraction cleanup passed. SEA saved value/read unproved (isolated keychain, inherited HOME, no browser/no-Node/terminal certification).')
+    print('Mac source exact synthetic save/read/delete plus SEA setup acknowledgement/health read/delete/source absence/extraction cleanup passed. SEA exact saved value unproved (isolated keychain, inherited HOME, no browser/no-Node/terminal certification).')
 
 def shutil_which_node():
     import shutil
