@@ -65,6 +65,9 @@ async function main() {
         process.env.PUPPETEER_EXECUTABLE_PATH = process.platform === 'darwin'
             ? require('./macos-extracted-executable').macosExtractedExecutable(dir, manifest.executable)
             : path.join(dir, manifest.executable);
+        if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1') {
+            require('../lib/test-browser-identity').emitBrowserIdentity(manifest);
+        }
         handoffSignals();
         await require('../bin/cli').runCli();
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }

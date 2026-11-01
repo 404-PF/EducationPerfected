@@ -78,8 +78,9 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=()):
+def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
+    if type(process_budget_ms) is not int or process_budget_ms not in (30000,120000):raise RuntimeError('host-guard')
     api=api or kernel32()
     handles=[];pc=HANDLE();pi=PROCESS_INFORMATION();attributes=None;attribute_ready=False
     job=None;assigned=False;reader=None;writer=None
@@ -152,7 +153,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
         reader=threading.Thread(target=read_output,daemon=True);reader.start()
         checked(api.ResumeThread(pi.thread)!=0xFFFFFFFF,'process-resume')
         writer=threading.Thread(target=write_prompts,daemon=True);writer.start()
-        if api.WaitForSingleObject(pi.process,30000)!=WAIT_OBJECT_0:raise RuntimeError('process-timeout')
+        if api.WaitForSingleObject(pi.process,process_budget_ms)!=WAIT_OBJECT_0:raise RuntimeError('process-timeout')
         checked(api.GetExitCodeProcess(pi.process,c.byref(code)),'process-exit-code')
     except BaseException as error:primary=error
     finally:

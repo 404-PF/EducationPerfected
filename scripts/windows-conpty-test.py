@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Inert Win32 transport emulation only; never opens a native API or credential."""
 import ctypes as c, importlib.util, pathlib, threading, sys, io, contextlib
+from unittest import mock
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('conpty',pathlib.Path(__file__).with_name('windows-conpty.py'))
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);m.audit_abi()
@@ -172,3 +173,25 @@ try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email'
 except BaseException as caught:error=caught
 assert str(error)=='console-child-nonzero'
 print('Raw ETX input requires child130 only explicitly, no acks/password prompt; default exit0 rejects130 (inert only).')
+
+# Same transport/closure semantics; only the diagnostic driver's outer allotment.
+class BudgetAPI(API):
+    def __init__(self,budget):
+        super().__init__('success');self.budget=budget;self.waits=[]
+    def WaitForSingleObject(self,h,ms):
+        self.waits.append(ms)
+        return super().WaitForSingleObject(h,30000 if ms==self.budget else ms)
+for budget in (30000,120000):
+    api=BudgetAPI(budget)
+    assert m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,process_budget_ms=budget)
+    assert api.waits[0]==budget
+    assert api.waits.count(budget)==1
+default_api=BudgetAPI(30000)
+assert m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=default_api)
+assert default_api.waits[0]==30000 and default_api.waits.count(30000)==1
+for invalid in (0,90000,120001,True,'120000',None):
+    with mock.patch.object(m,'kernel32',side_effect=AssertionError('Must reject before native allocation')):
+        try:m.run_console('fixed.exe',[],{},'owned',process_budget_ms=invalid)
+        except RuntimeError as error:assert str(error)=='host-guard'
+        else:raise AssertionError('Invalid process budget accepted')
+print('ConPTY fixed diagnostic120s vs unchangeddefault30s outer process budget, single wait and invalid-before-allocation controls passed (inert).')

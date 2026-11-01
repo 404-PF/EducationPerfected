@@ -75,3 +75,65 @@ expiry/child exit without connection, fixed endpoint/local target constraints,
 initialized Page and disconnect-only ownership. These are deterministic controls,
 not actual browser, Windows or cleanup-host proof. Reviewer mutations are required
 before native release of the candidate.
+
+
+## Same-archive contract preparation (source-only, not a runnable panel)
+
+The development manifest now includes the pinned public Puppeteer Chrome revision.
+A dual TEST_BOOT + EP_TEST_BROWSER_IDENTITY diagnostic gate lazily emits public
+archive hash/length/version and fixed evidence booleans after the existing hash
+verification and unpack, before the unchanged CLI handoff. It adds no await.
+Normal boot neither loads the receipt module nor emits the receipt. A receipt
+alone does not prove launched browser identity: the runner must compare it with
+independent source archive hash and the actual post-owner-marker browser version
+and canonical owned-extraction path on BOTH legs. Missing/duplicate/mismatched
+receipt, missing/tampered archive, version/path mismatch, readiness failure or
+cleanup uncertainty is an explicit uncertainty outcome, never silent skip or
+cache fallback. Identity equality is decided by the runner, not asserted by a
+leg. Build manifest changes are metadata, not public release authorization.
+
+`startup-browser-identity.js` supplies only hash/receipt/path/equality/staging
+contracts and does not spawn, unpack or connect. Its injected leg callbacks are
+inert tests, not actual native runs. The native runner/extraction/process-closure
+implementation remains NOT PREPARED, NOT AUTHORIZED and separately review-gated.
+A future runner must configure BOTH legs as TEST_BOOT shell-mode over the FULL
+pinned Chrome archive, not compare default source shell with embedded full Chrome.
+It must source-first stop on ANY primary or identity/readiness/cleanup uncertainty
+before SEA, maximum two cold starts, no warm legs, retries or green fishing.
+The outcome matrix and instrumented-vs-uninstrumented limits above still apply.
+
+## Proposed disposable-host runner, still native-held
+
+The unexecuted runner is manual-only and not wired to push CI. A fixed Python
+wrapper runs each Node diagnostic driver under the existing ConPTY job. Its
+receipt certifies only the supervisor's directly observed driver exit, job active
+accounting, drained EOF/writer and handle checks. It does NOT prove global Chrome
+tree closure; nested browser jobs are not independently demonstrated. Kill-on-close
+and disposable hosted-VM teardown are containment backstops, not proof.
+The earlier proposed deliberately orphaning canary is withdrawn, not a third start.
+
+Per-leg fresh-root/nonces and strict single LF closure receipt bind result DATA;
+stale/missing/conflicting records stop. Parent independently compares source hash,
+SEA receipt, actual post-marker Chrome version and owned extraction relationship.
+Root rename probe failure is uncertainty/retain/stop; success is merely a negative
+lock indicator, NOT proof no process survives. No production credential read, real
+login, remote page or answer command is performed. One browser owner per leg.
+Source first and SEA only after all required observations, at most two cold starts.
+
+Both owners use pipe stdio inside a ConPTY-supervised driver. Thus this is a
+ConPTY-mediated job configuration, different from the prior standalone pipe fixture,
+and TEST_BOOT shell-mode over full pinned Chrome, not production fidelity. Ordinary
+Linux/Mac regression passes do not substitute for this Windows comparison.
+
+Outer driver120s allowance =30s hash/unpack allowance +45s owner-marker bound
++20s mock CLI-ready +10s quit +9s existing stop fallback +6s bookkeeping.
+30s hash/unpack is an ALLOWANCE, not a pinned phase deadline; slow preparation can
+still preempt.45s marker intentionally preempts the owner's internal60s selector
+ceiling: timeout is uncertainty, not navigation cause. Browser launch30s unchanged.
+Existing credential supervisor callers keep default30s; diagnostic selects120s.
+Additional supervisor closure bound27s (5process+5job+5reader+12writer), parent155s
+with8s margin. Parent timeout always uncertainty/retain. No retries or warm legs.
+
+This design remains blocked on exact runner/wrapper/privacy/inert mutation review
+and an explicit bounded native execution gate. Successful supervised observations
+will never be described as independent all-descendant process-exit certification.
