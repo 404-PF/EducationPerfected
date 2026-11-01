@@ -8,9 +8,14 @@ const {pipeline}=require('node:stream/promises'),{createGunzip}=require('node:zl
 const {unpackTar}=require('modern-tar/fs');
 const {Readable}=require('node:stream');
 const {validateLegRoot}=require('./windows-startup-root');
+function requireDiagnosticHost() {
+ if(process.platform!=='win32'||process.arch!=='x64'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Windows')throw Error('Diagnostic host guard');
+}
+function checkedCliRoot(root,mode) {requireDiagnosticHost();return validateLegRoot(root,mode);}
+function copySeaExecutable(build,executable) {fs.copyFileSync(path.join(build,'educationperfected.exe'),executable,fs.constants.COPYFILE_EXCL);}
 function driverStage(mode,nonce,stage) {console.log('EP_DIAGNOSTIC_DRIVER_STAGE='+JSON.stringify({nonce,mode,stage}));}
 async function runLeg(root,mode,nonce) {
- if(process.platform!=='win32'||process.arch!=='x64'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Windows')throw Error('Diagnostic host guard');
+ requireDiagnosticHost();
  driverStage(mode,nonce,'host-checked');
  assert.ok(['source','sea'].includes(mode));assert.match(nonce,/^[a-f0-9]{64}$/);
  root=validateLegRoot(root,mode);driverStage(mode,nonce,'leg-root-checked');
@@ -45,7 +50,7 @@ async function runLeg(root,mode,nonce) {
   for(const name of ['EP_EMAIL','EP_PASSWORD','NODE_OPTIONS','NODE_EXTRA_CA_CERTS','PUPPETEER_CACHE_DIR','PUPPETEER_BROWSER'])delete env[name];
   let executable,args;
   if(mode==='source'){executable=process.execPath;args=[path.resolve(__dirname,'../bin/cli.js')];}
-  else {executable=path.join(root,'educationperfected.exe');fs.copyFileSync(path.join(build,'educationperfected.exe'),executable);args=[];}
+  else {executable=path.join(root,'educationperfected.exe');copySeaExecutable(build,executable);args=[];}
   driverStage(mode,nonce,'spawn-entered');
   child=spawn(executable,args,{env,cwd:home,stdio:['pipe','pipe','pipe']});
   driverStage(mode,nonce,'spawn-returned');
@@ -87,11 +92,11 @@ async function runLeg(root,mode,nonce) {
  assert.deepEqual(fs.readdirSync(tmp),[]);
  result.cleanupCertain=true;driverStage(mode,nonce,'leg-complete');return result;
 }
-module.exports={runLeg};
+module.exports={runLeg,checkedCliRoot,copySeaExecutable};
 if(require.main===module)(async()=>{
  if(process.argv.length!==5)throw Error('Diagnostic arguments');const mode=process.argv[3],nonce=process.argv[4];
  if(!['source','sea'].includes(mode)||!/^[a-f0-9]{64}$/.test(nonce))throw Error('Diagnostic arguments');
- driverStage(mode,nonce,'cli-entry');const root=validateLegRoot(process.argv[2],mode);driverStage(mode,nonce,'cli-root-checked');
+ driverStage(mode,nonce,'cli-entry');const root=checkedCliRoot(process.argv[2],mode);driverStage(mode,nonce,'cli-root-checked');
  try {const result=await runLeg(root,mode,nonce);fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(result),{flag:'wx',mode:0o600});console.log('EP_DIAGNOSTIC_LEG_DONE');}
  catch(error) {if(error.diagnosticResult)fs.writeFileSync(path.join(root,'failure.json'),JSON.stringify(error.diagnosticResult),{flag:'wx',mode:0o600});console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;}
 })().catch(()=>{console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;});

@@ -45,10 +45,10 @@ const driver=fs.readFileSync(path.join(__dirname,'windows-startup-leg.js'),'utf8
 // Strip comments before checking exact marker calls; this remains a static source check,
 // not proof of reachability against arbitrary dead-code insertion.
 const executable=driver.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
-const ordered=["driverStage(mode,nonce,'cli-entry')","const root=validateLegRoot(process.argv[2],mode)","driverStage(mode,nonce,'cli-root-checked')"];
+const ordered=["driverStage(mode,nonce,'cli-entry')","const root=checkedCliRoot(process.argv[2],mode)","driverStage(mode,nonce,'cli-root-checked')"];
 let previous=-1;for(const token of ordered){const at=executable.indexOf(token);assert.ok(at>previous);previous=at;}
 const leg=executable.slice(executable.indexOf('async function runLeg'),executable.indexOf('module.exports'));
-const boundaries=["throw Error('Diagnostic host guard')","driverStage(mode,nonce,'host-checked')",'root=validateLegRoot',"driverStage(mode,nonce,'leg-root-checked')","driverStage(mode,nonce,'archive-check-entered')",'await readVerifiedArchive',"driverStage(mode,nonce,'archive-verified')","driverStage(mode,nonce,'unpack-entered')",'await pipeline',"driverStage(mode,nonce,'unpacked')","driverStage(mode,nonce,'spawn-entered')",'child=spawn',"driverStage(mode,nonce,'spawn-returned')",'await connectAfterLoginReady',"driverStage(mode,nonce,'ready-observed')",'await boundedClose',"driverStage(mode,nonce,'owner-closed')",'result.cleanupCertain=true',"driverStage(mode,nonce,'leg-complete')"];
+const boundaries=['requireDiagnosticHost();',"driverStage(mode,nonce,'host-checked')",'root=validateLegRoot',"driverStage(mode,nonce,'leg-root-checked')","driverStage(mode,nonce,'archive-check-entered')",'await readVerifiedArchive',"driverStage(mode,nonce,'archive-verified')","driverStage(mode,nonce,'unpack-entered')",'await pipeline',"driverStage(mode,nonce,'unpacked')","driverStage(mode,nonce,'spawn-entered')",'child=spawn',"driverStage(mode,nonce,'spawn-returned')",'await connectAfterLoginReady',"driverStage(mode,nonce,'ready-observed')",'await boundedClose',"driverStage(mode,nonce,'owner-closed')",'result.cleanupCertain=true',"driverStage(mode,nonce,'leg-complete')"];
 previous=-1;for(const token of boundaries){const at=leg.indexOf(token);assert.ok(at>previous,token);previous=at;}
 // Python owns these tuples; compare their literal members to the JS literal arrays.
 const panel=fs.readFileSync(path.join(__dirname,'windows-startup-panel.js'),'utf8');

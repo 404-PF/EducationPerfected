@@ -1,8 +1,16 @@
 # Windows startup diagnostic candidate (not a fix)
 
-Status: source-only preparation, unpublished. No native comparison runner or run
-is authorized by this candidate. Exact review, independent mutations and a later
-explicit native gate are required. Historical Windows startup cause is unknown.
+Status update, 2 November 2026: Phase 3 remains WIP and PR49 is unmerged.
+The historical proposals below are design history, not current execution authority.
+A separate workflow-only PR50 put a manual workflow on main, pinned to
+5e36f51abf5b69510c30adffbe832654df79d28b. Its one approved invocation
+[41348821347](https://github.com/404-PF/EducationPerfected/actions/runs/41348821347)
+stopped with source uncertainty before SEA. Source browser start and failure cause
+remain unestablished. Its authorization window has expired; no repeat, new pin or
+new diagnostic invocation is authorized by this document. Later branch changes,
+including the zero-browser transport probe, have not been manually run natively.
+Existing standard platform CI is separate evidence. Historical Windows startup
+cause is still unknown.
 
 ## Instrumentation and observer boundary
 
@@ -166,3 +174,32 @@ browser creation. No raw child output, paths, exception text or credentials are
 printed. This adds observation only: budgets, cleanup decisions and source-first
 stop-on-uncertainty behavior are unchanged. Callback delivery does not certify
 closure. Inert/static tests are not native driver execution or a cause finding.
+
+## Diagnostic path security boundary assessment
+
+The 14 S8707 annotations share the diagnostic leg's CLI root input; they are not
+14 independent input sources and are not the normal product CLI's argument path.
+On main the separate manual workflow invokes the old pinned panel; absence of a
+workflow file on a particular PR branch is not absence of deployed history.
+The panel creates the root and selects the fixed helper/driver. Host flags are
+usage guards, not authentication against a local caller able to set environment.
+
+The leg checks the intended Windows x64 hosted environment before CLI root
+metadata access, then retains the canonical direct-temp/layout/symlink checks and
+its separate empty-directory assertion. SEA copy refuses an existing destination
+rather than overwriting it. These are bounded fail-closed controls, not a sandbox.
+
+Path canonicalization does not freeze later descendants. A controlled POSIX
+synthetic test can validate a leg root, replace its tmp descendant with a symlink,
+and cause later pathname operations to resolve outside that leg. The origin
+helper canonicalizes the supplied root too, so it cannot independently authenticate
+the original creator after such a swap. A correctly named fresh empty root can
+also be supplied by another local caller. These are explicit ownership/stability
+assumptions, not observed intrusion, remote exploit, Windows junction evidence or
+acceptance of the findings. POSIX 0700/current-uid evidence does not establish
+Windows ACLs. Repeated realpath checks would not provide race-free operations.
+
+No same-user hostile-writer resistance, OS isolation policy or handle-bound
+redesign is claimed here. The existing disposable-host/manual diagnostic contract
+must be reviewed against these limits. Findings are not suppressed or classified
+as false positives by this document, and it grants no native run or release.
