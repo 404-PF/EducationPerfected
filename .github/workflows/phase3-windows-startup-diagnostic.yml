@@ -1,0 +1,83 @@
+name: Phase 3 manual Windows startup diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: phase3-single-authorized-windows-startup-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Reject duplicate or rerun before browser effects
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import datetime, json, os, urllib.request
+          if os.environ['GITHUB_REPOSITORY'] != '404-PF/EducationPerfected' or os.environ['GITHUB_EVENT_NAME'] != 'workflow_dispatch' or os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['GITHUB_RUN_ATTEMPT'] != '1':
+              raise SystemExit('Diagnostic invocation guard rejected')
+          cutoff = datetime.datetime.fromisoformat('2026-11-01T22:41:52+00:00')
+          if cutoff.tzinfo is None or datetime.datetime.now(datetime.timezone.utc) >= cutoff:
+              raise SystemExit('Diagnostic authorization window expired')
+          run_id = int(os.environ['GITHUB_RUN_ID'])
+          url = 'https://api.github.com/repos/404-PF/EducationPerfected/actions/workflows/phase3-windows-startup-diagnostic.yml/runs?per_page=100'
+          request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              payload = json.load(response)
+          runs = payload['workflow_runs']
+          if payload['total_count'] != len(runs):
+              raise SystemExit('Diagnostic history incomplete')
+          if not any(run['id'] == run_id for run in runs) or any(run['id'] < run_id for run in runs):
+              raise SystemExit('Diagnostic first-invocation guard rejected')
+          print('First invocation only; reruns and later dispatches fail before browser effects.')
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: 5e36f51abf5b69510c30adffbe832654df79d28b
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - name: Check exact source and diagnostic host
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($actual -ne '5e36f51abf5b69510c30adffbe832654df79d28b') { throw 'Diagnostic source identity mismatch' }
+          Write-Output $actual
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node -e "if(process.platform!=='win32'||process.arch!=='x64'||process.version!=='v22.23.4')process.exit(1);console.log('Fixed Windows x64 Node identity checked.');"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output 'Manual maximum two cold starts, source first, stop at uncertainty. No retry, warm leg, canary, real account or release.'
+      - name: Install exact locked dependencies without lifecycle hooks
+        run: npm ci --ignore-scripts
+      - name: Check inert diagnostic contracts before native starts
+        run: |
+          node scripts/test-navigation-cause-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/packaged-fixture-page-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/startup-browser-identity-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/test-browser-identity-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/windows-startup-root-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/windows-startup-panel-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/windows-startup-leg-helper-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install pinned full Chrome archive source
+        run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+      - name: Build exact current-source unsigned development SEA in this job
+        run: npm run build:windows-dev
+      - name: Run one bounded source-first diagnostic panel
+        run: |
+          $env:EP_FIXTURE_PYTHON = python -c "import sys; print(sys.executable)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/windows-startup-panel.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Manual dispatch only. No upload, retry, release, real account or policy changes.
+      # Disposable VM teardown and kill-on-close are backstops, not global tree-exit proof.
