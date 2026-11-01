@@ -3,6 +3,7 @@
 import importlib.util, pathlib, tempfile, shutil
 spec=importlib.util.spec_from_file_location('fixture',pathlib.Path(__file__).with_name('macos-isolated-store-test.py'))
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
+passphrases=[]
 
 def probe(scenario):
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-inert-mac-'))
@@ -25,6 +26,9 @@ def probe(scenario):
             if '-s' in args:state['list']=list(args[args.index('-s')+1:]);return ''
             return '\n'.join(repr(x)for x in state['list'])
         if op=='create-keychain':
+            value=args[args.index('-p')+1]
+            assert len(value)>=32 and value not in passphrases
+            passphrases.append(value)
             pathlib.Path(owned).touch();state['list'].append(owned)
             if scenario=='create-failure':raise primary
         if op=='delete-keychain':pathlib.Path(owned).unlink()

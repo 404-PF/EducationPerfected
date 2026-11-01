@@ -21,16 +21,25 @@ def drain_pty(master, data, ready=None, read=None, clock=time.monotonic):
         data += chunk
     return data
 
+STAGE = 'host-guard'
+
+def checkpoint(stage):
+    global STAGE
+    STAGE = stage
+    print('Mac store child checkpoint: ' + stage, flush=True)
+
 def main():
     if sys.platform != 'darwin' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or len(sys.argv) != 2:
         raise RuntimeError('Requires owned disposable Mac fixture context')
     root = pathlib.Path(sys.argv[1]).resolve()
     owned = str(root / 'synthetic.keychain-db')
     import shlex
+    checkpoint('inherited-selection')
     for command in ('default-keychain', 'list-keychains'):
         result = subprocess.run(['/usr/bin/security', command, '-d', 'user'], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         if shlex.split(result.stdout) != [owned]:
             raise RuntimeError('Owned keychain verification required')
+    checkpoint('fixture-paths')
     repo = pathlib.Path(__file__).resolve().parent.parent
     node = shutil_which_node()
     arch = 'arm64' if platform.machine() == 'arm64' else 'x64'
@@ -42,6 +51,7 @@ def main():
     for directory in (home,tmp,empty):
         directory.mkdir(mode=0o700)
     env.update(HOME=str(home), TMPDIR=str(tmp), PATH=str(empty))
+    checkpoint('fresh-home-selection')
     for keychain_command in ('default-keychain', 'list-keychains'):
         selection = subprocess.run(['/usr/bin/security', keychain_command, '-d', 'user'], env=env, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         if shlex.split(selection.stdout) != [owned]:
@@ -51,8 +61,10 @@ def main():
     # Source and packaged setup each start from an independently verified absent record.
     verify_absent = "require('./lib/credential-store').createCredentialStore().read().then(x=>{if(x!==null)process.exitCode=1}).catch(()=>{process.exitCode=1})"
     verify_saved = "require('./lib/credential-store').createCredentialStore().read().then(x=>{if(x?.email!==['fixture','example.test'].join('@')||x?.password!==['synthetic','mac','only'].join('-'))process.exitCode=1}).catch(()=>{process.exitCode=1})"
-    for command in ([node,str(repo/'bin/cli.js')], [str(executable)]):
+    for label, command in [('source',[node,str(repo/'bin/cli.js')]), ('sea',[str(executable)])]:
+        checkpoint(label+'-absence')
         run([node,'-e',verify_absent])
+        checkpoint(label+'-setup')
         master, slave = pty.openpty(); child=None
         try:
             child = subprocess.Popen([*command,'--setup'], stdin=slave, stdout=slave, stderr=slave, cwd=repo, env=env, close_fds=True)
@@ -73,12 +85,15 @@ def main():
             if child is not None and child.poll() is None:
                 child.kill();child.wait(timeout=10)
             os.close(master);os.close(slave)
+        checkpoint(label+'-saved-verification')
         run([node,'-e',verify_saved])
         if any(tmp.iterdir()):
             raise RuntimeError('Mac setup extraction residue')
+        checkpoint(label+'-delete')
         result = run([*command,'--forget-credentials'])
         if b'Saved login removed from the OS credential store.' not in result.stdout:
             raise RuntimeError('Mac credential deletion not confirmed')
+        checkpoint(label+'-deleted-verification')
         run([node,'-e',verify_absent])
         if any(tmp.iterdir()):
             raise RuntimeError('Mac deletion extraction residue')
@@ -95,5 +110,5 @@ if __name__=='__main__':
     try:
         main()
     except BaseException:
-        print('Mac synthetic credential child failed; no record or native error contents printed.',file=sys.stderr)
+        print('Mac synthetic credential child failed at fixed checkpoint: '+STAGE+'; no record or native error contents printed.',file=sys.stderr)
         sys.exit(1)

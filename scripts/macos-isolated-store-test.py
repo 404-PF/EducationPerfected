@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Hosted disposable Mac only. No existing keychain contents or signing identity access."""
-import os, sys, pathlib, platform, subprocess, tempfile, shlex, shutil, signal, time
+import os, sys, pathlib, platform, subprocess, tempfile, shlex, shutil, signal, time, secrets
 
 SECURITY = '/usr/bin/security'
 
@@ -23,8 +23,8 @@ def isolated_store(run_fixture, call=security, root_factory=None):
     owned = str(root / 'synthetic.keychain-db')
     primary = None
     cleanup_failed = False
-    # Fixed disposable fixture passphrase, not an account credential.
-    password = 'disposable-ep-synthetic-only'
+    # Ephemeral owned-test-store passphrase, never printed or persisted.
+    password = secrets.token_urlsafe(32)
     try:
         call('create-keychain', '-p', password, owned)
         call('unlock-keychain', '-p', password, owned)
@@ -32,6 +32,7 @@ def isolated_store(run_fixture, call=security, root_factory=None):
         call('list-keychains', '-d', 'user', '-s', owned)
         if keychain_paths(call('default-keychain', '-d', 'user')) != [owned] or keychain_paths(call('list-keychains', '-d', 'user')) != [owned]:
             raise RuntimeError('Owned keychain selection did not verify; no credential operations allowed')
+        print('Mac store parent checkpoint: owned-selection-verified', flush=True)
         run_fixture(root)
     except BaseException as error:
         primary = error
@@ -59,6 +60,7 @@ def isolated_store(run_fixture, call=security, root_factory=None):
             cleanup_failed = True
         if not cleanup_failed:
             shutil.rmtree(root)
+            print('Mac store parent checkpoint: metadata-restored-owned-keychain-removed', flush=True)
         else:
             print('Disposable Mac keychain cleanup or metadata restoration failed; owned root retained.', file=sys.stderr)
     if primary:
