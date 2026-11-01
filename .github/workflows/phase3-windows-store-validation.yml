@@ -23,7 +23,7 @@ jobs:
         run: |
           git rev-parse HEAD
           node --version
-          Write-Output 'Source worker CRUD plus SEA delete-only proof. No browser startup, packaged setup/read, console or no-Node proof.'
+          Write-Output 'Synthetic source worker CRUD and SEA interactive setup, health read and delete. No browser startup, physical console or no-Node proof.'
       - name: Install pinned dependencies without lifecycle hooks or browser
         run: npm ci --ignore-scripts
       - name: Check synthetic worker ownership contracts
@@ -41,12 +41,17 @@ jobs:
           python scripts/windows-conpty-capability.py $node
       - name: Exercise real synthetic native credential operations through workers
         run: node scripts/windows-native-worker-store-test.js
-      - name: Check packaged deletion policy with inert state
-        run: node scripts/windows-packaged-store-delete-policy-test.js
+      - name: Check packaged setup receipt and ownership policy with inert state
+        run: |
+          python scripts/windows-sea-setup-helper-test.py
+          node scripts/windows-setup-receipt-test.js
+          node scripts/windows-packaged-store-delete-policy-test.js
       - name: Install pinned browser asset for native development SEA build
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
       - name: Build native unsigned development SEA
         run: npm run build:windows-dev
-      - name: Exercise packaged deletion without browser startup
-        run: node scripts/windows-packaged-store-delete-test.js
+      - name: Exercise packaged synthetic interactive setup, health read and deletion without browser startup
+        run: |
+          $env:EP_FIXTURE_PYTHON = python -c "import sys; print(sys.executable)"
+          node scripts/windows-packaged-store-delete-test.js
       # No real credentials, browser launch, artifacts, account settings or release.

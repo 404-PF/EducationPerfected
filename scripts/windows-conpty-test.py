@@ -15,7 +15,9 @@ class API:
     def CreatePipe(self,a,b,*args):
         if self.scenario=='pipe-create':return 0
         a._obj.value=self.next;b._obj.value=self.next+1;self.next+=2;return 1
-    def CloseHandle(self,h):self.closed.append(h.value);return 1
+    def CloseHandle(self,h):
+        self.closed.append(h.value)
+        return 0 if self.scenario=='echo-close-failure' and h.value==33 else 1
     def CreatePseudoConsole(self,*args):args[-1]._obj.value=None if self.scenario=='console-null' else 30;return -1 if self.scenario=='console-create' else 0
     def ClosePseudoConsole(self,h):self.console_closed.set()
     def InitializeProcThreadAttributeList(self,buf,n,flags,size):
@@ -58,7 +60,7 @@ class API:
         if self.reads==1:chunk=b'EP password' if self.scenario=='order' else b'EP emailEP email' if self.scenario=='duplicate' else b'EP email'
         elif self.reads==2:
             if not self.ready.wait(2):raise RuntimeError('inert missing input')
-            chunk=b'Login saved in the OS credential store.'+(b'public-answer' if self.scenario=='echo' else b'')
+            chunk=b'Login saved in the OS credential store.'+(b'public-answer' if self.scenario in ('echo','echo-close-failure') else b'')
             if self.scenario=='readiness':chunk+=b'\n'
             if self.scenario=='readiness':chunk+=b'CONPTY_CAPABILITY stdinTTY=1 stdoutTTY=0 rawMode=1\r\n'
             if self.scenario=='readiness-lf':chunk+=b'\nCONPTY_CAPABILITY stdinTTY=1 stdoutTTY=0 rawMode=1\n'
@@ -69,7 +71,7 @@ class API:
         else:self.console_closed.wait(2);c.set_last_error(109);return 0
         c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
     def WriteFile(self,h,data,size,count,overlap):self.writes.append(data.raw[:size]);count._obj.value=size;self.ready.set();return 1
-for scenario in ['success','assignment','console-create','timeout','echo','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero','console-null']:
+for scenario in ['success','assignment','console-create','timeout','echo','echo-close-failure','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero','console-null']:
     api=API(scenario);clock_values=iter(range(0,6000,6))
     # Only the live-job failure needs an accelerated deadline; others use real time.
     kwargs={'clock':lambda:next(clock_values,6000)} if scenario=='job-live' else {}
@@ -86,7 +88,10 @@ for scenario in ['success','assignment','console-create','timeout','echo','job-l
     if scenario=='job-live':assert isinstance(error,m.ExitUnconfirmed) and str(error)=='job-exit-unconfirmed'
     if scenario=='order':assert str(error)=='console-prompt-order'
     if scenario=='duplicate':assert str(error)=='console-duplicate-prompt'
-    if scenario=='echo':assert str(error)=='console-input-echoed'
+    if scenario in ('echo','echo-close-failure'):
+        assert isinstance(error,m.ExitUnconfirmed) and str(error)=='console-input-echoed'
+        assert isinstance(error.__cause__,RuntimeError) and str(error.__cause__)=='console-input-echoed'
+    if scenario=='echo-close-failure':assert 33 in api.closed
     if scenario=='output-cap':assert str(error)=='console-output-limit'
     if scenario=='child-nonzero':assert str(error)=='console-child-nonzero'
 print('ConPTY inert API/ABI ownership controls: creation/assignment fail closed, timeout, drained echo and job-live retention discriminated. Native Windows pending.')
