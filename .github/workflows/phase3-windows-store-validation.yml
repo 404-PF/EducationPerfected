@@ -43,6 +43,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/native-resolver-proof-test.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/native-resolver-portability-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/sea-checksum-test.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/bootstrap-cleanup-test.js

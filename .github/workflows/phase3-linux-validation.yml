@@ -33,6 +33,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Check Windows workflow fail-fast source policy
         run: python3 scripts/windows-workflow-policy-test.py
+      - name: Check resolver mutation path portability with inert source
+        run: node scripts/native-resolver-portability-test.js
       - name: Install pinned Puppeteer browsers explicitly
         run: |
           node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
