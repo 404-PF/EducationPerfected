@@ -1,5 +1,5 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
-const {validateLegRoot}=require('./windows-startup-root');
+const {validateLegRoot,createPanelRoot}=require('./windows-startup-root');
 const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'ep-startup-panel-')),source=path.join(root,'source'),sea=path.join(root,'sea');fs.mkdirSync(source);fs.mkdirSync(sea);
 const expected={message:'Diagnostic root uncertainty'};
 function rejectsBeforeMetadata(value,mode='source') {
@@ -24,12 +24,13 @@ try {
   try {
    os.tmpdir=()=>aliasTemp;
    const panelSource=fs.readFileSync(path.join(__dirname,'windows-startup-panel.js'),'utf8');
-   const expression=panelSource.match(/const root=(fs\.mkdtempSync\([^;]+);/)[1];
-   const panelRoot=require('node:vm').runInNewContext(expression,{fs,path,os}),leg=path.join(panelRoot,'source');fs.mkdirSync(leg);
-   assert.equal(validateLegRoot(leg,'source'),fs.realpathSync(leg),'Actual panel root creation accepts aliased temp through canonical root');
+   assert.ok(panelSource.includes("const {createPanelRoot}=require('./windows-startup-root');"));
+   assert.ok(panelSource.includes('const root=createPanelRoot();'));
+   const panelRoot=createPanelRoot(),leg=path.join(panelRoot,'source');fs.mkdirSync(leg);
+   assert.equal(validateLegRoot(leg,'source'),fs.realpathSync(leg),'Shared panel root creation accepts aliased temp through canonical root');
   } finally {os.tmpdir=originalTemp;fs.rmSync(aliasRoot,{recursive:true,force:true});}
  }
  if(process.platform!=='win32') {const other=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'ep-startup-panel-'));try{fs.symlinkSync(source,path.join(other,'source'));assert.throws(()=>validateLegRoot(path.join(other,'source'),'source'),expected);}finally{fs.rmSync(other,{recursive:true,force:true});}}
  else console.log('SKIP: native Windows symlink/junction fixture not executed.');
- console.log('Inert static paths: source and sea accepted; raw traversal, wrong mode/name, relative and outside-direct-temp roots rejected before root metadata; POSIX final symlink rejected and actual panel canonical creation accepts aliased temp when available. No ownership/race/native Windows proof.');
+ console.log('Inert static paths: source and sea accepted; raw traversal, wrong mode/name, relative and outside-direct-temp roots rejected before root metadata; POSIX final symlink rejected and shared panel canonical creation accepts aliased temp when available. No ownership/race/native Windows proof.');
 }finally{fs.rmSync(root,{recursive:true,force:true});}

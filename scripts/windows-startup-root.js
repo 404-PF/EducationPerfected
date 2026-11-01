@@ -10,4 +10,5 @@ function validateLegRoot(root,mode) {
  if(path.dirname(actualParent)!==temp||path.dirname(actual)!==actualParent||path.basename(actual)!==mode)throw Error('Diagnostic root uncertainty');
  return actual;
 }
-module.exports={validateLegRoot};
+function createPanelRoot() {return fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'ep-startup-panel-'));}
+module.exports={validateLegRoot,createPanelRoot};

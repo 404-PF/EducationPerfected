@@ -1,7 +1,8 @@
 // Deliberate manual entrypoint only. Not wired to push/workflow/test scripts.
-const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process');
 const {randomBytes}=require('node:crypto');
+const {createPanelRoot}=require('./windows-startup-root');
 const {verifyArchive,runStagedPanel}=require('./startup-browser-identity');
 function strictJobReceipt(result,nonce) {
  return /^[a-f0-9]{64}$/.test(nonce) && !result.error && result.status===0 && result.signal===null && result.stderr==='' &&
@@ -35,7 +36,7 @@ async function runPanel() {
  let expected;
  try {expected=await verifyArchive(path.join(build,'browser.tar.gz'),JSON.parse(fs.readFileSync(path.join(build,'manifest.json'),'utf8')));}
  catch {console.log('EP_DIAGNOSTIC_PANEL='+JSON.stringify({outcome:'uncertainty',leg:'identity',seaAttempted:false}));process.exitCode=1;return;}
- const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'ep-startup-panel-'));
+ const root=createPanelRoot();
  const leg=mode=>async()=>{
   const nonce=randomBytes(32).toString('hex');
   const owned=path.join(root,mode);fs.mkdirSync(owned,{mode:0o700});
