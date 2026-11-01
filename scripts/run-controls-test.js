@@ -77,6 +77,14 @@ const { createRunControls } = require('../lib/run-controls');
     assert.match(diagnostic(new Error('Missing X server or DISPLAY')), /could not launch/);
     assert.doesNotMatch(diagnostic(new Error('Question displayed unexpectedly')), /display and system browser/);
     assert.doesNotMatch(diagnostic(new Error('REDISPLAY')), /display and system browser/);
+    for (const marker of ['No usable sandbox!', 'Failed to move to new namespace', 'The SUID sandbox helper binary was found, but is not configured correctly']) {
+        const output = diagnostic(new Error(marker+' private-fixture-secret https://sensitive.invalid/?token=fixture'), 'Startup');
+        assert.match(output,/browser sandbox was blocked by operating-system policy/);
+        assert.match(output,/do not disable the browser sandbox/);
+        assert.doesNotMatch(output,/private-fixture|sensitive.invalid|token=|--no-sandbox|sysctl|chmod/);
+    }
+    assert.doesNotMatch(diagnostic(new Error('A page says sandbox in ordinary content')), /operating-system policy/);
+
     const { windowsTaskkillPath } = require('./test-process-cleanup');
     assert.equal(windowsTaskkillPath('C:\\Windows'), 'C:\\Windows\\System32\\taskkill.exe');
     assert.throws(() => windowsTaskkillPath('Windows'));
