@@ -17,9 +17,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          import json, os, urllib.request
+          import datetime, json, os, urllib.request
           if os.environ['GITHUB_REPOSITORY'] != '404-PF/EducationPerfected' or os.environ['GITHUB_EVENT_NAME'] != 'workflow_dispatch' or os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['GITHUB_RUN_ATTEMPT'] != '1':
               raise SystemExit('Diagnostic invocation guard rejected')
+          cutoff = datetime.datetime.fromisoformat('2026-11-01T22:41:52+00:00')
+          if cutoff.tzinfo is None or datetime.datetime.now(datetime.timezone.utc) >= cutoff:
+              raise SystemExit('Diagnostic authorization window expired')
           run_id = int(os.environ['GITHUB_RUN_ID'])
           url = 'https://api.github.com/repos/404-PF/EducationPerfected/actions/workflows/phase3-windows-startup-diagnostic.yml/runs?per_page=100'
           request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
