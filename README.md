@@ -231,7 +231,7 @@ The native store uses Windows Credential Manager, macOS Keychain, or Linux Secre
 
 A saved login is read as one versioned record. Existing environment-variable and optional legacy keytar inputs are retained for source-build compatibility. Setup does not delete older legacy-keytar entries. `--forget-credentials` removes only the new record, so older inputs may still supply a login.
 
-This is source-build work, not a packaged release. The native Node binding has a Linux x64 disposable-session test; Windows, macOS and ARM runtime checks are still pending. Browser bundling, native module extraction, signing/distribution and five-target release checks must pass before claiming standalone support. Run `npm run test:store` for isolated adapter/setup contract tests; those tests never access a real credential store.
+This is source-build work, not a packaged release. Native disposable tests now cover Linux x64/ARM64 private-store CRUD, Windows x64 source-worker CRUD and packaged deletion, plus Mac ARM64/Intel source CRUD and packaged setup/health-read/delete. Mac exact packaged values, Windows packaged setup/read and normal sign-in use remain unproved; see `release/native-validation.md`. Browser bundling, native module extraction, signing/distribution and five-target release checks must pass before claiming standalone support. Run `npm run test:store` for isolated adapter/setup contract tests; those tests never access a real credential store.
 
 ## Linux x64/ARM64 standalone development build
 

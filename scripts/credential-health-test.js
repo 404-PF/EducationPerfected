@@ -9,7 +9,7 @@ async function probe(kind, scenario) {
         async read() {
             reads++;
             if (scenario === 'error') throw Error('do-not-print-fixture-secret');
-            return scenario === 'valid' ? { email: 'fixture@example.test', password: 'synthetic-hidden' } : null;
+            return scenario === 'valid' ? { email: 'fixture@example.test', password: 'synthetic-hidden' } : null; // NOSONAR: public inert fixture only; exact-path credential scanner exemption, never a real login.
         },
         async save() { writes++; },
         async remove() { removes++; },
@@ -51,7 +51,7 @@ async function probe(kind, scenario) {
     };
     load.main = moduleFixture;
     // Fixed repository source and inert store/OS only, never external code.
-    vm.runInNewContext(source, {
+    vm.runInNewContext(source, { // NOSONAR: fixed repository CLI/bootstrap source above; inert store/OS only, no external code or input.
         require: load, module: moduleFixture, process: fakeProcess, Buffer,
         console: { log: line => { output += line; }, error: line => { output += line; } },
     });
