@@ -37,13 +37,16 @@ jobs:
           echo 'Development ad-hoc build only; no certificate, notarization, release or distribution policy.'
       - name: Install pinned dependencies without lifecycle hooks
         run: npm ci --ignore-scripts
-      - name: Install pinned browser explicitly
-        run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+      - name: Install pinned browsers explicitly
+        run: |
+          node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+          node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell
       - name: Check native fixture contracts before build
         run: |
           npm run test:packaged-harness
           npm run test:store
           npm run test:release-gate
+          npm run test:phase3
       - name: Build native SEA with development ad-hoc signature
         run: npm run build:macos-dev
       - name: Verify generated artifact signature
