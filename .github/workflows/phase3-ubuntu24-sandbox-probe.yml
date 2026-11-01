@@ -1,0 +1,34 @@
+name: Phase 3 Ubuntu24 sandbox baseline probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - name: Record exact source and kernel
+        run: |
+          git rev-parse HEAD
+          uname -a
+      - name: Install exact dependencies without lifecycle hooks
+        run: npm ci --ignore-scripts
+      - name: Check probe policy with inert state
+        run: node scripts/ubuntu24-sandbox-probe-test.js
+      - name: Install pinned Chrome asset
+        run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+      - name: Inspect restricted baseline and try sandbox-enabled about blank once
+        timeout-minutes: 1
+        run: node scripts/ubuntu24-sandbox-probe.js
+      # No sudo, AppArmor/profile/sysctl/SUID changes, browser bypass or artifacts.

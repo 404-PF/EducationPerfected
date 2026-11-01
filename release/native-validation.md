@@ -83,3 +83,20 @@ Recovered upstream notice files are checked out without text conversion so their
 On each native Mac architecture separately, install the pinned dependencies/browser and run `npm run build:macos-dev`, then `npm run test:packaged:cli`. The latter selects only `build/macos-<native arch>/educationperfected`; it offers no executable override or cross-architecture fallback. It uses the local mock server and does not submit to live Education Perfect. A successful run would cover the copied artifact, embedded browser path, local sign-in, semi-auto without submission, stop/quit and extraction cleanup on that host. Merely selecting the path or passing synthetic tests proves none of these native behaviors.
 
 Do not use `npm run test:packaged` as the Mac command: its native integrity fixture still supports Linux/Windows only. Damaging a signed Mach-O can cause the OS signature gate to reject it before the bootstrap checksum gate. Mac corruption/signature/quarantine tests need their own native protocol and are still pending. CLI-fixture results also do not prove credential-store operations, real terminal events, downloaded/quarantined launch, notarization or clean-machine/no-Node support. No native Mac run is recorded by this source change.
+
+
+## Current-source native checkpoint: 1 November 2026
+
+Commit `fc4ef1bd7ed979c3d33206220af4a22588c9967d` passed the [Mac ARM64/Intel matrix](https://github.com/404-PF/EducationPerfected/actions/runs/41295402724), [Windows source worker/SEA-delete lane](https://github.com/404-PF/EducationPerfected/actions/runs/41295402619), and [Linux x64/ARM64 matrix](https://github.com/404-PF/EducationPerfected/actions/runs/41295402703). Earlier sections above are historical checkpoints, not the latest coverage.
+
+- Linux: native synthetic private Secret Service CRUD, packaged setup/delete with independent source verification, packaged browser/local controls/checksum/signals/cleanup.
+- Windows: real source-worker synthetic CRUD, worker exit and DLL unlink; production SEA deletion of a source-prepared record, independent source null read and extraction cleanup. Not packaged setup/read, browser reliability, real console events or no-Node proof.
+- Mac: full source controls, SEA build, development ad-hoc verification, local-mock packaged browser, source exact synthetic CRUD, SEA setup/fresh-process health-read/delete with independent source absence and extraction cleanup. Hosted-only owned temporary keychain selection and restoration were verified. Inherited HOME, not clean-profile/no-Node/Gatekeeper certification. Health read validates record shape, not exact saved bytes or normal answer-path use. The earlier source Node read of a SEA-created record timed out on both architectures; no ACL workaround was applied and its cause remains unproved.
+
+No merge, release, binary upload, certificate identity or distribution clearance follows from these passes. Ubuntu24 support, Windows startup reliability, real console/clean-machine checks, Mac exact saved value/normal sign-in read, quarantine/Gatekeeper and rights/signing gates remain open.
+
+### Ubuntu24 baseline investigation
+
+The dispatch-only probe records current hosted Ubuntu24 AppArmor policy and tries the pinned installed browser once on `about:blank` with its sandbox enabled. It refuses unrestricted/unknown policy as compatibility evidence and does not alter AppArmor, sysctls, SUID helpers or use `--no-sandbox`. No native result exists yet. Even a pass would not certify SEA random extraction paths or a stock desktop installation.
+
+Sources: [Puppeteer troubleshooting](https://pptr.dev/troubleshooting), [Chromium user-namespace restrictions](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md), [Ubuntu AppArmor](https://documentation.ubuntu.com/security/security-features/privilege-restriction/apparmor/). Broad allowlisting of user-writable extraction trees or global namespace-policy disabling is not an approved packaged workaround.
