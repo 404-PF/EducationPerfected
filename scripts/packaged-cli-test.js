@@ -10,10 +10,7 @@ const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
 (async () => {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
- const target = process.platform === 'win32' && process.arch === 'x64'
-  ? '../build/windows-x64/educationperfected.exe' : '../build/linux-'+process.arch+'/educationperfected';
- if (!(process.platform === 'linux' && ['x64','arm64'].includes(process.arch)) && !(process.platform === 'win32' && process.arch === 'x64')) throw Error('No packaged fixture target for this platform');
- const executable = path.resolve(__dirname, target);
+ const { executable, filename } = require('./packaged-fixture-target').packagedFixtureTarget();
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError, primaryError;
  function reportResidue() {
@@ -56,7 +53,7 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  const env = {...process.env, HOME:home, USERPROFILE:home, XDG_CONFIG_HOME:path.join(home,'config'), XDG_CACHE_HOME:path.join(home,'cache'), XDG_DATA_HOME:path.join(home,'data'), XDG_RUNTIME_DIR:runtime, PATH:emptyPath, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
  if (process.platform === 'win32') { env.TEMP = isolated; env.TMP = isolated; }
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
- const copy = path.join(isolated, process.platform === 'win32' ? 'educationperfected.exe' : 'educationperfected'); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
+ const copy = path.join(isolated, filename); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
  child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
  let text='';
  child.once('error', error => { spawnError=error; });
