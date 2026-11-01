@@ -2148,7 +2148,10 @@ async function launchProgram({ legacySignals = false } = {}) {
  * @returns {Promise<void>}
  */
             async function toggleLoop() {
-                if (controls.status().state === 'running') {
+                if (controls.status().state === 'running' && !TOGGLE) {
+                    console.log('Restarting answerLoop after cleanup.');
+                    await controls.restartAfterDrain();
+                } else if (controls.status().state === 'running') {
                     console.log('Stopping answerLoop.');
                     await controls.stop();
                 } else if (['stopped', 'error', 'completed'].includes(controls.status().state)) {

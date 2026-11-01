@@ -53,6 +53,22 @@ const { createRunControls } = require('../lib/run-controls');
     queued.start(); queued.browserClosed();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(queuedRuns, 0); assert.equal(queued.status().state, 'closed');
+    for (const action of ['restart', 'stop', 'close', 'browserClosed']) {
+        let count = 0, releaseDrain;
+        const draining = createRunControls({
+            run: () => { count++; return count === 1 ? new Promise(resolve => { releaseDrain = resolve; }) : Promise.resolve(); },
+            requestStop() {}, setMode() {}, refresh() {}, close() {},
+        });
+        draining.start(); await Promise.resolve();
+        const restart = draining.restartAfterDrain();
+        assert.equal(draining.status().state, 'stopping');
+        const duplicate = draining.restartAfterDrain();
+        const supersede = action === 'stop' ? draining.stop() : action === 'close' ? draining.close() : action === 'browserClosed' ? draining.browserClosed() : null;
+        releaseDrain(); await restart; await duplicate; await supersede;
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(count, action === 'restart' ? 2 : 1, 'Explicit ' + action + ' must supersede a pending restart; duplicate restart must not duplicate work');
+        await draining.close();
+    }
     const { diagnostic } = require('../lib/diagnostics');
     const secret = new Error('private payload https://user:password@example.invalid/private'); secret.code = 'ENOENT';
     assert.match(diagnostic(secret), /ENOENT.*missing/);
