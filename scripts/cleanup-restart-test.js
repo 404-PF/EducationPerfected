@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
+const { boundedClose } = require('./packaged-test-cleanup');
+const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
 (async () => {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -12,6 +14,7 @@ const { createServer } = require('./mock-ep');
     delete process.env.EP_EMAIL; delete process.env.EP_PASSWORD;
     let browser, controls, loginReady = false, entries = 0, completed = false, held = false, releaseCleanup;
     const cleanupGate = new Promise(resolve => { releaseCleanup = resolve; });
+    let primaryFailure;
     const load = Module._load, launchBrowser = puppeteer.launch.bind(puppeteer), log = console.log;
     Module._load = function (id, ...args) {
         const value = load.call(this, id, ...args);
@@ -57,20 +60,26 @@ const { createServer } = require('./mock-ep');
         };
         await wait(() => held);
         assert.equal(controls.status().state, 'running', 'The real run is still draining');
-        const restart = page.evaluate(() => window.startAnswer());
+        assert.equal(await page.evaluate(() => window.fixtureExitClicks), 1, 'Natural completion must have clicked the fixture exit');
+        await page.keyboard.down('Alt');
+        try { await page.keyboard.press('s'); } finally { await page.keyboard.up('Alt'); }
         await wait(() => controls.status().state === 'stopping');
         releaseCleanup();
-        await restart;
         await wait(() => entries >= 2 || !['running','stopping'].includes(controls.status().state));
         assert.equal(entries, 2, 'Hotkey during natural cleanup must start one fresh run after drain');
-        await controls.stop();
+        await boundedClose(controls.stop(), 10000, 'Restarted run drain timed out');
         console.log('Actual-program cleanup gate preserves hotkey restart after draining.');
-    } finally {
+    } catch (error) { primaryFailure = error; throw error; } finally {
         releaseCleanup();
         Module._load = load; console.log = log;
-        if (controls) await controls.close(); else if (browser) await browser.close();
-        for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
-        Object.assign(process.env, savedEnv);
-        server.close();
+        await finishFixtureCleanup(primaryFailure, [
+            async () => { if (controls) await boundedClose(controls.close(), 10000, 'Cleanup restart fixture close timed out'); },
+            async () => { if (browser) await boundedClose(browser.close(), 5000, 'Fixture browser close timed out'); },
+            () => {
+                for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+                Object.assign(process.env, savedEnv);
+            },
+            () => new Promise(resolve => server.close(resolve)),
+        ]);
     }
 })().catch(error => { console.error(error); process.exitCode = 1; });
