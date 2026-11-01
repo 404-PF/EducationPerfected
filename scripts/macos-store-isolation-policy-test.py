@@ -122,3 +122,35 @@ try:
     assert captured[-2]['HOME']=='/inert-original-home'
 finally:shutil.rmtree(alias_parent)
 print('Mac native child retains runner HOME and verified metadata with owned TMP/empty PATH (inert only).')
+
+# Full child sequencing inertly distinguishes exact source read from SEA acknowledgement.
+root=pathlib.Path(tempfile.mkdtemp(prefix='ep-inert-sequence-')).resolve()
+owned=str(root/'synthetic.keychain-db');calls=[];record=None
+class FixedChild:
+    returncode=0
+    done=False
+    def wait(self,timeout):self.done=True;return 0
+    def poll(self):return 0 if self.done else None
+output=b'EP email EP password Login saved in the OS credential store.'
+def sequence_run(args, **kwargs):
+    global record
+    if args[0]=='/usr/bin/security':return subprocess.CompletedProcess(args,0,stdout=repr(owned),stderr='')
+    if args[-1]=='--forget-credentials':
+        assert record is not None
+        calls.append('source-delete' if len(args)>2 else 'sea-delete');record=None
+        return subprocess.CompletedProcess(args,0,stdout=b'Saved login removed from the OS credential store.',stderr=b'')
+    if '-e' in args:
+        if "x!==null" in args[-1]:assert record is None;calls.append('absent')
+        else:
+            assert record=='source';calls.append('source-exact-read')
+        return subprocess.CompletedProcess(args,0,stdout=b'',stderr=b'')
+    raise AssertionError('Unexpected fixture command')
+def sequence_spawn(args, **kwargs):
+    global record
+    record='source' if len(args)>2 else 'sea';calls.append(record+'-setup');return FixedChild()
+try:
+    with mock.patch.object(pty_fixture.sys,'platform','darwin'), mock.patch.object(pty_fixture.sys,'argv',['fixed',str(root)]), mock.patch.dict(os.environ,{'RUNNER_ENVIRONMENT':'github-hosted','HOME':'/inert-original-home'}), mock.patch.object(pty_fixture.subprocess,'run',side_effect=sequence_run), mock.patch.object(pty_fixture.subprocess,'Popen',side_effect=sequence_spawn), mock.patch.object(pty_fixture,'shutil_which_node',return_value='/fixed/node'), mock.patch.object(pty_fixture.pty,'openpty',return_value=(10,11)), mock.patch.object(pty_fixture.select,'select',return_value=([10],[],[])), mock.patch.object(pty_fixture.os,'read',return_value=output), mock.patch.object(pty_fixture.os,'write'), mock.patch.object(pty_fixture.os,'close'), mock.patch.object(pty_fixture,'drain_pty',side_effect=lambda master,data:data):
+        pty_fixture.main()
+    assert calls==['absent','source-setup','source-exact-read','source-delete','absent','absent','sea-setup','sea-delete','absent']
+finally:shutil.rmtree(root)
+print('Mac credential proof scope: source exact read retained; SEA setup/delete/independent absence only, no cross-executable secret read (inert only).')
