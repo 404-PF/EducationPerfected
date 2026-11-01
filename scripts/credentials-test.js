@@ -58,6 +58,7 @@ assert.ok(committable.includes('index.js'), 'index.js is part of the scanned set
 const CREDENTIAL_HARNESSES = new Set([
     // Explicit synthetic-only adapter/isolated-session fixtures. Never real logins.
     'scripts/native-store-test.js',
+    'scripts/credential-health-test.js',
     'scripts/native-store-integration.sh',
     'scripts/credentials-test.js',
     'V2_Archive/scripts/credentials-test.js',

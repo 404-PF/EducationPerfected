@@ -1,5 +1,11 @@
 name: Phase 3 Ubuntu24 sandbox baseline probe
 on:
+  push:
+    branches: [phase3-cli-core]
+    paths:
+      - '.github/workflows/phase3-ubuntu24-sandbox-probe.yml'
+      - 'scripts/ubuntu24-sandbox-probe.js'
+      - 'scripts/ubuntu24-sandbox-probe-test.js'
   workflow_dispatch:
 permissions:
   contents: read
