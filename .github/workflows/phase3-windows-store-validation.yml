@@ -1,0 +1,35 @@
+name: Phase 3 Windows native worker store validation
+on:
+  push:
+    branches: [phase3-cli-core]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase3-windows-store-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-store:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - name: Record exact source and disposable host
+        run: |
+          git rev-parse HEAD
+          node --version
+          Write-Output 'Source native worker proof only. No browser startup, SEA credential, console or no-Node proof.'
+      - name: Install pinned dependencies without lifecycle hooks or browser
+        run: npm ci --ignore-scripts
+      - name: Check synthetic worker ownership contracts
+        run: |
+          node scripts/packaged-windows-binding-test.js
+          node scripts/windows-worker-store-policy-test.js
+      - name: Exercise real synthetic native credential operations through workers
+        run: node scripts/windows-native-worker-store-test.js
+      # No real credentials, browser launch, artifacts, account settings or release.
