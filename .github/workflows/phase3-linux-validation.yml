@@ -31,6 +31,8 @@ jobs:
           echo 'Development validation only. No release, clean-machine, Ubuntu 24, Windows or Mac proof.'
       - name: Install pinned dependencies without dependency lifecycle hooks
         run: npm ci --ignore-scripts
+      - name: Check Windows workflow fail-fast source policy
+        run: python3 scripts/windows-workflow-policy-test.py
       - name: Install pinned Puppeteer browsers explicitly
         run: |
           node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome

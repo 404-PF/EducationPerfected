@@ -22,10 +22,33 @@ jobs:
       - name: Record exact source and disposable host
         run: |
           git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Write-Output 'Synthetic source worker CRUD and SEA interactive setup, health read and delete. No browser startup, physical console or no-Node proof.'
       - name: Install pinned dependencies without lifecycle hooks or browser
         run: npm ci --ignore-scripts
+      - name: Check Windows workflow fail-fast source policy
+        run: python scripts/windows-workflow-policy-test.py
+      # pwsh only forwards the final native exit by default; guard each command.
+      - name: Check browser-free source controls and bootstrap contracts
+        run: |
+          node scripts/run-controls-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/pending-launch-signal-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/native-store-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/credential-health-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/native-resolver-proof-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/sea-checksum-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/bootstrap-cleanup-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # pending-launch dispatches an in-process handler against an inert launch.
+      # It is not Windows OS console-event delivery or native browser startup.
       - name: Check synthetic worker ownership contracts
         run: node scripts/packaged-windows-binding-test.js
       - name: Check native fixture cleanup policy with inert state
@@ -33,19 +56,27 @@ jobs:
       - name: Check zero-credential ConPTY ownership and ABI with inert APIs
         run: |
           python scripts/windows-conpty-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/windows-conpty-capability-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows-conpty-checker-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check actual owned ConPTY capability before any credential mutation
         run: |
           $node = node -p "process.execPath"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/windows-conpty-capability.py $node
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise real synthetic native credential operations through workers
         run: node scripts/windows-native-worker-store-test.js
       - name: Check packaged setup receipt and ownership policy with inert state
         run: |
           python scripts/windows-sea-setup-helper-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows-setup-receipt-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows-packaged-store-delete-policy-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install pinned browser asset for native development SEA build
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
       - name: Build native unsigned development SEA
@@ -53,5 +84,7 @@ jobs:
       - name: Exercise packaged synthetic interactive setup, health read and deletion without browser startup
         run: |
           $env:EP_FIXTURE_PYTHON = python -c "import sys; print(sys.executable)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows-packaged-store-delete-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # No real credentials, browser launch, artifacts, account settings or release.
