@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Internal fixed synthetic credential fixture, called only after owned keychain verified."""
+import os, sys, pathlib, subprocess, pty, select, time, platform
+
+def drain_pty(master, data, ready=None, read=None, clock=time.monotonic):
+    ready = ready or (lambda: select.select([master],[],[],.1)[0])
+    read = read or (lambda: os.read(master,65536))
+    deadline = clock()+2
+    while ready():
+        if clock() >= deadline:
+            raise RuntimeError('Mac credential output drain timed out')
+        try:
+            chunk = read()
+        except OSError as error:
+            import errno
+            if error.errno == errno.EIO:
+                break
+            raise
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+def main():
+    if sys.platform != 'darwin' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or len(sys.argv) != 2:
+        raise RuntimeError('Requires owned disposable Mac fixture context')
+    root = pathlib.Path(sys.argv[1]).resolve()
+    owned = str(root / 'synthetic.keychain-db')
+    import shlex
+    for command in ('default-keychain', 'list-keychains'):
+        result = subprocess.run(['/usr/bin/security', command, '-d', 'user'], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+        if shlex.split(result.stdout) != [owned]:
+            raise RuntimeError('Owned keychain verification required')
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    node = shutil_which_node()
+    arch = 'arm64' if platform.machine() == 'arm64' else 'x64'
+    executable = repo / 'build' / ('macos-' + arch) / 'educationperfected'
+    env = dict(os.environ)
+    for key in ('EP_EMAIL', 'EP_PASSWORD', 'NODE_OPTIONS'):
+        env.pop(key, None)
+    home = root / 'home'; tmp = root / 'tmp'; empty = root / 'empty'
+    for directory in (home,tmp,empty):
+        directory.mkdir(mode=0o700)
+    env.update(HOME=str(home), TMPDIR=str(tmp), PATH=str(empty))
+    for keychain_command in ('default-keychain', 'list-keychains'):
+        selection = subprocess.run(['/usr/bin/security', keychain_command, '-d', 'user'], env=env, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+        if shlex.split(selection.stdout) != [owned]:
+            raise RuntimeError('Fresh HOME changed owned keychain selection; no credential operations allowed')
+    def run(args):
+        return subprocess.run(args, cwd=repo, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+    # Source and packaged setup each start from an independently verified absent record.
+    verify_absent = "require('./lib/credential-store').createCredentialStore().read().then(x=>{if(x!==null)process.exitCode=1}).catch(()=>{process.exitCode=1})"
+    verify_saved = "require('./lib/credential-store').createCredentialStore().read().then(x=>{if(x?.email!==['fixture','example.test'].join('@')||x?.password!==['synthetic','mac','only'].join('-'))process.exitCode=1}).catch(()=>{process.exitCode=1})"
+    for command in ([node,str(repo/'bin/cli.js')], [str(executable)]):
+        run([node,'-e',verify_absent])
+        master, slave = pty.openpty(); child=None
+        try:
+            child = subprocess.Popen([*command,'--setup'], stdin=slave, stdout=slave, stderr=slave, cwd=repo, env=env, close_fds=True)
+            data=b''
+            for marker, answer in [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-mac-only\r')]:
+                deadline=time.monotonic()+10
+                while marker not in data:
+                    if child.poll() is not None or time.monotonic()>deadline:
+                        raise RuntimeError('Mac credential prompt failed')
+                    if select.select([master],[],[],.1)[0]:
+                        data+=os.read(master,65536)
+                os.write(master,answer)
+            child.wait(timeout=15)
+            data=drain_pty(master,data)
+            if child.returncode != 0 or b'Login saved in the OS credential store.' not in data or b'synthetic-mac-only' in data or b'fixture@example.test' in data:
+                raise RuntimeError('Mac credential setup output contract failed')
+        finally:
+            if child is not None and child.poll() is None:
+                child.kill();child.wait(timeout=10)
+            os.close(master);os.close(slave)
+        run([node,'-e',verify_saved])
+        if any(tmp.iterdir()):
+            raise RuntimeError('Mac setup extraction residue')
+        result = run([*command,'--forget-credentials'])
+        if b'Saved login removed from the OS credential store.' not in result.stdout:
+            raise RuntimeError('Mac credential deletion not confirmed')
+        run([node,'-e',verify_absent])
+        if any(tmp.iterdir()):
+            raise RuntimeError('Mac deletion extraction residue')
+    print('Mac source and SEA synthetic setup, independent source read, deletion and extraction cleanup passed (isolated keychain, no browser/no-Node/terminal certification).')
+
+def shutil_which_node():
+    import shutil
+    value=shutil.which('node')
+    if not value:
+        raise RuntimeError('Native fixture Node unavailable')
+    return value
+
+if __name__=='__main__':
+    try:
+        main()
+    except BaseException:
+        print('Mac synthetic credential child failed; no record or native error contents printed.',file=sys.stderr)
+        sys.exit(1)

@@ -56,5 +56,11 @@ jobs:
           codesign --display --verbose=2 "$executable"
       - name: Exercise packaged embedded browser and local mock CLI
         run: npm run test:packaged:cli
-      # No credentials API, keychain mutation, signature identity, upload or release.
+      - name: Check isolated keychain protocol with inert state
+        run: python3 scripts/macos-store-isolation-policy-test.py
+      - name: Exercise synthetic source and SEA credentials in owned temporary keychain
+        timeout-minutes: 4
+        run: python3 scripts/macos-isolated-store-test.py
+      # Hosted disposable user-domain metadata only, restored and verified.
+      # No existing keychain contents, signing identity, upload or release.
       # Not proof of quarantine/Gatekeeper, notarization, console events or no-Node host.
