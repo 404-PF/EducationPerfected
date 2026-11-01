@@ -1,0 +1,57 @@
+name: Phase 3 macOS development validation
+on:
+  push:
+    branches: [phase3-cli-core]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase3-macos-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - name: Record and verify native architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          git rev-parse HEAD
+          sw_vers
+          node -e 'if(process.platform!=="darwin" || process.arch!==process.env.EXPECTED_ARCH) process.exit(1); console.log(process.version, process.platform, process.arch)'
+          echo 'Development ad-hoc build only; no certificate, notarization, release or distribution policy.'
+      - name: Install pinned dependencies without lifecycle hooks
+        run: npm ci --ignore-scripts
+      - name: Install pinned browser explicitly
+        run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+      - name: Check native fixture contracts before build
+        run: |
+          npm run test:packaged-harness
+          npm run test:store
+          npm run test:release-gate
+      - name: Build native SEA with development ad-hoc signature
+        run: npm run build:macos-dev
+      - name: Verify generated artifact signature
+        run: |
+          executable="build/macos-$(node -p 'process.arch')/educationperfected"
+          codesign --verify --strict --verbose=2 "$executable"
+          codesign --display --verbose=2 "$executable"
+      - name: Exercise packaged embedded browser and local mock CLI
+        run: npm run test:packaged:cli
+      # No credentials API, keychain mutation, signature identity, upload or release.
+      # Not proof of quarantine/Gatekeeper, notarization, console events or no-Node host.
