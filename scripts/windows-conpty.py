@@ -78,7 +78,7 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None):
+def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=()):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
     api=api or kernel32()
     handles=[];pc=HANDLE();pi=PROCESS_INFORMATION();attributes=None;attribute_ready=False
@@ -192,7 +192,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
                 except BaseException as error:cleanup=cleanup or error
     # Inspect the whole drained stream even when another operation failed. Input
     # appearance is a fixed primary and forbids native cleanup certification.
-    if any(answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):
+    if any(answer.rstrip(b'\r\n') and answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):
         raise ExitUnconfirmed('console-input-echoed') from RuntimeError('console-input-echoed')
     if cleanup:raise ExitUnconfirmed(fixed_stage(cleanup)) from primary
     if on_closed:on_closed()
@@ -208,6 +208,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     if not writer_done.is_set():raise RuntimeError('console-command-failed')
     captured=bytes(output)
     if expected not in captured:raise RuntimeError('console-status-missing')
+    if any(token in captured for token in forbidden_output):raise RuntimeError('console-command-failed')
     if any(captured.count(token)!=1 for token,_ in prompts):raise RuntimeError('console-prompt-count')
-    if any(answer.rstrip(b'\r\n') in captured for _,answer in prompts):raise RuntimeError('console-input-echoed')
+    if any(answer.rstrip(b'\r\n') and answer.rstrip(b'\r\n') in captured for _,answer in prompts):raise RuntimeError('console-input-echoed')
     return True

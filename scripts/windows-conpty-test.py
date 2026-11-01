@@ -121,3 +121,22 @@ for expected in (7,8):
     except RuntimeError as caught:error=caught
     assert str(error)=='console-child-nonzero'
 print('ConPTY ladder controls: expected exit7/8 accepted only explicitly, other nonzero exits still fail.')
+
+# Empty Enter is not an echoed secret; nonempty input and forbidden ack stay checked.
+for scenario in ('cancel','save-marker'):
+    api=API('success');original_read=api.ReadFile
+    def read_cancel(handle,buffer,size,count,overlap):
+        result=original_read(handle,buffer,size,count,overlap)
+        if result and api.reads==2:
+            text=b'Setup cancelled; no login saved.'
+            if scenario=='save-marker':text+=b'Login saved in the OS credential store.'
+            c.memmove(buffer,text,len(text));count._obj.value=len(text)
+        return result
+    api.ReadFile=read_cancel
+    error=None
+    try:
+        m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'\r')],b'Setup cancelled; no login saved.',api=api,forbidden_output=(b'Login saved in the OS credential store.',))
+    except BaseException as caught:error=caught
+    if scenario=='save-marker':assert str(error)=='console-command-failed'
+    else:assert error is None,(scenario,error)
+print('ConPTY empty Enter cancellation and forbidden-save acknowledgement controls passed (inert only).')

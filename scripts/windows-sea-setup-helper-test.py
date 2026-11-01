@@ -9,11 +9,12 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
     calls=[]
-    def run(exe,args,env,cwd,prompts,expected,on_closed):
+    def run(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output):
         calls.append(1)
         assert exe==str(root/'educationperfected.exe') and args==['--setup']
         assert 'EP_PASSWORD' not in env and 'EP_EMAIL' not in env and 'NODE_OPTIONS' not in env
         assert env['PATH']==str(root/'empty')
+        assert forbidden_output==()
         assert prompts==[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
         if scenario in ('success','closed-failure'):on_closed()
         if scenario=='closed-failure':raise RuntimeError('console-child-nonzero')
@@ -21,7 +22,7 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
         if scenario=='echo':raise RuntimeError('console-input-echoed')
         if scenario=='unexpected':raise ValueError('private-secret-native-text')
     try:
-        with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root)]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_PASSWORD':str(0),'EP_EMAIL':str(0),'NODE_OPTIONS':'inert'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=run),contextlib.redirect_stdout(io.StringIO()) as out:
+        with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),'save']),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_PASSWORD':str(0),'EP_EMAIL':str(0),'NODE_OPTIONS':'inert'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=run),contextlib.redirect_stdout(io.StringIO()) as out:
             code=m.entry()
         text=out.getvalue();assert calls==[1]
         assert code==({'success':0,'closed-failure':1}.get(scenario,20))
@@ -44,3 +45,20 @@ for initial_newline in ('\r\n','\n'):
         assert raw.getvalue()==(status+'\n').encode(),(initial_newline,raw.getvalue())
         stream.detach()
 print('Helper wire protocol forces exact LF under Windows CRLF and POSIX text layers (inert only).')
+
+for mode in ('cancel-email','cancel-password'):
+    root=pathlib.Path(tempfile.mkdtemp(prefix='ep-cancel-helper-inert-'))
+    for name in ('home','tmp','empty'):(root/name).mkdir()
+    (root/'educationperfected.exe').write_bytes(b'inert')
+    def cancel(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output):
+        assert args==['--setup']
+        assert expected==b'Setup cancelled; no login saved.'
+        assert forbidden_output==(b'Login saved in the OS credential store. Run the CLI to sign in.',)
+        assert prompts==([(b'EP email',b'\r')] if mode=='cancel-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\r')])
+        on_closed()
+    try:
+        with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),mode]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=cancel) as transport,contextlib.redirect_stdout(io.StringIO()) as out:
+            assert m.entry()==0
+        assert transport.call_count==1 and out.getvalue()=='EP_SETUP_CLOSED_SUCCESS\n'
+    finally:shutil.rmtree(root)
+print('Cancellation helper modes use only fixed empty hidden-prompt input/ack/forbidden-save contracts (inert only).')

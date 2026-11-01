@@ -9,7 +9,7 @@ async function verifyPackagedDelete() {
  if (process.argv.length > 2) throw Error('No fixture arguments accepted');
  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-sea-store-'));
  let binding, entry, child, closed, childClosed = true, created = false, primary, cleanupFailure;
- let setupCertain = true;
+ let setupCertain = true, cancellationPending = false;
  const retained = 'Native operation still live; owned fixture retained without concurrent credential cleanup';
  try {
   const file = path.join(root, 'keyring.node');
@@ -27,26 +27,36 @@ async function verifyPackagedDelete() {
   delete env.EP_EMAIL; delete env.EP_PASSWORD; delete env.NODE_OPTIONS;
   const python = process.env.EP_FIXTURE_PYTHON;
   assert.ok(python && path.isAbsolute(python) && fs.statSync(python).isFile(), 'Verified Python executable required');
-  assert.equal(await entry.getPassword(), null, 'Fresh absence required immediately before setup attempt');
-  assert.equal(binding.hasLiveWorkers(),false,'Source worker must be idle before setup launch');
-  created = true; // Per fixed slot, before helper launch or any synthetic input.
-  setupCertain = false;
-  let setupOutput = '', helperError, timedOut = false, terminatedByUs = false;
-  child = spawn(python, [path.join(__dirname,'windows-sea-setup-helper.py'),root], {env,cwd:home,stdio:['ignore','pipe','pipe']});
-  childClosed = false;
-  closed = new Promise(resolve => child.once('close', code => {childClosed=true;resolve(code);}));
-  child.once('error', error => {helperError=error;});
-  child.stdout.on('data', data => {if(setupOutput.length<4096)setupOutput+=data;else helperError=true;});
-  child.stderr.on('data', () => {helperError=true;});
-  let helperCode;
-  try {helperCode = await boundedClose(closed, 60000, 'Packaged setup helper timed out');}
-  catch (error) {timedOut=true;terminatedByUs=true;throw error;}
-  const {setupReceipt,setupReceiptDiagnostic} = require('./windows-setup-receipt');
-  console.log(setupReceiptDiagnostic(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut,helperError}));
-  const receipt = setupReceipt(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut});
-  setupCertain = receipt.certain && !helperError;
-  assert.ok(setupCertain, 'Setup helper ownership certainty unconfirmed; retain owned record and root');
-  assert.ok(receipt.success, 'Packaged setup helper reported a closed failure');
+  for (const mode of ['cancel-email','cancel-password','save']) {
+   assert.equal(await entry.getPassword(), null, 'Fresh absence required immediately before setup attempt');
+   assert.equal(binding.hasLiveWorkers(),false,'Source worker must be idle before setup launch');
+   cancellationPending = mode!=='save';
+   created = true; // Per fixed slot, before helper launch or any synthetic input.
+   setupCertain = false;
+   let setupOutput = '', helperError, timedOut = false, terminatedByUs = false;
+   child = spawn(python, [path.join(__dirname,'windows-sea-setup-helper.py'),root,mode], {env,cwd:home,stdio:['ignore','pipe','pipe']});
+   childClosed = false;
+   closed = new Promise(resolve => child.once('close', code => {childClosed=true;resolve(code);}));
+   child.once('error', error => {helperError=error;});
+   child.stdout.on('data', data => {if(setupOutput.length<4096)setupOutput+=data;else helperError=true;});
+   child.stderr.on('data', () => {helperError=true;});
+   let helperCode;
+   try {helperCode = await boundedClose(closed, 60000, 'Packaged setup helper timed out');}
+   catch (error) {timedOut=true;terminatedByUs=true;throw error;}
+   const {setupReceipt,setupReceiptDiagnostic} = require('./windows-setup-receipt');
+   console.log(setupReceiptDiagnostic(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut,helperError}));
+   const receipt = setupReceipt(setupOutput,helperCode,{closed:childClosed,terminatedByUs,timedOut});
+   setupCertain = receipt.certain && !helperError;
+   assert.ok(setupCertain, 'Setup helper ownership certainty unconfirmed; retain owned record and root');
+   assert.ok(receipt.success, 'Packaged setup helper reported a closed failure');
+   if(mode!=='save'){
+    assert.equal(await entry.getPassword(),null,'Cancelled setup must leave the independent native record absent');
+    assert.equal(binding.hasLiveWorkers(),false,'Cancelled setup source verifier must be idle');
+    assert.equal(fs.readdirSync(tmp).length,0,'Cancelled setup must remove native extraction');
+    created=false;cancellationPending=false;
+    console.log('Windows SEA cancellation checkpoint: '+mode+' closed, no save acknowledgement, independent absence and extraction cleanup passed; no credential delete used.');
+   }
+  }
   assert.equal(await entry.getPassword(), value, 'Production SEA setup must persist the exact synthetic pair (independent source read)');
   console.log('Windows SEA setup: ordered hidden prompt input, closed helper receipt and independent exact synthetic pair passed.');
   for (const command of ['--check-credentials','--forget-credentials']) {
@@ -76,12 +86,12 @@ async function verifyPackagedDelete() {
  } catch (error) {primary=error;}
  finally {
   try {await stopChild(child,closed);} catch {cleanupFailure=Error('Packaged child cleanup failed');}
-  if (!setupCertain || !childClosed || binding?.hasLiveWorkers()) cleanupFailure=Error(retained);
+  if (cancellationPending || !setupCertain || !childClosed || binding?.hasLiveWorkers()) cleanupFailure=Error(retained);
   else if (created && entry) {
    try {await entry.deletePassword();assert.equal(await entry.getPassword(),null);created=false;}
    catch {cleanupFailure=Error('Synthetic packaged record cleanup failed');}
   }
-  if (!setupCertain || created || !childClosed || binding?.hasLiveWorkers()) cleanupFailure ||= Error(retained);
+  if (cancellationPending || !setupCertain || created || !childClosed || binding?.hasLiveWorkers()) cleanupFailure ||= Error(retained);
   else {try {fs.rmSync(root,{recursive:true,force:true});} catch (error) {
    const code = ['EPERM','EACCES','EBUSY','ENOTEMPTY','ENOENT'].includes(error?.code) ? error.code : 'other';
    const target = typeof error?.path === 'string' ? path.relative(root,error.path) : null;
