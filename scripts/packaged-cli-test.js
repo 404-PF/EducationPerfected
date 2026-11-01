@@ -59,16 +59,13 @@ const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
  child.once('error', error => { spawnError=error; });
  child.stdout.on('data',data=>{text+=data;}); child.stderr.on('data',data=>{text+=data;});
  closed = new Promise(resolve=>child.once('close',resolve));
- const wait = async predicate => {
-  const until=Date.now()+20000;
-  while(!predicate()) {
-   if(serverError) throw serverError;
-   if(spawnError) throw spawnError;
-   if(child.exitCode!==null || child.signalCode!==null || Date.now()>until) throw Error('Packaged checkpoint failed: '+text);
-   await new Promise(resolve=>setTimeout(resolve,30));
-  }
- };
-  await wait(()=>/EP_WS_ENDPOINT=(\S+)/.test(text));
+ const wait = (predicate, name = 'local-cli-control', milliseconds = 20000) => require('./packaged-checkpoint').waitForPackagedCheckpoint(predicate, {
+  child, name, milliseconds, failure: () => serverError || spawnError,
+ });
+ // The previous 20s fixture deadline could preempt Puppeteer's pinned 30s
+ // launch timeout. Allow it to report/settle; do not retry or alter the launch.
+ const startup = await wait(()=>/EP_WS_ENDPOINT=(\S+)/.test(text), 'browser-endpoint', 45000);
+ console.log('Packaged startup checkpoint: ' + JSON.stringify(startup));
   browser=await puppeteer.connect({browserWSEndpoint:text.match(/EP_WS_ENDPOINT=(\S+)/)[1]});
   await browser.waitForTarget(target=>target.type()==='page');
   const command = await browser.target().createCDPSession();
