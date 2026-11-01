@@ -7,10 +7,10 @@ async function verifyWorkerStore() {
  if (process.argv.length > 2) throw new Error('No fixture arguments accepted');
  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-worker-store-'));
  const file = path.join(root, 'keyring.node');
- let entry, created = false, primary, cleanupFailure;
+ let binding, entry, created = false, primary, cleanupFailure;
  try {
   fs.copyFileSync(require.resolve('@napi-rs/keyring-win32-x64-msvc'), file);
-  const binding = createWindowsBinding(file);
+  binding = createWindowsBinding(file);
   entry = new binding.AsyncEntry('EducationPerfected', 'login-v1');
   // Do not overwrite even a synthetic record left by unrelated work.
   assert.equal(await entry.getPassword(), null, 'Disposable runner record must be absent before mutation');
@@ -27,11 +27,18 @@ async function verifyWorkerStore() {
   console.log('Windows real native worker synthetic save/read/delete, worker exit and DLL deletion passed (source adapter, not SEA).');
  } catch (error) { primary = error; }
  finally {
-  if (created && entry) {
+  // A timed-out operation can reject before native worker exit. Never race it
+  // with another credential operation or delete a DLL that may still be loaded.
+  const live = binding?.hasLiveWorkers();
+  if (live) cleanupFailure = new Error('Native worker still live; owned fixture retained without concurrent credential cleanup');
+  if (!live && created && entry) {
    try { await entry.deletePassword(); assert.equal(await entry.getPassword(), null); }
    catch { cleanupFailure = new Error('Synthetic worker record cleanup failed'); }
   }
-  try { fs.rmSync(root, {recursive:true, force:true}); }
+  // Cleanup itself can time out and leave a worker live after the first check.
+  const liveBeforeRemoval = binding?.hasLiveWorkers();
+  if (liveBeforeRemoval) cleanupFailure = new Error('Native worker still live; owned fixture retained without concurrent credential cleanup');
+  try { if (!liveBeforeRemoval) fs.rmSync(root, {recursive:true, force:true}); }
   catch { cleanupFailure ||= new Error('Native worker fixture file cleanup failed'); }
   if (cleanupFailure) console.error(cleanupFailure.message);
  }

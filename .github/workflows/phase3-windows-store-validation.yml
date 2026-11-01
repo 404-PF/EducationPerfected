@@ -27,9 +27,9 @@ jobs:
       - name: Install pinned dependencies without lifecycle hooks or browser
         run: npm ci --ignore-scripts
       - name: Check synthetic worker ownership contracts
-        run: |
-          node scripts/packaged-windows-binding-test.js
-          node scripts/windows-worker-store-policy-test.js
+        run: node scripts/packaged-windows-binding-test.js
+      - name: Check native fixture cleanup policy with inert state
+        run: node scripts/windows-worker-store-policy-test.js
       - name: Exercise real synthetic native credential operations through workers
         run: node scripts/windows-native-worker-store-test.js
       # No real credentials, browser launch, artifacts, account settings or release.
