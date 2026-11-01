@@ -19,6 +19,10 @@ try {
  assert.equal(browserIsInOwnedExtraction(isolated, isolated), false);
  assert.equal(browserIsInOwnedExtraction(isolated, 'relative/chrome'), false);
  assert.equal(browserIsInOwnedExtraction(isolated, path.join(extraction, 'missing')), false);
+ const direct = path.join(isolated, 'educationperfected-not-a-directory');
+ fs.writeFileSync(direct, 'synthetic');
+ assert.equal(browserIsInOwnedExtraction(isolated, direct), false, 'A prefixed regular file is not an extraction directory');
+ assert.equal(browserOriginEvidence(isolated, direct).ownedComponent, false);
  fs.writeFileSync(path.join(isolated, 'not-an-extraction'), 'synthetic');
  assert.equal(browserIsInOwnedExtraction(isolated, path.join(isolated, 'not-an-extraction')), false);
  // Windows symlink creation may require extra host privilege, never pretend SKIP is proof.
@@ -33,5 +37,6 @@ try {
   assert.equal(browserIsInOwnedExtraction(isolated, path.join(extraction, 'escape')), false, 'Escaping symlink must not count as embedded');
   assert.equal(browserIsInOwnedExtraction(alias, host), false);
  }
- console.log('Packaged browser origin: canonical extraction containment and host-cache/escape rejection passed (synthetic paths).');
+ if (process.platform === 'win32') console.log('SKIP: symlink alias/escape portion requires native Windows privilege; no Windows symlink proof.');
+ console.log('Packaged browser origin: canonical extraction-directory containment and host-cache rejection passed (synthetic paths).');
 } finally { fs.rmSync(root, {recursive:true, force:true}); }
