@@ -8,6 +8,7 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-setup-helper-inert-'))
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
+    canonical=root.resolve(strict=True)
     calls=[]
     def run(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
         calls.append((exe,args,env,cwd,prompts,expected,forbidden_output,expected_exit))
@@ -17,13 +18,14 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
         if scenario=='echo':raise RuntimeError('console-input-echoed')
         if scenario=='unexpected':raise ValueError('private-secret-native-text')
     try:
-        with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root),'save']),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_PASSWORD':str(0),'EP_EMAIL':str(0),'NODE_OPTIONS':'inert'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=run),contextlib.redirect_stdout(io.StringIO()) as out:
+        with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root/'home'/'..'),'save']),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_PASSWORD':str(0),'EP_EMAIL':str(0),'NODE_OPTIONS':'inert'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=run),contextlib.redirect_stdout(io.StringIO()) as out:
             code=m.entry()
         text=out.getvalue();assert len(calls)==1
         exe,args,env,cwd,prompts,expected,forbidden_output,expected_exit=calls[0]
-        assert exe==str(root/'educationperfected.exe') and args==['--setup']
+        assert exe==str(canonical/'educationperfected.exe') and args==['--setup']
+        assert cwd==str(canonical/'home')
         assert 'EP_PASSWORD' not in env and 'EP_EMAIL' not in env and 'NODE_OPTIONS' not in env
-        assert env['PATH']==str(root/'empty')
+        assert env['PATH']==str(canonical/'empty')
         assert expected_exit==0
         assert forbidden_output==()
         assert prompts==[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
@@ -52,6 +54,7 @@ for mode in ('cancel-email','cancel-password'):
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-cancel-helper-inert-'))
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
+    canonical=root.resolve(strict=True)
     def cancel(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
         on_closed()
     try:
@@ -61,6 +64,8 @@ for mode in ('cancel-email','cancel-password'):
         exe,args,env,cwd,prompts,expected=transport.call_args.args
         forbidden_output=transport.call_args.kwargs['forbidden_output']
         expected_exit=transport.call_args.kwargs['expected_exit']
+        assert exe==str(canonical/'educationperfected.exe') and cwd==str(canonical/'home')
+        assert env['PATH']==str(canonical/'empty')
         assert args==['--setup']
         assert expected_exit==0
         assert expected==b'Setup cancelled; no login saved.'
@@ -74,6 +79,7 @@ for mode in ('interrupt-email','interrupt-password'):
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-interrupt-helper-inert-'))
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
+    canonical=root.resolve(strict=True)
     def interrupt(exe,args,env,cwd,prompts,expected,on_closed,forbidden_output,expected_exit):
         on_closed()
     try:
@@ -83,6 +89,8 @@ for mode in ('interrupt-email','interrupt-password'):
         exe,args,env,cwd,prompts,expected=transport.call_args.args
         forbidden_output=transport.call_args.kwargs['forbidden_output']
         expected_exit=transport.call_args.kwargs['expected_exit']
+        assert exe==str(canonical/'educationperfected.exe') and cwd==str(canonical/'home')
+        assert env['PATH']==str(canonical/'empty')
         assert args==['--setup'] and expected_exit==130
         assert expected==(b'EP email' if mode=='interrupt-email' else b'EP password')
         assert prompts==([(b'EP email',b'\x03')] if mode=='interrupt-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\x03')])

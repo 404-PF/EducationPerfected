@@ -9,10 +9,15 @@ async function probe(style,crlf,legacy) {
  const target=paths.join(directory,'../index.js');let reads=0;
  const fakeFs={readFileSync(file){assert.equal(file,target);reads++;return crlf?index.replace(/\r?\n/g,'\r\n'):index;}};
  const module={exports:{}},output=[],process={exitCode:0};
- const requireFake=id=>id==='node:fs'?fakeFs:id==='node:path'?paths:require(id);
- vm.runInNewContext(proof,{require:requireFake,module,__dirname:directory});
+ const requireFake=id=>{
+  if(id==='node:fs')return fakeFs;
+  if(id==='node:path')return paths;
+  if(id==='node:assert/strict'||id==='node:vm')return require(id);
+  throw Error('Unexpected fixed-proof dependency');
+ };
+ vm.runInNewContext(proof,{require:requireFake,module,__dirname:directory},{timeout:1000}); // NOSONAR: fixed repository proof source above, no user/env/network source; allowlisted builtins and fake fs only.
  const changed=legacy?suite.replace('file !== indexPath',"!String(file).endsWith('/index.js')"):suite;
- vm.runInNewContext(changed,{require:id=>id==='./native-resolver-proof'?module.exports:requireFake(id),__dirname:directory,console:{log:x=>output.push(x),error:x=>output.push(x)},process});
+ vm.runInNewContext(changed,{require:id=>id==='./native-resolver-proof'?module.exports:requireFake(id),__dirname:directory,console:{log:x=>output.push(x),error:x=>output.push(x)},process},{timeout:1000}); // NOSONAR: fixed repository mutation suite with one constant old-suffix substitution; inert fake fs/process and allowlisted dependencies, no external code.
  for(let turn=0;turn<20;turn++)await new Promise(resolve=>setImmediate(resolve));
  assert.ok(reads>0);
  assert.equal(process.exitCode,legacy&&style==='win32'?1:0,output.join('\n'));
