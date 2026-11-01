@@ -6,7 +6,7 @@ async function probe(scenario) {
  const primary = new Error('synthetic save failure');
  const logs = [], moduleFixture = {exports:{}};
  const requireFixture = id => {
-  if (id === 'node:fs') return {mkdtempSync:()=>'/synthetic-owned',copyFileSync(){},unlinkSync(){assert.equal(live,false);unlinked++;},existsSync:()=>false,rmSync(){removed++;}};
+  if (id === 'node:fs') return {mkdtempSync:()=>'/synthetic-owned',copyFileSync(){},unlinkSync(){assert.equal(live,false);unlinked++;},existsSync:()=>false,rmSync(){removed++;if(scenario==='root-cleanup-failure')throw new Error('synthetic root cleanup');}};
   if (id === 'node:os') return {tmpdir:()=>'/synthetic'};
   if (id === '../lib/packaged-windows-binding') return {createWindowsBinding(){return {hasLiveWorkers:()=>live,AsyncEntry: class {
    constructor(service,account){assert.equal(service,'EducationPerfected');assert.equal(account,'login-v1');}
@@ -23,7 +23,8 @@ async function probe(scenario) {
  if(scenario==='success'){assert.equal(error,undefined);assert.equal(saves,1);assert.equal(deletes,1);assert.equal(unlinked,1);assert.equal(record,null);}
  if(scenario==='existing'){assert.ok(error);assert.equal(saves,0);assert.equal(deletes,0);assert.equal(record,'must-not-touch');assert.equal(unlinked,0);}
  if(scenario==='partial-save'){assert.equal(error,primary);assert.equal(saves,1);assert.equal(deletes,1);assert.equal(record,null);assert.equal(unlinked,0);}
+ if(scenario==='root-cleanup-failure'){assert.ok(error);assert.equal(error.message,'Native worker fixture file cleanup failed');assert.equal(record,null);}
  if(scenario==='cleanup-failure'){assert.equal(error,primary);assert.equal(deletes,1);assert.ok(logs.includes('Synthetic worker record cleanup failed'));}
  assert.equal(removed,1);
 }
-(async()=>{for(const scenario of ['success','existing','partial-save','cleanup-failure'])await probe(scenario);console.log('Windows store fixture policy: success, preexisting zero mutation, partial-write cleanup and primary-error retention passed (inert only).');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{for(const scenario of ['success','existing','partial-save','cleanup-failure','root-cleanup-failure'])await probe(scenario);console.log('Windows store fixture policy: success, preexisting zero mutation, partial-write cleanup and primary-error retention passed (inert only).');})().catch(error=>{console.error(error);process.exitCode=1;});
