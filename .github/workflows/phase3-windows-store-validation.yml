@@ -11,7 +11,7 @@ concurrency:
 jobs:
   native-store:
     runs-on: windows-2025
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -23,7 +23,7 @@ jobs:
         run: |
           git rev-parse HEAD
           node --version
-          Write-Output 'Source native worker proof only. No browser startup, SEA credential, console or no-Node proof.'
+          Write-Output 'Source worker CRUD plus SEA delete-only proof. No browser startup, packaged setup/read, console or no-Node proof.'
       - name: Install pinned dependencies without lifecycle hooks or browser
         run: npm ci --ignore-scripts
       - name: Check synthetic worker ownership contracts
@@ -32,4 +32,12 @@ jobs:
         run: node scripts/windows-worker-store-policy-test.js
       - name: Exercise real synthetic native credential operations through workers
         run: node scripts/windows-native-worker-store-test.js
+      - name: Check packaged deletion policy with inert state
+        run: node scripts/windows-packaged-store-delete-policy-test.js
+      - name: Install pinned browser asset for native development SEA build
+        run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+      - name: Build native unsigned development SEA
+        run: npm run build:windows-dev
+      - name: Exercise packaged deletion without browser startup
+        run: node scripts/windows-packaged-store-delete-test.js
       # No real credentials, browser launch, artifacts, account settings or release.
