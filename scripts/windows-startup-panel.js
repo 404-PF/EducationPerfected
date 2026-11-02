@@ -15,4 +15,4 @@ async function panel(){
  }
  console.log('EP_OWNED_PIPE_PANEL=not-reproduced-in-one-instrumented-pipe-sample');
 }
-module.exports={accepted};if(require.main===module)panel().catch(()=>{console.log('EP_OWNED_PIPE_PANEL=uncertain');process.exitCode=1;});
+module.exports={accepted,panel};if(require.main===module)panel().catch(()=>{console.log('EP_OWNED_PIPE_PANEL=uncertain');process.exitCode=1;});
