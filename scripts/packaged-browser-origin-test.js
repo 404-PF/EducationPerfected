@@ -15,14 +15,14 @@ try {
  const serialized = JSON.stringify(browserOriginEvidence(isolated, browser));
  assert.equal(serialized.includes(root), false);
  assert.ok(Object.values(browserOriginEvidence(isolated, browser)).every(value => typeof value === 'boolean'));
- const originalStat = fs.statSync; let outsideStats = 0;
+ const originalStat = fs.statSync, canonicalHost = fs.realpathSync(host); let outsideStats = 0;
  try {
-  fs.statSync = (file, ...args) => { if (file === fs.realpathSync(host)) { outsideStats++; throw new Error('Outside metadata must not be queried'); } return originalStat(file, ...args); };
+  fs.statSync = (file, ...args) => { if (file === canonicalHost) outsideStats++; return originalStat(file, ...args); };
   const rejected = browserOriginEvidence(isolated, host);
+  assert.equal(outsideStats, 0, 'Outside canonical file must be rejected before stat');
   assert.equal(rejected.canonicalContained, false);
   assert.equal(rejected.isFile, false);
   assert.equal(rejected.identityUnavailable, false, 'Known outside root is a rejection, not an unavailable identity');
-  assert.equal(outsideStats, 0, 'Outside canonical file must be rejected before stat');
  } finally { fs.statSync = originalStat; }
  assert.equal(browserIsInOwnedExtraction(isolated, host), false);
  assert.equal(browserIsInOwnedExtraction(isolated, isolated), false);
