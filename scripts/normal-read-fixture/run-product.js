@@ -1,6 +1,7 @@
 // Fixed runner authority. No CLI args, controller, env pair, prompt or caller observer.
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),crypto=require('node:crypto'),{spawn}=require('node:child_process');
-const root=path.resolve(__dirname,'../..'),out=path.join(root,'build/linux-x64-normal-read-fixture-private');
+const target=require('./target').target(process.platform,process.arch);
+const root=path.resolve(__dirname,'../..'),out=path.join(root,'build',target.directory);
 const {createCredentialStore}=require('../../lib/credential-store');
 function requireTrue(x){if(!x)throw Error('Fixture failed');}
 const STAGES=Object.freeze(['product.admission','product.artifact','product.store.empty','product.store.seed','product.server','product.spawn','product.observe','product.quit','product.group','product.store.remove','product.cleanup']);
@@ -9,11 +10,11 @@ function stage(token){requireTrue(STAGES.includes(token));current=token;console.
 function failure(){if(primary===undefined)primary=current;}
 async function main(){
  stage('product.admission');
- requireTrue(process.argv.length===2&&!process.stdin.isTTY&&process.platform==='linux'&&process.arch==='x64');
+ requireTrue(process.argv.length===2&&!process.stdin.isTTY&&process.platform==='linux'&&['x64','arm64'].includes(process.arch));
  for(const key of ['EP_TEST_BOOT','EP_EMAIL','EP_PASSWORD','EP_LOGIN_URL','EP_LOGIN_HOST','NODE_OPTIONS','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','SSH_AUTH_SOCK'])requireTrue(!Object.hasOwn(process.env,key));
  stage('product.artifact');
  const m=JSON.parse(fs.readFileSync(path.join(out,'PRIVATE-FIXTURE.json'),'utf8')),exe=path.join(out,'educationperfected');
- requireTrue(m.kind==='MODIFIED-VALIDATION-ONLY-NOT-RELEASE'&&crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex')===m.sha256);
+ requireTrue(m.kind==='MODIFIED-VALIDATION-ONLY-NOT-RELEASE'&&m.arch===target.arch&&crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex')===m.sha256);
  const expected={email:crypto.randomBytes(16).toString('hex')+'@example.test',password:crypto.randomBytes(32).toString('hex')};
  const store=createCredentialStore();let child,closed,server,passed=false,text='',attempts=0,matched=false,exit;
  const deadline=setTimeout(()=>{if(child&&!exit)try{process.kill(-child.pid,'SIGKILL');}catch{}},90000);

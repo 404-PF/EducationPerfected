@@ -1,9 +1,13 @@
 """Fixed private CI runner. Entry preflight precedes ALL store/display/product work."""
-import os,sys,pathlib,subprocess,socket,json,tempfile,shutil,time,signal,ipaddress
+import os,sys,platform,pathlib,subprocess,socket,json,tempfile,shutil,time,signal,ipaddress
 from stages import Stages,capture,PRODUCT
 from namespace_baseline import consume as consume_baseline,identity as net_identity
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 stages=Stages()
+def native_arch():
+ machine=platform.machine()
+ required(sys.platform=='linux' and machine in ('x86_64','aarch64'))
+ return {'x86_64':'x64','aarch64':'arm64'}[machine]
 def required(ok):
  if not ok:raise RuntimeError('admission-refused')
 def cmd(args,**kw):return subprocess.run(args,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10,**kw)
@@ -58,9 +62,10 @@ def stop(p):
 def main():
  stages.mark('boundary.inner')
  admission=preflight() # no native store, display or product may precede this line
- artifact=ROOT/'build/linux-x64-normal-read-fixture-private'
+ arch=native_arch()
+ artifact=ROOT/('build/linux-'+arch+'-normal-read-fixture-private')
  stages.mark('artifact.manifest')
- manifest=json.loads((artifact/'PRIVATE-FIXTURE.json').read_text());required(manifest['kind']=='MODIFIED-VALIDATION-ONLY-NOT-RELEASE')
+ manifest=json.loads((artifact/'PRIVATE-FIXTURE.json').read_text());required(manifest['kind']=='MODIFIED-VALIDATION-ONLY-NOT-RELEASE' and manifest['arch']==arch)
  import hashlib
  stages.mark('artifact.hash')
  required(hashlib.sha256((artifact/'educationperfected').read_bytes()).hexdigest()==manifest['sha256'])
@@ -97,7 +102,7 @@ def main():
   stages.mark('product.environment')
   for k in ['EP_TEST_BOOT','EP_EMAIL','EP_PASSWORD','EP_LOGIN_URL','EP_LOGIN_HOST','SSH_AUTH_SOCK','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NODE_OPTIONS']:required(k not in env)
   stages.mark('product.helper')
-  seen,failure,passed=capture([str(pathlib.Path('/opt/hostedtoolcache/node/22.23.4/x64/bin/node')),str(ROOT/'scripts/normal-read-fixture/run-product.js')],env=env,timeout=120,sequence=PRODUCT,cleanup='product.cleanup')
+  seen,failure,passed=capture([str(pathlib.Path('/opt/hostedtoolcache/node/22.23.4')/arch/'bin/node'),str(ROOT/'scripts/normal-read-fixture/run-product.js')],env=env,timeout=120,sequence=PRODUCT,cleanup='product.cleanup')
   for token in seen:stages.mark(token)
   if not passed:stages.failed(failure);raise RuntimeError('product-refused')
   stages.mark('owned.empty')

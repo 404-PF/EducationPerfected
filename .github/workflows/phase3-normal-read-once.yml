@@ -8,8 +8,8 @@ concurrency:
   group: ep-normal-read-once-reviewed
   cancel-in-progress: false
 jobs:
-  single-linux-x64:
-    runs-on: ubuntu-22.04
+  single-linux-arm64:
+    runs-on: ubuntu-22.04-arm
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -21,6 +21,8 @@ jobs:
       - name: Install public pinned build prerequisites only
         run: |
           set -eu
+          test "$(uname -m)" = aarch64
+          node -e 'if(process.platform!=="linux"||process.arch!=="arm64"||process.version!=="v22.23.4")process.exit(1)'
           npm ci --ignore-scripts > "$RUNNER_TEMP/dependency-install.log" 2>&1
           node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome > "$RUNNER_TEMP/browser-download.log" 2>&1
           sudo apt-get update > "$RUNNER_TEMP/package-update.log" 2>&1
@@ -33,7 +35,7 @@ jobs:
           node scripts/normal-read-fixture/build-sea-private.js > "$RUNNER_TEMP/build.log" 2>&1
           python3 - <<'PY'
           import json,pathlib
-          m=json.loads(pathlib.Path('build/linux-x64-normal-read-fixture-private/PRIVATE-FIXTURE.json').read_text())
+          m=json.loads(pathlib.Path('build/linux-arm64-normal-read-fixture-private/PRIVATE-FIXTURE.json').read_text())
           print('EP_MODIFIED_FIXTURE_SHA256='+m['sha256'])
           print('EP_FIXTURE_MAIN_SHA256='+m['mainSha256'])
           PY
@@ -45,5 +47,5 @@ jobs:
       - name: Remove ephemeral build and raw owned logs, no upload
         if: always()
         run: |
-          rm -rf build/normal-read-review build/linux-x64-normal-read-fixture-private
+          rm -rf build/normal-read-review build/linux-arm64-normal-read-fixture-private
           rm -f "$RUNNER_TEMP/dependency-install.log" "$RUNNER_TEMP/browser-download.log" "$RUNNER_TEMP/package-update.log" "$RUNNER_TEMP/package-install.log" "$RUNNER_TEMP/bundle.log" "$RUNNER_TEMP/build.log"
