@@ -55,3 +55,23 @@ try:
  assert 'process.argv.length!==2' in child
  print('Zero-browser probe strict parser/VT/stale/duplicate controls and independent closure/status/privacy tests passed (inert only).')
 finally:shutil.rmtree(root)
+
+# Pre-allocation host rejection reasons use only fixed booleans.
+good=dict(GITHUB_ACTIONS='true',RUNNER_OS='Windows',RUNNER_ENVIRONMENT='github-hosted')
+keys=set(p.HOST_KEYS)
+for scenario in ('platform','actions','os','hosted','argc0','argc2','all','missing'):
+ env=good.copy();platform='win32';argv=['fixed','PRIVATE_NODE_PATH'];false=set()
+ if scenario in ('platform','all'):platform='PRIVATE_PLATFORM';false.add('platformMatch')
+ for case,name,key in [('actions','GITHUB_ACTIONS','actionsMatch'),('os','RUNNER_OS','runnerOSMatch'),('hosted','RUNNER_ENVIRONMENT','hostedMatch')]:
+  if scenario in (case,'all'):env[name]='PRIVATE_'+name;false.add(key)
+ if scenario in ('argc0','all'):argv=['fixed'];false.add('argumentCountMatch')
+ if scenario=='argc2':argv+=['PRIVATE_EXTRA'];false.add('argumentCountMatch')
+ if scenario=='missing':env={};false.update(('actionsMatch','runnerOSMatch','hostedMatch'))
+ with mock.patch.object(p.sys,'platform',platform),mock.patch.object(p.sys,'argv',argv),mock.patch.dict(os.environ,env,clear=True),mock.patch.object(p.helper.conpty,'run_console',side_effect=AssertionError('native must not run')) as native,mock.patch.object(p.pathlib,'Path',side_effect=AssertionError('metadata must not run')) as path,contextlib.redirect_stdout(io.StringIO()) as out:
+  code=p.entry()
+ raw=out.getvalue();r=json.loads(raw.split('=',1)[1]);assert code==20 and r['stage']=='probe-host' and r['outcome']=='uncertainty';assert not native.called and not path.called;assert set(r['hostChecks'])==keys;assert {k for k,v in r['hostChecks'].items() if v is False}==false;assert all(type(v) is bool for v in r['hostChecks'].values());assert 'PRIVATE' not in raw and len(raw.splitlines())==1;assert r['observedClosed'] is False and r['streamObserved'] is False and r['strictPrefixStage']=='unknown'
+# A diagnostic calculation exception never promotes host acceptance or closes anything.
+with mock.patch.object(p,'host_checks',side_effect=KeyboardInterrupt('PRIVATE')),contextlib.redirect_stdout(io.StringIO()) as out:
+ assert p.entry()==20
+r=json.loads(out.getvalue().split('=',1)[1]);assert set(r['hostChecks'])==keys and set(r['hostChecks'].values())=={'unknown'} and r['stage']=='probe-host'
+print('Host guard fixed-key refusal/privacy/no-metadata/no-native controls passed (inert only).')

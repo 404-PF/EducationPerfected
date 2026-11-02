@@ -5,11 +5,14 @@ sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('helper',pathlib.Path(__file__).with_name('windows-startup-leg-helper.py'))
 helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 NONCE='a'*64
+HOST_KEYS=('platformMatch','actionsMatch','runnerOSMatch','hostedMatch','argumentCountMatch')
+def host_checks():
+    return dict(zip(HOST_KEYS,(sys.platform=='win32',os.environ.get('GITHUB_ACTIONS')=='true',os.environ.get('RUNNER_OS')=='Windows',os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted',len(sys.argv)==2)))
 UNKNOWN={'streamObserved':False,'vtPresent':'unknown','markerTokenPresent':'unknown','strictPrefixStage':'unknown'}
 def evidence(data):
     return {'streamObserved':True,'vtPresent':b'\x1b' in data,'markerTokenPresent':b'EP_DIAGNOSTIC_DRIVER_STAGE=' in data,'strictPrefixStage':helper.observed_driver_stage(data,'source',NONCE)}
 def entry():
-    closed=False;observed=dict(UNKNOWN);outcome='uncertainty';stage='probe-host'
+    closed=False;observed=dict(UNKNOWN);outcome='uncertainty';stage='probe-host';host=dict.fromkeys(HOST_KEYS,'unknown')
     def confirm():
         nonlocal closed
         closed=True
@@ -17,7 +20,8 @@ def entry():
         nonlocal observed
         observed=evidence(data)
     try:
-        if sys.platform!='win32' or os.environ.get('GITHUB_ACTIONS')!='true' or os.environ.get('RUNNER_OS')!='Windows' or os.environ.get('RUNNER_ENVIRONMENT')!='github-hosted' or len(sys.argv)!=2:raise RuntimeError('host-guard')
+        host=host_checks()
+        if not all(host.values()):raise RuntimeError('host-guard')
         stage='probe-node';node=pathlib.Path(sys.argv[1])
         if not node.is_absolute() or node.is_symlink() or not node.is_file() or node.name.lower()!='node.exe':raise RuntimeError('node-identity')
         child=pathlib.Path(__file__).with_name('windows-stage-transport-probe.js').resolve(strict=True)
@@ -28,7 +32,7 @@ def entry():
         stage='complete'
     except BaseException as error:
         stage=helper.conpty.fixed_stage(error) if stage=='probe-transport' else stage
-    print('EP_STAGE_PROBE='+json.dumps({'outcome':outcome,'stage':stage,'observedClosed':closed,**observed},separators=(',',':')),flush=True)
+    print('EP_STAGE_PROBE='+json.dumps({'outcome':outcome,'stage':stage,'observedClosed':closed,**observed,'hostChecks':host},separators=(',',':')),flush=True)
     return 0 if outcome=='wire-observed' else 20
 def main():
     sys.stdout.reconfigure(newline='\n')
