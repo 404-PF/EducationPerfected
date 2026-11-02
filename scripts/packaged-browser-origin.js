@@ -12,6 +12,7 @@ function browserOriginEvidence(root, executable) {
  try {
   const owned = fs.realpathSync(root), actual = fs.realpathSync(executable);
   evidence.canonicalContained = contained(owned, actual);
+  if (!evidence.canonicalContained) return evidence;
   const components = path.relative(owned, actual).split(path.sep);
   evidence.ownedComponent = evidence.canonicalContained && components.length >= 2 &&
    components[0].startsWith('educationperfected-') && fs.statSync(path.join(owned, components[0])).isDirectory();
