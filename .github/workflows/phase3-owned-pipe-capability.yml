@@ -1,0 +1,20 @@
+name: Phase3 exact owned-pipe capability
+on:
+  push:
+    branches: [ep-owned-pipe-capability-reviewed]
+permissions:
+  contents: read
+jobs:
+  fixed-zero-browser:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test exact owned pipe and job transport with fixed child only
+        shell: pwsh
+        run: |
+          $node = node -p "process.execPath"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($node -isnot [string]) { exit 1 }
+          python -B scripts/windows-owned-pipe-capability.py $node
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
