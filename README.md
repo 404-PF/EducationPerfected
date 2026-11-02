@@ -18,7 +18,7 @@ The original's README used to claim its status was: **_CURRECT STATUS: ALL inten
 _*Last time they checked... which was... two years ago???*_  
 That has since been re-verified here: **the program has been run against the live Education Perfect service and confirmed working** for the supported (word-to-word / Dash) tasks. Don't assume it stays working forever, though - EP can still change.
 
-- This repo's program is version **v2.2.0**: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
+- The current main-branch package is **v2.2.0**. The next program version is **V2026** (package version `2026.0.0`), in development in [PR #49](https://github.com/404-PF/EducationPerfected/pull/49) and not released. The program is an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
 - The program has been run against the live Education Perfect service and confirmed working for the supported (word-to-word / Dash) tasks.
 - The task-page and wrong-answer-modal selectors were checked against what EP's live bundles currently ship, and an end-to-end run through a real task on the live service confirmed the markup reading was correct.
@@ -40,7 +40,7 @@ It worked great, and notably, at **super** speeds. However, after a long while, 
 anti-cheat features that partially disabled the userscript.
 
 To circumvent this, the script needed more control over the web page and must not run in the page debugger console.  
-_This is now V2 of this project:_  
+_The independent program started as V2; its next development version is V2026:_  
 **At the current stage**, it's an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the 
 [Puppeteer](https://github.com/puppeteer/puppeteer) library to carry out web-browser automation. The goal is the same
 as V1 and the functionality is largely the same. Unfortunately, the standalone structure does make installation slightly 
@@ -48,9 +48,10 @@ more complicated, but it is currently the only way to enable full anti-cheat byp
 Either way, I have provided detailed instructions for installation and usage below.
 
 A snapshot of V2 exactly as it stands - version **v2.2.0** - is frozen in [V2_Archive/](V2_Archive), alongside the
-[V1](V1_Archive) snapshot. Unlike V1, V2 is not being replaced: the files at this root are the live V2 codebase and
-V3 is being built **on top of** them, so all fixes and new work happen here, and the copy in [V2_Archive](V2_Archive)
-stays read-only (see [V2_Archive/README.md](V2_Archive/README.md) for exactly what was frozen).
+[V1](V1_Archive) snapshot. Development continues on the root codebase as **V2026**, skipping V3 as a release name.
+That work is in [PR #49](https://github.com/404-PF/EducationPerfected/pull/49), not yet merged or released;
+the main-branch package remains `2.2.0`. The copy in [V2_Archive](V2_Archive) stays read-only
+(see [V2_Archive/README.md](V2_Archive/README.md) for exactly what was frozen).
 
 
 ## Installation
