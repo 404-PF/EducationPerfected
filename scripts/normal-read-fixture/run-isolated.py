@@ -87,7 +87,11 @@ def main():
   finally:os.close(write)
   try:
    stages.mark('display.ready')
-   required(select.select([read],[],[],5)[0]);number=os.read(read,32).decode().strip();required(number.isdecimal());env['DISPLAY']=':'+number
+   required(select.select([read],[],[],5)[0])
+   stages.mark('display.read')
+   number=os.read(read,32).decode().strip()
+   stages.mark('display.number')
+   required(number.isdecimal());env['DISPLAY']=':'+number
   finally:os.close(read)
   # Preflight checks environment is assembled by this fixed code, never inherited.
   stages.mark('product.environment')

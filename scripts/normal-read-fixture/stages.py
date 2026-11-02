@@ -5,7 +5,7 @@ FAIL=b'EP_NORMAL_READ_FAILURE='
 RESULT=b'EP_NORMAL_READ_RESULT='
 PRODUCT=('product.admission','product.artifact','product.store.empty','product.store.seed','product.server','product.spawn','product.observe','product.quit','product.group','product.store.remove','product.cleanup')
 PREFLIGHT=('preflight.identity','preflight.baseline','preflight.capabilities','preflight.fds','preflight.links','preflight.routes','preflight.nss','preflight.resolver','preflight.egress','preflight.lookup','preflight.namespace')
-INNER=('boundary.inner',)+PREFLIGHT+('artifact.manifest','artifact.hash','owned.directories','bus.start','bus.ready','keyring.start','keyring.ready','display.start','display.ready','product.environment','product.helper')+PRODUCT+('owned.empty','inner.cleanup')
+INNER=('boundary.inner',)+PREFLIGHT+('artifact.manifest','artifact.hash','owned.directories','bus.start','bus.ready','keyring.start','keyring.ready','display.start','display.ready','display.read','display.number','product.environment','product.helper')+PRODUCT+('owned.empty','inner.cleanup')
 ALL=('boundary.enter',)+INNER+('boundary.cleanup',)
 MAX_BYTES=4096
 class DiagnosticError(Exception):pass
