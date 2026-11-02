@@ -38,6 +38,22 @@ try {
     fs.mkdirSync(path.join(dir, 'release')); fs.writeFileSync(path.join(dir, 'release/evidence.json'), '{}');
     const evidence = complete(); evidence.global['project-rights'].evidence = './build/artifact'; assert.deepEqual(validate(evidence, commit, dir), []);
     assert.equal(sourceState(dir), run(['rev-parse', 'HEAD']));
+    const alternate = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-release-alternate-'));
+    const overrides = {GIT_DIR: path.join(alternate, '.git'), GIT_WORK_TREE: alternate};
+    const savedOverrides = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
+    try {
+        execFileSync(git, ['init', alternate], {stdio: 'ignore'});
+        execFileSync(git, ['-C', alternate, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'alternate'], {stdio: 'ignore'});
+        const expected = sourceState(dir);
+        Object.assign(process.env, overrides);
+        assert.equal(sourceState(dir), expected, 'Git environment must not redirect source identity');
+        fs.writeFileSync(path.join(dir, 'redirect-hidden-source'), 'dirty');
+        assert.throws(() => sourceState(dir), {code: 'DIRTY_WORKTREE'}, 'Alternate clean checkout must not conceal dirty source');
+    } finally {
+        for (const [key, value] of Object.entries(savedOverrides)) {if (value === undefined) delete process.env[key]; else process.env[key] = value;}
+        fs.rmSync(path.join(dir, 'redirect-hidden-source'), {force: true});
+        fs.rmSync(alternate, {recursive: true, force: true});
+    }
     fs.writeFileSync(path.join(dir, 'untracked-source'), 'dirty'); assert.throws(() => sourceState(dir), {code: 'DIRTY_WORKTREE'});
     fs.unlinkSync(path.join(dir, 'untracked-source'));
     fs.writeFileSync(path.join(dir, '.git/info/exclude'), 'hidden-source.js\n');
