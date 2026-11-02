@@ -28,6 +28,8 @@ jobs:
           Write-Output 'Synthetic source worker CRUD and SEA interactive setup, health read and delete. No browser startup, physical console or no-Node proof.'
       - name: Install pinned dependencies without lifecycle hooks or browser
         run: npm ci --ignore-scripts
+      - name: Check cross-platform Windows inert contracts without native APIs
+        run: npm run test:windows-inert
       - name: Check Windows workflow fail-fast source policy
         run: python scripts/windows-workflow-policy-test.py
       # pwsh only forwards the final native exit by default; guard each command.
