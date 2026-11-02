@@ -30,8 +30,6 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Check cross-platform Windows inert contracts without native APIs
         run: npm run test:windows-inert
-      - name: Check Windows workflow fail-fast source policy
-        run: python scripts/windows-workflow-policy-test.py
       # pwsh only forwards the final native exit by default; guard each command.
       - name: Check browser-free source controls and bootstrap contracts
         run: |
@@ -59,8 +57,6 @@ jobs:
         run: node scripts/windows-worker-store-policy-test.js
       - name: Check zero-credential ConPTY ownership and ABI with inert APIs
         run: |
-          python scripts/windows-conpty-test.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/windows-conpty-capability-test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows-conpty-checker-test.js

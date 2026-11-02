@@ -26,6 +26,7 @@ for (const platform of ['win32', 'linux', 'darwin']) {
             assert.equal(call.options.timeout, 60000);
             assert.equal(call.options.stdio, 'inherit');
         });
+        assert.deepEqual(output, failure === 'none' ? [] : ['Windows inert contract failed: windows-startup-leg-helper-test.py']);
         assert.equal(output.some(text => text.includes('private error')), false);
     }
 }
