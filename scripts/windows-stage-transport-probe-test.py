@@ -93,6 +93,13 @@ class Checks(unittest.TestCase):
     r=shape(data,'source',N);self.assertEqual(r['reason'],reason);self.assertEqual(set(r),set(KEYS));self.assertTrue(all(type(v) is bool or v=='unknown' for k,v in r.items() if k!='reason'));self.assertNotIn('PRIVATE',json.dumps(r));self.assertNotIn(N,json.dumps(r));self.assertEqual(reason=='accepted-prefix',ns['observed_driver_stage'](data,'source',N)!='unknown'); self.assertEqual(p.evidence(data)['wireShape'],r)
  def test_input_boundaries(self):
   for d,m,n in [(b'x'*65537,'source',N),('notbytes','source',N),(D,'other',N),(D,'source','bad')]:self.assertEqual(shape(d,m,n)['reason'],'input-rejected')
+ def test_sea_order_filter(self):
+  stages=[x for x in STAGES if x not in ('unpack-entered','unpacked')]
+  def make(xs):return b''.join(PREFIX+json.dumps({'nonce':N,'mode':'sea','stage':x},separators=(',',':')).encode()+b'\r\n' for x in xs)
+  good=make(stages);self.assertEqual(shape(good,'sea',N)['reason'],'accepted-prefix');self.assertEqual(ns['observed_driver_stage'](good,'sea',N),'leg-complete')
+  bad=make(STAGES);self.assertEqual(shape(bad,'sea',N)['reason'],'stage-order-mismatch');self.assertEqual(ns['observed_driver_stage'](bad,'sea',N),'unknown')
+ def test_exact_byte_boundary(self):
+  data=D+b'x'*(65536-len(D));self.assertEqual(len(data),65536);self.assertEqual(shape(data,'source',N)['reason'],'accepted-prefix');self.assertEqual(ns['observed_driver_stage'](data,'source',N),'archive-check-entered');self.assertEqual(shape(data+b'x','source',N)['reason'],'input-rejected')
  def test_vt_not_cause(self):
   self.assertTrue(shape(b'\x1b[?25l\r\n'+D,'source',N)['vtPresent']);self.assertFalse(shape(b'\x1b[?25l\r\n'+D,'source',N)['markerLineHasVT']);self.assertTrue(shape(b'\x1b[?25l'+D,'source',N)['markerLineHasVT'])
  def test_host_guard_no_shape(self):
