@@ -7,26 +7,26 @@ const {readVerifiedArchive,parseIdentityReceipt,assertOwnedBrowser,verifyLegIden
 const {pipeline}=require('node:stream/promises'),{createGunzip}=require('node:zlib');
 const {unpackTar}=require('modern-tar/fs');
 const {Readable}=require('node:stream');
-const {validateLegRoot}=require('./windows-startup-root');
+const os=require('node:os');
 function requireDiagnosticHost() {
  if(process.platform!=='win32'||process.arch!=='x64'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Windows')throw Error('Diagnostic host guard');
 }
-function checkedCliRoot(root,mode) {requireDiagnosticHost();return validateLegRoot(root,mode);}
 function copySeaExecutable(build,executable) {fs.copyFileSync(path.join(build,'educationperfected.exe'),executable,fs.constants.COPYFILE_EXCL);}
 function driverStage(mode,nonce,stage) {console.log('EP_DIAGNOSTIC_DRIVER_STAGE='+JSON.stringify({nonce,mode,stage}));}
-async function runLeg(root,mode,nonce) {
+async function runLeg(mode,nonce,expectedIdentity) {
  requireDiagnosticHost();
  driverStage(mode,nonce,'host-checked');
  assert.ok(['source','sea'].includes(mode));assert.match(nonce,/^[a-f0-9]{64}$/);
- root=validateLegRoot(root,mode);driverStage(mode,nonce,'leg-root-checked');
- assert.deepEqual(fs.readdirSync(root),[],'Diagnostic leg must begin empty');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-startup-owned-'));
+ driverStage(mode,nonce,'leg-root-checked');
+ // Root never enters argv, helper, panel, environment or a file-based receipt.
  const build=path.resolve(__dirname,'../build/windows-x64');
  const manifest=JSON.parse(fs.readFileSync(path.join(build,'manifest.json'),'utf8'));
  // Reads before process creation. No missing-file/cache/system fallback.
  driverStage(mode,nonce,'archive-check-entered');
  const verified=await readVerifiedArchive(path.join(build,'browser.tar.gz'),manifest);
  driverStage(mode,nonce,'archive-verified');
- const expected=verified.identity;
+ const expected=verified.identity;assert.deepEqual(expected,expectedIdentity);
  let sourceReceipt='';
  if(mode==='source')require('../lib/test-browser-identity').emitBrowserIdentity(manifest,line=>{sourceReceipt=line;});
  assert.equal(expected.browserVersion,require('puppeteer').PUPPETEER_REVISIONS.chrome);
@@ -60,7 +60,7 @@ async function runLeg(root,mode,nonce) {
   child.stdout.on('data',capture);child.stderr.on('data',capture);
   const ready=await connectAfterLoginReady({text:()=>text,child,failure:()=>spawnError||serverError,connect:options=>require('puppeteer').connect(options)});
   browser=ready.browser;result.ready=true;driverStage(mode,nonce,'ready-observed');
-  console.log('EP_DIAGNOSTIC_READY_CHECKPOINT='+JSON.stringify(ready.checkpoint));
+  // Readiness semantics retained; do not relay dynamic observer data.
   // All observer calls are after owner marker, never on endpoint availability.
   const command=await browser.target().createCDPSession();let argv;
   try {argv=(await command.send('Browser.getBrowserCommandLine')).arguments;}finally{await command.detach();}
@@ -90,13 +90,21 @@ async function runLeg(root,mode,nonce) {
  const residue=fs.readdirSync(tmp);
  if(mode==='source') {assert.equal(residue.length,1);assert.ok(residue[0].startsWith('educationperfected-source-'));fs.rmSync(path.join(tmp,residue[0]),{recursive:true,force:true});}
  assert.deepEqual(fs.readdirSync(tmp),[]);
- result.cleanupCertain=true;driverStage(mode,nonce,'leg-complete');return result;
+ result.cleanupCertain=true;
+ verifyLegIdentity({...result,expected:expectedIdentity});
+ assert.equal(result.ready,true);assert.equal(result.navigationCategory,'unobserved');
+ fs.rmSync(root,{recursive:true,force:false});
+ driverStage(mode,nonce,'leg-complete');return result;
 }
-module.exports={runLeg,checkedCliRoot,copySeaExecutable};
+module.exports={runLeg,copySeaExecutable};
 if(require.main===module)(async()=>{
- if(process.argv.length!==5)throw Error('Diagnostic arguments');const mode=process.argv[3],nonce=process.argv[4];
- if(!['source','sea'].includes(mode)||!/^[a-f0-9]{64}$/.test(nonce))throw Error('Diagnostic arguments');
- driverStage(mode,nonce,'cli-entry');const root=checkedCliRoot(process.argv[2],mode);driverStage(mode,nonce,'cli-root-checked');
- try {const result=await runLeg(root,mode,nonce);fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(result),{flag:'wx',mode:0o600});console.log('EP_DIAGNOSTIC_LEG_DONE');}
- catch(error) {if(error.diagnosticResult)fs.writeFileSync(path.join(root,'failure.json'),JSON.stringify(error.diagnosticResult),{flag:'wx',mode:0o600});console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;}
-})().catch(()=>{console.error('EP_DIAGNOSTIC_LEG_UNCERTAIN');process.exitCode=1;});
+ requireDiagnosticHost();
+ if(process.argv.length!==7)throw Error('Diagnostic arguments');
+ const [mode,nonce,length,sha256,browserVersion]=process.argv.slice(2);
+ if(!['source','sea'].includes(mode)||!/^[a-f0-9]{64}$/.test(nonce)||!/^[1-9][0-9]{0,9}$/.test(length)||!/^[a-f0-9]{64}$/.test(sha256)||!/^\d+\.\d+\.\d+\.\d+$/.test(browserVersion))throw Error('Diagnostic arguments');
+ const expected=require('../lib/test-browser-identity').browserIdentity({length:Number(length),sha256,browserVersion});
+ driverStage(mode,nonce,'cli-entry');
+ const result=await runLeg(mode,nonce,expected);
+ // Final carrier only after every semantic predicate and owned-root removal.
+ console.log('EP_OWNED_PIPE_SUCCESS='+JSON.stringify({nonce,mode,identity:expected,ready:result.ready,owned:result.owned,cleanupCertain:result.cleanupCertain}));
+})().catch(()=>{console.error('EP_OWNED_PIPE_UNCERTAIN');process.exitCode=1;});

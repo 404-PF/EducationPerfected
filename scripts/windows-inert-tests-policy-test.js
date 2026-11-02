@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { runInertTests } = require('./windows-inert-tests');
-const names = ['windows-conpty-test.py', 'windows-startup-leg-helper-test.py', 'windows-stage-transport-probe-test.py', 'windows-workflow-policy-test.py'];
+const names = ['windows-conpty-test.py', 'windows-owned-pipe-test.py', 'windows-owned-pipe-protocol-test.py', 'windows-owned-pipe-helper-test.py', 'windows-stage-transport-probe-test.py', 'windows-workflow-policy-test.py'];
 for (const platform of ['win32', 'linux', 'darwin']) {
     for (const failure of ['none', 'error', 'signal', 'nonzero', 'null']) {
         const calls = [];
@@ -17,7 +17,7 @@ for (const platform of ['win32', 'linux', 'darwin']) {
         };
         const output = [];
         const code = runInertTests(platform, spawnSync, text => output.push(text));
-        assert.equal(calls.length, failure === 'none' ? 4 : 2);
+        assert.equal(calls.length, failure === 'none' ? 6 : 2);
         assert.equal(code, failure === 'none' ? 0 : 1);
         calls.forEach((call, index) => {
             assert.equal(call.command, platform === 'win32' ? 'python' : 'python3');
@@ -26,7 +26,7 @@ for (const platform of ['win32', 'linux', 'darwin']) {
             assert.equal(call.options.timeout, 60000);
             assert.equal(call.options.stdio, 'inherit');
         });
-        assert.deepEqual(output, failure === 'none' ? [] : ['Windows inert contract failed: windows-startup-leg-helper-test.py']);
+        assert.deepEqual(output, failure === 'none' ? [] : ['Windows inert contract failed: windows-owned-pipe-test.py']);
         assert.equal(output.some(text => text.includes('private error')), false);
     }
 }

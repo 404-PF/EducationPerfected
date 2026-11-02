@@ -1,7 +1,7 @@
 // Cross-platform inert contracts only. These scripts never open a native API.
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const scripts = ['windows-conpty-test.py', 'windows-startup-leg-helper-test.py', 'windows-stage-transport-probe-test.py', 'windows-workflow-policy-test.py'];
+const scripts = ['windows-conpty-test.py', 'windows-owned-pipe-test.py', 'windows-owned-pipe-protocol-test.py', 'windows-owned-pipe-helper-test.py', 'windows-stage-transport-probe-test.py', 'windows-workflow-policy-test.py'];
 function runInertTests(platform = process.platform, spawn = spawnSync, report = message => console.error(message)) {
     const python = platform === 'win32' ? 'python' : 'python3';
     for (const script of scripts) {

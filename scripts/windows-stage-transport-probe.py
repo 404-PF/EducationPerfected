@@ -2,8 +2,11 @@
 """Fixed public zero-browser ConPTY wire probe. No paths or raw output are printed."""
 import importlib.util,pathlib,sys,os,json,re
 sys.dont_write_bytecode=True
-spec=importlib.util.spec_from_file_location('helper',pathlib.Path(__file__).with_name('windows-startup-leg-helper.py'))
+spec=importlib.util.spec_from_file_location('helper',pathlib.Path(__file__).with_name('windows-stage-observer.py'))
 helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
+spec=importlib.util.spec_from_file_location('conpty',pathlib.Path(__file__).with_name('windows-conpty.py'))
+conpty=importlib.util.module_from_spec(spec);spec.loader.exec_module(conpty)
+helper.conpty=conpty
 NONCE='a'*64
 HOST_KEYS=('platformMatch','actionsMatch','runnerOSMatch','hostedMatch','argumentCountMatch')
 def host_checks():
