@@ -148,3 +148,74 @@ Hosted cancellation checkpoint: before the successful save chain, the same produ
 
 
 Hosted raw-input interruption checkpoint: `interrupt-email` and `interrupt-password` send exactly byte3 only after the corresponding production armed prompt label. Only these modes expect child130; save/cancel still require child0, and helper success remains its separate exit0/strict closed receipt. Both cancellation and save acknowledgements are forbidden; email interruption additionally forbids a password label. A standalone ETX control byte is excluded from secret-echo matching, but every nonempty answer other than exactly ETX remains checked over the whole drain. Each interruption requires fresh independent null/idle before and null/idle/empty extraction after, with no native credential delete. Failure or uncertainty retains the owned attempt/root and prevents the next job. This tests production raw-input byte3 handling, not GenerateConsoleCtrlEvent delivery, physical terminal close, OS signals, browser drain or terminal-mode restoration measured independently. At `b8c046c11da7358eed24f9cdc1eacaea1b3d2a67`, the [actual Windows job](https://github.com/404-PF/EducationPerfected/actions/runs/41323101028/job/124897295099) passed both raw-input interruption contracts, both cancellations and the unchanged successful setup/health/delete/cleanup chain. Each helper had strict success-LF receipt, exit0, confirmed close and no timeout/parent kill/stderr; child130 remained interruption-mode-specific. This is hosted raw-input proof only. Locked/unavailable native-store behavior and clean-machine/normal-auth gates remain unproved.
+
+
+## Isolated modified-build normal saved-login observations (November 3, 2026)
+
+These observations are on the separate public test branch, not PR49's production
+source commit. They close a bounded validation question for a build-time-modified
+fixture only. They do not mark a release gate passed on PR49, prove a byte-identical
+production executable, authorize distribution, or contact live Education Perfect.
+
+The modified build substitutes only the login-endpoint module with a fixed
+`http://127.0.0.1:43187/app/login` endpoint. Same-job production/fixture JS bundle
+attribution checks require identical bytes outside that module and the same input
+module graph apart from that module's byte counts. The native executable is built
+and tested on the same Ubuntu22 runner, never uploaded. Native artifact hashes
+below identify different architecture-specific artifacts, not interchangeable
+executables.
+
+| Observation | Exact test source | Run and job | Modified executable SHA256 |
+| --- | --- | --- | --- |
+| Linux x64 normal saved-login | `39962429e28d741ac4e0002f2f7ac5db77f2e002` | [Run41525790754](https://github.com/404-PF/EducationPerfected/actions/runs/41525790754), [job125553056290](https://github.com/404-PF/EducationPerfected/actions/runs/41525790754/job/125553056290) | `076031014433bf463a7020d94d056434cf43d35c2f495842279d1c199630fd39` |
+| Linux ARM64 normal saved-login | `273461526b075c25b7f1b15c89af663e746ec08c` | [Run41527347024](https://github.com/404-PF/EducationPerfected/actions/runs/41527347024), [job125558391345](https://github.com/404-PF/EducationPerfected/actions/runs/41527347024/job/125558391345) | `3ca64bc5078d8a2ed9bfe652629ebe011c9e40ab8a5a987bfd749cbeb341ed9f` |
+
+Both runs completed the full reviewed acceptance path: private user/net/PID/mount
+chain, owned resolver files, capability drop/no_new_privs, no inherited sockets,
+loopback topology, empty routes, reserved-address egress and reserved-name lookup
+checks, sealed outer-net baseline comparison, artifact-hash validation, owned
+Secret Service/keyring/display, synthetic native record save/read, and exactly one
+matching fixture POST after normal saved-store auto-login. The product received
+only `quit` as input. Pass also required normal output markers, exit0/no signal,
+absent product process group, native record removal/read-absence, empty owned tmp,
+and owned-process cleanup. Fixed stage names identify attempted operations; those
+names alone are not success proof. The final pass depends on the reviewed checks
+and process/result agreement. Workflow cleanup passed and artifacts count was0.
+
+Both JS main bundles had SHA256
+`c5191b8efb0c80b7578de19f9fa985a47350ecd90582d460370e332dc8ef76e3`.
+The normalized source-input-set digest was
+`476e6cf883096667a64d93c001e91c4abebe3b1ef4ddbe7640ae0ddaeb17350b`.
+That digest matches normalized source inputs, not runtime/toolchain/native artifact
+identity. Local dependency layout produced a different full JS bundle hash; no
+cross-environment byte-equivalence claim follows.
+
+Failure history stays qualified. [Run41426552932](https://github.com/404-PF/EducationPerfected/actions/runs/41426552932)
+failed without stage detail and remains unlocated.
+[Run41522518508](https://github.com/404-PF/EducationPerfected/actions/runs/41522518508)
+failed at the namespace-reference check; readlink failure versus equality was not
+retained. The next reviewed change replaced an unproven `/proc/1` outer-net
+reference with a bounded sealed bootstrap baseline, not a removed admission gate.
+[Run41524705279](https://github.com/404-PF/EducationPerfected/actions/runs/41524705279)
+failed at display readiness with unknown subcause. The following success added
+only diagnostic substages; it is not evidence a functional display fix occurred.
+
+### Mac capability observation is separate
+
+At test commit `6dad81788e820d593310faeb5bbbab8cf3fd3172`,
+[run41528559699](https://github.com/404-PF/EducationPerfected/actions/runs/41528559699)
+passed network-capability-only checks on
+[Apple Silicon](https://github.com/404-PF/EducationPerfected/actions/runs/41528559699/job/125562525506)
+and [Intel](https://github.com/404-PF/EducationPerfected/actions/runs/41528559699/job/125562525951).
+The fixed parent and inherited child observed policy errno denial for reserved
+IPv4/IPv6 TCP/UDP and a different loopback port, plus an owned loopback exchange
+and process-group cleanup. No keychain, browser, product or build ran. This is not
+DNS/Mach-broker attestation, filesystem/keychain confinement, normal Chromium
+sandbox compatibility, or product admission. A viable complete Mac boundary for
+normal saved-login testing remains unresolved; do not widen services or disable
+the browser sandbox to turn this limited result into a product pass.
+
+Unmodified-artifact normal saved-login, Mac and Windows normal saved-login,
+Windows browser reliability/console events, clean-machine/no-Node hosts,
+Ubuntu24 compatibility, project/browser rights and signing remain open. No
+`release/evidence.json` is created from these fixture-only observations.
