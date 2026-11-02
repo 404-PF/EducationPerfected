@@ -21,6 +21,12 @@ async function buildDevelopment(target) {
  // This is an audit aid, not permission to redistribute an incomplete notice set.
  const notices = path.join(out, 'THIRD-PARTY-NOTICES'); fs.rmSync(notices, {recursive:true,force:true}); fs.mkdirSync(notices, { recursive: true });
  const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../package-lock.json'), 'utf8'));
+ const runtime = require('./notices/runtime.json');
+ if (process.versions.node !== runtime.version) throw Error('Node runtime notice version mismatch');
+ const runtimeNotice = fs.readFileSync(path.join(__dirname, 'notices', runtime.file));
+ if (createHash('sha256').update(runtimeNotice).digest('hex') !== runtime.sha256) throw Error('Node runtime notice checksum mismatch');
+ fs.writeFileSync(path.join(notices, runtime.file), runtimeNotice);
+ fs.copyFileSync(path.join(__dirname, 'notices/runtime.json'), path.join(notices, 'NODE-RUNTIME-PROVENANCE.json'));
  const inventory = [];
  for (const [relative, record] of Object.entries(lock.packages)) {
   if (!relative || record.dev) continue;
