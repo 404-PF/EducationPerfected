@@ -12,11 +12,11 @@ async function probe(scenario, fixturePath) {
  const requireFixture=id=>{
   if(id==='./windows-setup-receipt')return require('./windows-setup-receipt');
   if(id==='node:path')return fixturePath;
-  if(id==='node:fs')return {mkdtempSync:()=>'/owned',copyFileSync(){},mkdirSync(){},statSync:()=>({isFile:()=>true}),readdirSync:()=>scenario==='residue' && saves>0?['owned-extraction']:[],rmSync(){removed++;assert.equal(live,false);if(scenario==='file-cleanup'){const error=new Error('sensitive-fixture-native-error');error.code='EPERM';error.path=fixturePath.join('/owned','educationperfected.exe');throw error;}if(scenario==='unknown-cleanup'){const error=new Error('sensitive-fixture-native-error');error.code='private-code';error.path=fixturePath.join('/outside','private-name');throw error;}}};
+  if(id==='node:fs')return {mkdtempSync:()=>'/owned',copyFileSync(){},mkdirSync(){},statSync:()=>({isFile:()=>true}),readdirSync:()=>scenario==='residue' && saves>0?['owned-extraction']:[],rmSync(){removed++;assert.equal(live,false);if(['file-cleanup','busy-cleanup','busy-primary'].includes(scenario)){const error=new Error('sensitive-fixture-native-error');error.code=scenario==='file-cleanup'?'EPERM':'EBUSY';error.path=fixturePath.join('/owned','educationperfected.exe');throw error;}if(scenario==='unknown-cleanup'){const error=new Error('sensitive-fixture-native-error');error.code='private-code';error.path=fixturePath.join('/outside','private-name');throw error;}}};
   if(id==='node:os')return {tmpdir:()=>'/synthetic'};
   if(id==='./packaged-fixture-target')return {packagedFixtureTarget:()=>({executable:'/fixed/educationperfected.exe'})};
   if(id==='../lib/packaged-windows-binding')return {createWindowsBinding:()=>({hasLiveWorkers:()=>live,AsyncEntry:class {
-   async getPassword(){polls++;if(failureScenario==='cancel-read-failure' && cancelStarted===targetMode)throw primary;if(scenario==='initial-read-live'){live=true;throw primary;}if(scenario==='cleanup-read-live' && deletes){live=true;throw primary;}return record;}
+   async getPassword(){polls++;if(scenario==='busy-primary' && commands.at(-1)==='--forget-credentials' && !deletes)throw primary;if(failureScenario==='cancel-read-failure' && cancelStarted===targetMode)throw primary;if(scenario==='initial-read-live'){live=true;throw primary;}if(scenario==='cleanup-read-live' && deletes){live=true;throw primary;}return record;}
    async setPassword(){assert.fail('Source fixture must never prepare the SEA setup record');}
    async deletePassword(){deletes++;if(scenario==='cleanup-delete-live'){live=true;throw primary;}record=null;return true;}
   }})};
@@ -63,7 +63,14 @@ async function probe(scenario, fixturePath) {
  if(['cancel-uncertain','cancel-closed-failure','cancel-read-failure'].includes(failureScenario)){assert.ok(error);assert.equal(deletes,0);assert.equal(removed,0);assert.equal(spawns,expectedFailureSpawns);}
  if(failureScenario==='cancel-mutation'){assert.ok(error);assert.equal(record,'unexpected');assert.equal(deletes,0);assert.equal(removed,0);assert.equal(spawns,expectedFailureSpawns);}
  if(scenario==='setup-pair-mismatch'){assert.ok(error);assert.equal(deletes,1);assert.equal(record,null);assert.equal(removed,1);}
- if(['file-cleanup','unknown-cleanup'].includes(scenario)){assert.match(error.message,/file cleanup failed/);assert.equal(removed,1);assert.ok(logs.some(line=>line.includes('code='+(scenario==='file-cleanup'?'EPERM; target=executable-copy':'other; target=unknown'))));assert.doesNotMatch(logs.join(' '),/sensitive-fixture|private-code|private-name|outside/);}
+ if(['file-cleanup','busy-cleanup','busy-primary','unknown-cleanup'].includes(scenario)){if(scenario==='busy-primary')assert.equal(error,primary);else assert.match(error.message,/file cleanup failed/);assert.equal(removed,1);assert.equal(record,null);assert.equal(spawns,7);assert.equal(deletes,scenario==='busy-primary'?1:0);assert.ok(logs.some(line=>line.includes('code='+(scenario==='file-cleanup'?'EPERM; target=executable-copy':scenario.startsWith('busy-')?'EBUSY; target=executable-copy':'other; target=unknown'))));assert.doesNotMatch(logs.join(' '),/sensitive-fixture|private-code|private-name|outside/);}
+ if(scenario==='busy-cleanup') {
+  const successAt=logs.findIndex(line=>line.includes('Windows SEA interactive setup saved'));
+  const failureAt=logs.findIndex(line=>line.includes('code=EBUSY; target=executable-copy'));
+  assert.ok(successAt>=0 && failureAt>successAt);assert.ok(error,'Subchain pass must not mask final failure');
+  assert.ok(logs[failureAt].includes('childClosed=true; workersLive=false'));
+ }
+ if(scenario==='busy-primary'){assert.equal(logs.some(line=>line.includes('Windows SEA interactive setup saved')),false);assert.ok(logs.some(line=>line==='Packaged store fixture file cleanup failed'));}
  if(scenario==='existing'){assert.match(error.message,/must be absent/);assert.equal(saves,0);assert.equal(spawns,0);assert.equal(deletes,0);assert.equal(record,'untouched');}
  if(scenario==='partial'){assert.match(error.message,/closed failure/);assert.equal(deletes,1);assert.equal(record,null);}
  if(['initial-read-live','cleanup-delete-live','cleanup-read-live','child-live'].includes(scenario)){if(scenario==='initial-read-live' || scenario==='child-live')assert.equal(error,primary);assert.equal(removed,0);assert.equal(deletes,scenario.startsWith('cleanup-')?1:0);assert.ok(logs.some(line=>/retained|cleanup failed/.test(line)));}
@@ -72,7 +79,7 @@ async function probe(scenario, fixturePath) {
  if(['child-failure','child-noop'].includes(scenario)){assert.ok(error);assert.equal(deletes,1);assert.equal(record,null);assert.equal(removed,1);}
 }
 (async()=>{
- const ordinary=['setup-uncertain','setup-no-receipt','setup-pair-mismatch','read-failure','read-wrong','read-mutation','file-cleanup','unknown-cleanup','existing','success','partial','initial-read-live','cleanup-delete-live','cleanup-read-live','child-failure','child-noop','residue','child-live'];
+ const ordinary=['setup-uncertain','setup-no-receipt','setup-pair-mismatch','read-failure','read-wrong','read-mutation','file-cleanup','busy-cleanup','busy-primary','unknown-cleanup','existing','success','partial','initial-read-live','cleanup-delete-live','cleanup-read-live','child-failure','child-noop','residue','child-live'];
  const modes=['interrupt-email','interrupt-password','cancel-email','cancel-password'];
  const failures=['cancel-uncertain','cancel-closed-failure','cancel-read-failure','cancel-mutation'];
  for(const fixturePath of [path.posix,path.win32]){
