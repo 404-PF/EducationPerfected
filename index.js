@@ -356,11 +356,12 @@ async function launchProgram({ legacySignals = false } = {}) {
     // real run they are ignored, so a stray environment can never point the
     // program at a lookalike host or disable the host protection below.
     const TEST_BOOT = process.env.EP_TEST_BOOT === '1';
+    const loginEndpoint = require('./lib/login-endpoint').loginEndpoint(TEST_BOOT, process.env);
     const DIR = {
         // Credentials are resolved at runtime (see resolveCredentials) and never kept
         // anywhere a commit could pick them up. Email/password are added below.
 
-        login_url: (TEST_BOOT && process.env.EP_LOGIN_URL) || 'https://app.educationperfect.com/app/login',
+        login_url: loginEndpoint.url,
 
         // The login form is no longer served from app.educationperfect.com: that URL
         // boots the SPA, which bounces /app/login -> / -> authentication.educationperfect.com
@@ -368,7 +369,7 @@ async function launchProgram({ legacySignals = false } = {}) {
         // #loginId/#password ids, so the selectors below only need the matching origin -
         // a same-document selector wait would never match while the page is still on the
         // first host.
-        login_host: (TEST_BOOT && process.env.EP_LOGIN_HOST) || 'iam.educationperfect.com',
+        login_host: loginEndpoint.host,
 
         // log-in page elements
         username_css: '#loginId',
