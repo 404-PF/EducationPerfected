@@ -1,0 +1,10 @@
+(version 1)
+; Capability probe only: NOT a filesystem, keychain or product admission policy.
+(allow default)
+(deny network*)
+; Never use network* local or unscoped unix-socket allow clauses.
+(allow network-outbound (remote tcp "localhost:43187"))
+(allow network-bind (local tcp "localhost:43187"))
+(allow network-inbound (local tcp "localhost:43187"))
+; Block DNS/proxy/service mediation during this capability-only process tree.
+(deny mach-lookup)
