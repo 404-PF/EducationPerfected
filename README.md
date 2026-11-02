@@ -57,7 +57,7 @@ This version name does not mean the packaged CLI has shipped; its release gates 
 ## Installation
 1. download the EducationPerfected program, starter script, launcher, and test scripts ([index.js](index.js), [start.cmd](start.cmd) or [start.sh](start.sh), the [bin/](bin/) folder, and the [scripts/](scripts/) folder) and place them in the same folder  
    (the scripts expect [package.json](package.json) and [package-lock.json](package-lock.json) in that same folder - get them from the repo; if you copied the files out of a git checkout, copy those along with the `bin/` and `scripts/` folders)
-2. install [node.js](https://nodejs.org/) - version **22.12 or newer** (that's what the pinned Puppeteer requires)
+2. install [node.js](https://nodejs.org/) - version **22.12 or newer** for running the source program (that's what the pinned Puppeteer requires). Building a standalone development executable requires **Node 22.23.4 exactly**, as explained below.
 3. open Command Prompt/Terminal **in the folder where `index.js` is located** (right click -> open in terminal or use the `cd` command to change the directory)
 4. install the dependencies with `npm ci` in your opened Command Prompt/Terminal window
 5. set your **Education Perfect credentials** as environment variables - the program will use them for auto-login  
@@ -232,6 +232,10 @@ The native store uses Windows Credential Manager, macOS Keychain, or Linux Secre
 A saved login is read as one versioned record. Existing environment-variable and optional legacy keytar inputs are retained for source-build compatibility. Setup does not delete older legacy-keytar entries. `--forget-credentials` removes only the new record, so older inputs may still supply a login.
 
 This is source-build work, not a packaged release. Native disposable tests now cover Linux x64/ARM64 private-store CRUD, Windows x64 source-worker CRUD and SEA hidden-input setup, cancellation, raw byte3 interruption, health-read and deletion, plus Mac ARM64/Intel source CRUD and packaged setup/health-read/delete. Mac exact packaged values and normal saved-login use remain unproved; see `release/native-validation.md`. Browser bundling, native module extraction, signing/distribution and five-target release checks must pass before claiming standalone support. Run `npm run test:store` for isolated adapter/setup contract tests; those tests never access a real credential store.
+
+## Standalone development builder prerequisite
+
+All three SEA development builders (`build:linux-dev`, `build:windows-dev` and `build:macos-dev`) require **Node 22.23.4 exactly** on the matching native host. This is narrower than the `package.json` engine range (`>=22.12.0`), which describes source-program installation and runtime requirements, not the SEA builder matrix. The builder copies the current Node executable and includes the checked-in Node 22.23.4 runtime LICENSE and bundled-component notices. A different Node version fails with `Node runtime notice version mismatch` before archive, bundle or native executable generation; do not remove that check to build with another version. Supporting another builder version needs matching reviewed runtime notices and native validation first. No other Node builder version is currently supported by these commands.
 
 ## Linux x64/ARM64 standalone development build
 
