@@ -75,3 +75,32 @@ with mock.patch.object(p,'host_checks',side_effect=KeyboardInterrupt('PRIVATE'))
  assert p.entry()==20
 r=json.loads(out.getvalue().split('=',1)[1]);assert set(r['hostChecks'])==keys and set(r['hostChecks'].values())=={'unknown'} and r['stage']=='probe-host'
 print('Host guard fixed-key refusal/privacy/no-metadata/no-native controls passed (inert only).')
+
+# Inert fixed-key shape reasons supplement, never replace, strict acceptance.
+import unittest
+import importlib.util
+spec=importlib.util.spec_from_file_location('probe_shape',pathlib.Path(__file__).with_name('windows-stage-transport-probe.py'));p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
+shape,KEYS,PREFIX,STAGES=p.wire_shape,p.WIRE_KEYS,p.PREFIX,p.STAGES
+ns={'observed_driver_stage':p.helper.observed_driver_stage}
+N='a'*64
+def row(st,**kw):return PREFIX+json.dumps(dict(nonce=N,mode='source',stage=st,**kw),separators=(',',':')).encode()+b'\r\n'
+D=b''.join(row(x) for x in STAGES[:5])
+class Checks(unittest.TestCase):
+ def test_reason_matrix(self):
+  cases=[(D,'accepted-prefix'),(b'','no-marker-line'),(b'\x1b[?25l'+D,'prefix-not-at-line-start'),(b'\x1b[?25l\r\n'+D,'accepted-prefix'),(D.replace(b'cli-entry',b'cli-\x1b[0mentry'),'json-invalid'),(D.replace(b'"nonce":"',b'"nonce":\r\n"'),'json-invalid'),(D+D,'stage-order-mismatch'),(D.replace(N.encode(),b'b'*64),'binding-mismatch'),(D.replace(b'cli-root-checked',b'archive-verified'),'stage-order-mismatch'),(row('cli-entry',extra='PRIVATE_SECRET'),'schema-mismatch'),(PREFIX+b'null\r\n','json-not-object'),(PREFIX+b'[]\r\n','json-not-object'),(PREFIX+b'{bad}\r\n','json-invalid'),(D.replace(b'cli-entry',b'\xff'),'non-ascii-marker-line'),(b'PRIVATE_HOST_PATH\r\n'+D,'accepted-prefix'),(D.replace(b'"source"',b'"sea"'),'binding-mismatch'),(row('cli-root-checked'),'stage-order-mismatch'),(PREFIX+b'{"nonce":"'+N.encode()+b'","mode":"source","stage":[]}\r\n','stage-order-mismatch')]
+  for data,reason in cases:
+   with self.subTest(reason=reason):
+    r=shape(data,'source',N);self.assertEqual(r['reason'],reason);self.assertEqual(set(r),set(KEYS));self.assertTrue(all(type(v) is bool or v=='unknown' for k,v in r.items() if k!='reason'));self.assertNotIn('PRIVATE',json.dumps(r));self.assertNotIn(N,json.dumps(r));self.assertEqual(reason=='accepted-prefix',ns['observed_driver_stage'](data,'source',N)!='unknown'); self.assertEqual(p.evidence(data)['wireShape'],r)
+ def test_input_boundaries(self):
+  for d,m,n in [(b'x'*65537,'source',N),('notbytes','source',N),(D,'other',N),(D,'source','bad')]:self.assertEqual(shape(d,m,n)['reason'],'input-rejected')
+ def test_vt_not_cause(self):
+  self.assertTrue(shape(b'\x1b[?25l\r\n'+D,'source',N)['vtPresent']);self.assertFalse(shape(b'\x1b[?25l\r\n'+D,'source',N)['markerLineHasVT']);self.assertTrue(shape(b'\x1b[?25l'+D,'source',N)['markerLineHasVT'])
+ def test_host_guard_no_shape(self):
+  with mock.patch.object(p,'host_checks',return_value=dict.fromkeys(p.HOST_KEYS,False)),mock.patch.object(p,'wire_shape',side_effect=AssertionError('shape must not run before host')),contextlib.redirect_stdout(io.StringIO()) as out:
+   self.assertEqual(p.entry(),20)
+  self.assertEqual(json.loads(out.getvalue().split('=',1)[1])['wireShape'],dict.fromkeys(KEYS,'unknown'))
+ def test_no_repair(self):
+  self.assertEqual(shape(b'junk'+D,'source',N)['reason'],'prefix-not-at-line-start');self.assertEqual(shape(D.replace(b'\r\n',b''),'source',N)['reason'],'json-invalid')
+
+suite=unittest.defaultTestLoader.loadTestsFromTestCase(Checks)
+assert unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()

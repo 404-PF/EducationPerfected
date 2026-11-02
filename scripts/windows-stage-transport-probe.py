@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fixed public zero-browser ConPTY wire probe. No paths or raw output are printed."""
-import importlib.util,pathlib,sys,os,json
+import importlib.util,pathlib,sys,os,json,re
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('helper',pathlib.Path(__file__).with_name('windows-startup-leg-helper.py'))
 helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
@@ -8,9 +8,36 @@ NONCE='a'*64
 HOST_KEYS=('platformMatch','actionsMatch','runnerOSMatch','hostedMatch','argumentCountMatch')
 def host_checks():
     return dict(zip(HOST_KEYS,(sys.platform=='win32',os.environ.get('GITHUB_ACTIONS')=='true',os.environ.get('RUNNER_OS')=='Windows',os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted',len(sys.argv)==2)))
-UNKNOWN={'streamObserved':False,'vtPresent':'unknown','markerTokenPresent':'unknown','strictPrefixStage':'unknown'}
+PREFIX=b'EP_DIAGNOSTIC_DRIVER_STAGE='
+STAGES=helper.DRIVER_STAGES
+WIRE_KEYS=('reason','vtPresent','markerLineHasVT','markerAtLineStart','markerLineASCII','allMarkerJSONObjects','exactSchema','bindingMatch','orderedPrefix')
+def wire_shape(data,mode,nonce):
+    out=dict.fromkeys(WIRE_KEYS,'unknown');out['reason']='input-rejected'
+    if type(data) is not bytes or len(data)>65536 or mode not in ('source','sea') or type(nonce) is not str or not re.fullmatch('[a-f0-9]{64}',nonce):return out
+    out['vtPresent']=b'\x1b' in data
+    lines=[x for x in data.splitlines() if PREFIX in x]
+    if not lines:out['reason']='no-marker-line';return out
+    out['markerLineHasVT']=any(b'\x1b' in x for x in lines)
+    out['markerAtLineStart']=all(x.startswith(PREFIX) for x in lines)
+    out['markerLineASCII']=all(x.isascii() for x in lines)
+    if not out['markerAtLineStart']:out['reason']='prefix-not-at-line-start';return out
+    if not out['markerLineASCII']:out['reason']='non-ascii-marker-line';return out
+    try:values=[json.loads(x.decode('ascii').removeprefix(PREFIX.decode('ascii'))) for x in lines]
+    except (ValueError,TypeError,UnicodeError):out['allMarkerJSONObjects']=False;out['reason']='json-invalid';return out
+    out['allMarkerJSONObjects']=all(type(x) is dict for x in values)
+    if not out['allMarkerJSONObjects']:out['reason']='json-not-object';return out
+    out['exactSchema']=all(set(x)=={'nonce','mode','stage'} for x in values)
+    if not out['exactSchema']:out['reason']='schema-mismatch';return out
+    out['bindingMatch']=all(x['nonce']==nonce and x['mode']==mode for x in values)
+    if not out['bindingMatch']:out['reason']='binding-mismatch';return out
+    expected=[x for x in STAGES if mode=='source' or x not in ('unpack-entered','unpacked')]
+    stages=[x['stage'] for x in values];out['orderedPrefix']=stages==expected[:len(stages)]
+    out['reason']='accepted-prefix' if out['orderedPrefix'] else 'stage-order-mismatch'
+    return out
+
+UNKNOWN={'streamObserved':False,'vtPresent':'unknown','markerTokenPresent':'unknown','strictPrefixStage':'unknown','wireShape':dict.fromkeys(WIRE_KEYS,'unknown')}
 def evidence(data):
-    return {'streamObserved':True,'vtPresent':b'\x1b' in data,'markerTokenPresent':b'EP_DIAGNOSTIC_DRIVER_STAGE=' in data,'strictPrefixStage':helper.observed_driver_stage(data,'source',NONCE)}
+    return {'streamObserved':True,'vtPresent':b'\x1b' in data,'markerTokenPresent':b'EP_DIAGNOSTIC_DRIVER_STAGE=' in data,'strictPrefixStage':helper.observed_driver_stage(data,'source',NONCE),'wireShape':wire_shape(data,'source',NONCE)}
 def entry():
     closed=False;observed=dict(UNKNOWN);outcome='uncertainty';stage='probe-host';host=dict.fromkeys(HOST_KEYS,'unknown')
     def confirm():
