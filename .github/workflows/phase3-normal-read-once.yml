@@ -29,6 +29,7 @@ jobs:
         run: |
           set -eu
           node scripts/normal-read-fixture/bundle.js > "$RUNNER_TEMP/bundle.log" 2>&1
+          node scripts/normal-read-fixture/attribution.js
           node scripts/normal-read-fixture/build-sea-private.js > "$RUNNER_TEMP/build.log" 2>&1
           python3 - <<'PY'
           import json,pathlib

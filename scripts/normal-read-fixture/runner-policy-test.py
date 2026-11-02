@@ -1,5 +1,6 @@
 """Inert refusal tests for actual preflight. No namespace/store/display/product."""
-import importlib.util,pathlib,unittest.mock as mock,types,os
+import importlib.util,pathlib,unittest.mock as mock,types,os,sys
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent))
 p=pathlib.Path(__file__).with_name('run-isolated.py');spec=importlib.util.spec_from_file_location('runner',p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 def refused():
  try:m.preflight()
