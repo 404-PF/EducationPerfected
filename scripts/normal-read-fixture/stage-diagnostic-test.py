@@ -35,9 +35,9 @@ class Tests(unittest.TestCase):
   with self.assertRaises(S.DiagnosticError):S.capture([sys.executable,'-c','import time;time.sleep(5)'],env={},timeout=.05,sequence=S.PRODUCT,cleanup='product.cleanup')
  def test_outer_executed_main(self):
   m=module('outer','enter-boundary.py')
-  for response in [(S.INNER[:3],'preflight.capabilities',False),(S.INNER,None,True)]:
+  for response in [(S.INNER[:S.INNER.index('preflight.capabilities')+1],'preflight.capabilities',False),(S.INNER,None,True)]:
    m.stages=S.Stages();out=io.StringIO()
-   with tempfile.TemporaryDirectory() as d,contextlib.redirect_stdout(out),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m.os,'readlink',return_value='net:[123]'),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(m.tempfile,'mkdtemp',return_value=d),M.patch.object(m,'capture',return_value=response) as cap,M.patch.object(m.shutil,'rmtree'):
+   with tempfile.TemporaryDirectory() as d,contextlib.redirect_stdout(out),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m,'create_baseline',return_value=None),M.patch.object(m.os,'readlink',return_value='net:[123]'),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(m.tempfile,'mkdtemp',return_value=d),M.patch.object(m,'capture',return_value=response) as cap,M.patch.object(m.shutil,'rmtree'):
     if response[2]:m.main();m.stages.finish(True)
     else:
      with self.assertRaises(S.DiagnosticError):m.main()
@@ -46,7 +46,7 @@ class Tests(unittest.TestCase):
    self.assertNotIn(d,out.getvalue());self.assertIn('EP_NORMAL_READ_STAGE=boundary.enter',out.getvalue())
    if not response[2]:self.assertIn('EP_NORMAL_READ_FAILURE=preflight.capabilities',out.getvalue())
   m.stages=S.Stages();out=io.StringIO()
-  with contextlib.redirect_stdout(out),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(m,'capture',side_effect=S.DiagnosticError()),M.patch.object(m.os,'readlink',return_value='net:[123]'):
+  with contextlib.redirect_stdout(out),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(m,'capture',side_effect=S.DiagnosticError()),M.patch.object(m,'create_baseline',return_value=None),M.patch.object(m.os,'readlink',return_value='net:[123]'):
    with self.assertRaises(S.DiagnosticError):m.main()
    m.stages.failed();m.stages.finish(False)
   self.assertIn('EP_NORMAL_READ_FAILURE=boundary.enter',out.getvalue())
@@ -57,7 +57,7 @@ class Tests(unittest.TestCase):
    script='import os;os.write(1,'+repr(data)+');raise SystemExit(1)'
    def inert_popen(*a,**kw):return original([sys.executable,'-c',script],**kw)
    m.stages=S.Stages();out=io.StringIO()
-   with contextlib.redirect_stdout(out),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m.os,'readlink',return_value='net:[123]'),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(S.subprocess,'Popen',side_effect=inert_popen):
+   with contextlib.redirect_stdout(out),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m,'create_baseline',return_value=None),M.patch.object(m.os,'readlink',return_value='net:[123]'),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(S.subprocess,'Popen',side_effect=inert_popen):
     with self.assertRaises(S.DiagnosticError):m.main()
     m.stages.failed();m.stages.finish(False)
    self.assertEqual(out.getvalue(),'EP_NORMAL_READ_STAGE=boundary.enter\nEP_NORMAL_READ_STAGE=boundary.cleanup\nEP_NORMAL_READ_FAILURE=boundary.enter\nEP_NORMAL_READ_RESULT=fail\n')
@@ -102,7 +102,7 @@ class Tests(unittest.TestCase):
     seen.append(t)
     if t==target:raise RuntimeError('injected')
    def command(args,**kw):return types.SimpleNamespace(stdout=json.dumps([{'ifname':'lo','flags':['UP']}] if args==['ip','-j','link'] else []).encode())
-   with M.patch.object(m,'stages',types.SimpleNamespace(mark=mark)),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m.os,'isatty',return_value=False),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(pathlib.Path,'read_text',lambda p:texts[str(p)]),M.patch.object(pathlib.Path,'iterdir',return_value=[]),M.patch.object(pathlib.Path,'exists',return_value=False),M.patch.object(m,'cmd',side_effect=command),M.patch.object(m.socket,'socket',return_value=Sock()),M.patch.object(m.subprocess,'run',return_value=types.SimpleNamespace(returncode=2,stdout=b'',stderr=b'')):
+   with M.patch.object(m,'consume_baseline',return_value=b'net:[123]'),M.patch.object(m,'stages',types.SimpleNamespace(mark=mark)),M.patch.object(m.os,'getuid',return_value=1001),M.patch.object(m.os,'isatty',return_value=False),M.patch.object(m.sys,'argv',['fixed']),M.patch.object(pathlib.Path,'read_text',lambda p:texts[str(p)]),M.patch.object(pathlib.Path,'iterdir',return_value=[]),M.patch.object(pathlib.Path,'exists',return_value=False),M.patch.object(m,'cmd',side_effect=command),M.patch.object(m.socket,'socket',return_value=Sock()),M.patch.object(m.subprocess,'run',return_value=types.SimpleNamespace(returncode=2,stdout=b'',stderr=b'')):
     with self.assertRaisesRegex(RuntimeError,'injected'):m.preflight()
    self.assertEqual(seen[-1],target)
  def test_inner_primary_and_cleanup(self):

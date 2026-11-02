@@ -9,6 +9,7 @@ def refused():
 with mock.patch.object(m.os,'getuid',return_value=0):refused()
 with mock.patch.object(m.os,'getuid',return_value=1001),mock.patch.object(m.os,'isatty',return_value=True):refused()
 with mock.patch.object(m.os,'getuid',return_value=1001),mock.patch.object(m.os,'isatty',return_value=False),mock.patch.object(m.sys,'argv',['fixed','extra']):refused()
+m.consume_baseline=lambda:b'net:[123]'
 original=pathlib.Path.read_text
 for status in ['CapEff:\t0000000000000001\nNoNewPrivs:\t1','CapEff:\t0000000000000000\nNoNewPrivs:\t0']:
  def read(p,*a,**k):return status if str(p)=='/proc/self/status' else original(p,*a,**k)

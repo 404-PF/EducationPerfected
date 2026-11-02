@@ -1,6 +1,7 @@
 """Fixed private CI runner. Entry preflight precedes ALL store/display/product work."""
 import os,sys,pathlib,subprocess,socket,json,tempfile,shutil,time,signal,ipaddress
 from stages import Stages,capture,PRODUCT
+from namespace_baseline import consume as consume_baseline,identity as net_identity
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 stages=Stages()
 def required(ok):
@@ -9,6 +10,8 @@ def cmd(args,**kw):return subprocess.run(args,check=True,stdout=subprocess.PIPE,
 def preflight():
  stages.mark('preflight.identity')
  required(os.getuid()!=0 and not os.isatty(0) and len(sys.argv)==1)
+ stages.mark('preflight.baseline')
+ outer_net=consume_baseline()
  stages.mark('preflight.capabilities')
  status=pathlib.Path('/proc/self/status').read_text()
  for line in status.splitlines():
@@ -44,7 +47,7 @@ def preflight():
  r=subprocess.run(['getent','ahosts','ep-fixture.invalid'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=5)
  required(r.returncode==2 and not r.stdout and not r.stderr)
  stages.mark('preflight.namespace')
- required(os.readlink('/proc/self/ns/net')!=os.readlink('/proc/1/ns/net'))
+ required(net_identity(os.readlink('/proc/self/ns/net').encode('ascii'))!=outer_net)
  return {'namespace':'loopback-only','uidNonroot':True,'capabilitiesZero':True,'nss':'files dns','noInheritedSockets':True}
 def stop(p):
  if p is None:return
