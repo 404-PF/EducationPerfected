@@ -7,7 +7,7 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
     output.write('Opening EducationPerfected. Finish sign-in in the browser.\n');
     const controls = await launch();
     const terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
-    output.write('Commands: start, stop, status, mode auto, mode semi, refresh, quit\n');
+    output.write('Commands: start, stop, status, mode auto, mode semi, refresh, inspect choice, quit\n');
     const print = () => output.write(JSON.stringify(controls.status()) + '\n');
     let quitPromise = null;
     const quit = () => {
@@ -29,11 +29,12 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
                 else if (command === 'status' || command === '') { /* print below */ }
                 else if (command === 'mode auto' || command === 'mode semi') await controls.mode(command.slice(5));
                 else if (command === 'refresh') await controls.refresh();
+                else if (command === 'inspect choice') output.write('Choice shape (aggregate only): ' + JSON.stringify(await controls.inspectChoice()) + '\n');
                 else if (command === 'quit' || command === 'exit') { await quit(); print(); break; }
-                else { output.write('Unknown command. Use start, stop, status, mode auto, mode semi, refresh or quit.\n'); continue; }
+                else { output.write('Unknown command. Use start, stop, status, mode auto, mode semi, refresh, inspect choice or quit.\n'); continue; }
                 print();
             } catch {
-                output.write('Command failed. Stop the run before mode or word-list changes; inspect the browser if a control failed.\n');
+                output.write('Command failed. Stop the run before mode, word-list or inspection commands; inspect the browser if a control failed.\n');
             }
         }
     } finally {
@@ -81,6 +82,6 @@ if (require.main === module) {
         credentialCommand(commands[0]).catch(() => { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode = 1; });
         }
     } else if (process.argv.includes('--help') || process.argv.includes('-h')) {
-        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit\nDoes not start answering until start is entered.');
+        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, inspect choice, quit\nDoes not start answering until start is entered.');
     } else runCli().catch(error => { console.error(diagnostic(error, 'EducationPerfected CLI')); process.exitCode = 1; });
 }
