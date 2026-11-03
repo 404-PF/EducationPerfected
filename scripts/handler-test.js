@@ -777,6 +777,42 @@ async function testRealAudioFlow(page, output) {
     check('real loop answers and advances both Listening and Dictation fixture rounds');
 }
 
+async function testRealAudioMissingAnswers(page, origin, output) {
+    // No new route or answer handler: mutate only invented accepted-answer
+    // state on both existing audio fixtures, then drive the actual program.
+    const cases = [
+        ['missing', undefined], ['null', null], ['empty', []],
+        ['unusable', [{ outputString: '' }, { outputString: '   ' }, { outputString: null }, { outputString: 7 }]],
+    ];
+    for (const route of ['/audio', '/dictation']) {
+        for (const [label, answers] of cases) {
+            await page.goto(origin + route, { waitUntil: 'domcontentloaded' });
+            await page.evaluate(answers => {
+                const q = window.angular.element().scope().self.model._currentQuestion;
+                if (answers === undefined) delete q.validAnswers;
+                else q.validAnswers = answers;
+                window.missingAnswerKey = q.contentID + ':' + q.questionIndex;
+                window.missingAnswerEnters = 0;
+                document.addEventListener('keydown', event => { if (event.key === 'Enter') window.missingAnswerEnters++; }, true);
+            }, answers);
+            const mark = output().length;
+            await page.evaluate(() => window.startAnswer());
+            await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
+            const state = await page.evaluate(() => {
+                const q = window.angular.element().scope().self.model._currentQuestion;
+                return { submissions: window.missingAnswerEnters, value: document.querySelector('#answer-text').value,
+                    key: q.contentID + ':' + q.questionIndex, originalKey: window.missingAnswerKey };
+            });
+            assert.equal(state.submissions, 0, route + ':' + label);
+            assert.equal(state.value, '', route + ':' + label + ' must not type');
+            assert.equal(state.key, state.originalKey, route + ':' + label + ' must not advance');
+            assert.ok(output().slice(mark).includes('ships no accepted answers to answer with'), route + ':' + label + ' must report safe refusal');
+            assert.ok(page.url().endsWith(route), route + ':' + label + ' must not navigate');
+        }
+    }
+    check('real loop: Listening/Dictation missing, null, empty and unusable accepted answers stop without typing, submission, advance or navigation');
+}
+
 async function testRestartBound(page, output) {
     await drive(page, '/audio-reject', 8, output);
     const before = await page.evaluate(() => window.__submissions.length);
@@ -954,6 +990,7 @@ async function main() {
             program = await bootRealProgram(origin);
             await testRealLoopAsyncLesson(program.page, program.output);
             await testRealAudioFlow(program.page, program.output);
+            await testRealAudioMissingAnswers(program.page, origin, program.output);
             await testRestartBound(program.page, program.output);
             await testTypedSubmitRaces(program.page, origin);
             await testRealLoopAssignedAudio(program.page, program.output);
