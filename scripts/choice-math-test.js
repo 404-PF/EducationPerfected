@@ -63,6 +63,24 @@ async function setup(page, origin) {
         const automatic = await playChoiceRound(page, auto, { enter: true, timeout: 1000, shouldStop: () => false });
         assert.equal(automatic.status, 'advanced', JSON.stringify(automatic));
         assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 1);
+        for (const loading of ['all-math-missing', 'placeholder-text']) {
+            await setup(page, origin);
+            await page.evaluate(loading => {
+                const f = window.mathFixture;
+                for (const preview of f.previews) {
+                    preview.element.querySelector('.inline-formula').remove();
+                    if (loading === 'placeholder-text') {
+                        // Plain backtick templates normalize nonempty and could
+                        // match loading text without a raw-template routing gate.
+                        const i = f.previews.indexOf(preview);
+                        f.comp.Options[i].TextTemplate = `\`x${i}\``;
+                        preview.element.append(document.createTextNode(`\`x${i}\``));
+                    }
+                }
+            }, loading);
+            assert.equal((await detectQuestion(page)).kind, 'unsupported', loading);
+            assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 0, loading);
+        }
         for (const mutation of ['missing-cache','wrong-group','wrong-id','duplicate-component','duplicate-template','changed-correct','missing-preview','duplicate-element','foreign-option','wrong-renderer','wrong-render-group','missing-math','image','unreadable','changed-variable']) {
             await setup(page, origin);
             await page.evaluate(mutation => {
@@ -100,6 +118,6 @@ async function setup(page, origin) {
             assert.equal(result.status, 'stopped', mutation);
             assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 0, mutation);
         }
-        console.log('Math choice association: positive exact match despite duplicated rendered math and reordered DOM/previews; auto keyed advance, 15 malformed/foreign/stale refusal cases and 5 click-time guards passed. Synthetic only.');
+        console.log('Math choice association: positive exact match despite duplicated rendered math and reordered DOM/previews; auto keyed advance, 2 full-loading-gap refusals, 15 malformed/foreign/stale refusal cases and 5 click-time guards passed. Synthetic only.');
     } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
