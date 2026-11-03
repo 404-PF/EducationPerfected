@@ -40,8 +40,9 @@ async function setup(page, origin) {
 (async () => {
     const server = createServer(); await new Promise(r => server.listen(0, '127.0.0.1', r));
     const origin = `http://127.0.0.1:${server.address().port}`;
-    const browser = await puppeteer.launch({ headless: true, executablePath: process.env.HANDLER_EXECUTABLE_PATH || undefined });
+    let browser;
     try {
+        browser = await puppeteer.launch({ headless: true, executablePath: process.env.HANDLER_EXECUTABLE_PATH || undefined });
         const page = await browser.newPage();
         await setup(page, origin);
         const descriptor = await detectQuestion(page);
@@ -74,6 +75,8 @@ async function setup(page, origin) {
                         // match loading text without a raw-template routing gate.
                         const i = f.previews.indexOf(preview);
                         f.comp.Options[i].TextTemplate = `\`x${i}\``;
+                        f.metadata.Options[i].TextTemplate = f.comp.Options[i].TextTemplate;
+                        preview.renderer.templateString = f.comp.Options[i].TextTemplate;
                         preview.element.append(document.createTextNode(`\`x${i}\``));
                     }
                 }
@@ -119,5 +122,7 @@ async function setup(page, origin) {
             assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 0, mutation);
         }
         console.log('Math choice association: positive exact match despite duplicated rendered math and reordered DOM/previews; auto keyed advance, 2 full-loading-gap refusals, 15 malformed/foreign/stale refusal cases and 5 click-time guards passed. Synthetic only.');
-    } finally { await browser.close(); server.close(); }
+    } finally {
+        try { await browser?.close(); } finally { server.close(); }
+    }
 })().catch(e => { console.error(e); process.exitCode = 1; });
