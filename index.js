@@ -1,7 +1,7 @@
 // V2026 (package version 2026.0.0)
 
 const puppeteer = require('puppeteer');
-const { detectQuestion } = require('./lib/detect-question');
+const { detectQuestion, inspectChoiceAssociation } = require('./lib/detect-question');
 const { playChoiceRound } = require('./lib/choice-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { diagnostic } = require('./lib/diagnostics');
@@ -2243,6 +2243,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
+                inspectChoice: () => inspectChoiceAssociation(page),
                 close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
             });
             browser.on('disconnected', () => controls.browserClosed());

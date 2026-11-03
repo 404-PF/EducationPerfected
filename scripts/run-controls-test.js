@@ -91,3 +91,16 @@ const { createRunControls } = require('../lib/run-controls');
     assert.throws(() => windowsTaskkillPath('C:\\Windows\\..\\other'));
     console.log('Run controls: idempotent start/stop, stop drain, mode guard, same-tick cancel, close passed.');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+(async () => {
+    let release, calls = 0, closed = 0;
+    const controls = createRunControls({ run: () => {}, requestStop: () => {}, setMode: () => {}, refresh: () => {}, inspectChoice: () => { calls++; return new Promise(r => { release = r; }); }, close: () => { closed++; } });
+    const read = controls.inspectChoice(); await Promise.resolve();
+    assert.equal(controls.status().state, 'updating');
+    controls.start(); assert.equal(controls.status().state, 'updating');
+    await assert.rejects(controls.inspectChoice()); await assert.rejects(controls.refresh()); await assert.rejects(controls.mode('semi'));
+    const close = controls.close(); assert.equal(closed, 0);
+    release({ category: 'association-unavailable' }); await read; await close;
+    assert.equal(calls, 1); assert.equal(closed, 1); await assert.rejects(controls.inspectChoice());
+    console.log('Choice inspection: exclusive stopped read, blocked start/mode/refresh/duplicate read and close-drain guards passed.');
+})().catch(e => { console.error(e); process.exitCode = 1; });
