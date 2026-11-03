@@ -105,7 +105,7 @@ async function testChoiceMetadataVariants(page, origin) {
     }
     check('missing/unusable correctness metadata stops without selection, submission or blaming EP');
 
-    for (const shape of ['missing-options', 'non-array-options', 'missing-text', 'non-string-text', 'extra-component', 'extra-visible-group']) {
+    for (const shape of ['mixed-missing-text', 'mixed-non-string-text', 'mixed-markup-only-text', 'missing-options', 'non-array-options', 'missing-text', 'non-string-text', 'markup-only-text', 'extra-component', 'extra-visible-group']) {
         await page.goto(`${origin}/lesson`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('div.multi-choice-component[role=radiogroup]');
         await page.evaluate(value => {
@@ -115,18 +115,21 @@ async function testChoiceMetadataVariants(page, origin) {
             if (value === 'non-array-options') comp.Options = {};
             if (value === 'missing-text') delete comp.Options.find(o => o.Correct === 'true').TextTemplate;
             if (value === 'non-string-text') comp.Options.find(o => o.Correct === 'true').TextTemplate = 1;
+            if (value === 'markup-only-text') comp.Options.find(o => o.Correct === 'true').TextTemplate = '@@009900@@@ [multichoice id="empty"]';
+            if (value.startsWith('mixed-')) {
+                const option = { Correct: 'True' };
+                if (value === 'mixed-non-string-text') option.TextTemplate = 1;
+                if (value === 'mixed-markup-only-text') option.TextTemplate = '[multichoice id="empty"]';
+                comp.Options.push(option);
+            }
             if (value === 'extra-component') q.questionDef.Components.push({ ...comp });
             if (value === 'extra-visible-group') document.querySelector('main').appendChild(document.querySelector('.multi-choice-component').cloneNode(true));
         }, shape);
         const d = await detectQuestion(page);
-        if (shape.endsWith('text')) {
-            assert.deepEqual(d.correct, []);
-            const result = await playChoiceRound(page, d, { enter: true, timeout: 100, shouldStop: () => false });
-            assert.equal(result.status, 'stopped');
-        } else assert.equal(d.kind, 'unsupported', shape);
+        assert.equal(d.kind, 'unsupported', shape);
         assert.equal(await page.$eval('input:checked', () => true).catch(() => false), false);
     }
-    check('malformed answer text/options and ambiguous choice components fail closed');
+    check('malformed and partially unreadable correct-answer sets, options and ambiguous components fail closed');
 }
 
 async function testOptionReorder(page, origin) {
