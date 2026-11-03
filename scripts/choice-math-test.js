@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
-const { detectQuestion } = require('../lib/detect-question');
+const { detectQuestion, inspectChoiceAssociation } = require('../lib/detect-question');
 const { playChoiceRound } = require('../lib/choice-handler');
 async function setup(page, origin) {
     await page.goto(origin + '/lesson');
@@ -48,6 +48,7 @@ async function setup(page, origin) {
         const descriptor = await detectQuestion(page);
         assert.equal(descriptor.kind, 'choice'); assert.equal(descriptor.representation, 'renderer-template');
         assert.equal(descriptor.correct.length, 1);
+        assert.deepEqual(await inspectChoiceAssociation(page), { category: 'association-present' });
         // DOM and preview order both change; exact element/template association wins.
         await page.evaluate(() => { const f = window.mathFixture; f.group.prepend(f.previews[1].element); f.previews.reverse(); });
         let selected = false;
@@ -64,6 +65,15 @@ async function setup(page, origin) {
         const automatic = await playChoiceRound(page, auto, { enter: true, timeout: 1000, shouldStop: () => false });
         assert.equal(automatic.status, 'advanced', JSON.stringify(automatic));
         assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 1);
+        await setup(page, origin);
+        await page.evaluate(() => {
+            const f = window.mathFixture;
+            f.comp.Options[0].TextTemplate = 'synthetic plain option';
+            f.metadata.Options[0].TextTemplate = f.comp.Options[0].TextTemplate;
+            f.previews[0].renderer.templateString = f.comp.Options[0].TextTemplate;
+        });
+        assert.deepEqual(await inspectChoiceAssociation(page), { category: 'raw-template-without-math' });
+        assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 0);
         for (const loading of ['all-math-missing', 'placeholder-text']) {
             await setup(page, origin);
             await page.evaluate(loading => {
@@ -104,9 +114,34 @@ async function setup(page, origin) {
                 if (mutation === 'unreadable') delete f.comp.Options[1].TextTemplate;
                 if (mutation === 'changed-variable') f.metadata.Options[1].TextTemplate += 'resolved variable';
             }, mutation);
-            assert.equal((await detectQuestion(page)).kind, 'unsupported', mutation);
+            const refusal = await detectQuestion(page);
+            assert.equal(refusal.kind, 'unsupported', mutation);
+            const reasons = {
+                'missing-cache': 'cached-component-unavailable',
+                'wrong-group': 'cached-component-shape-mismatch',
+                'wrong-id': 'cached-component-shape-mismatch',
+                'duplicate-component': 'cached-component-unavailable',
+                'duplicate-template': 'duplicate-raw-templates',
+                'changed-correct': 'raw-cached-template-mismatch',
+                'missing-preview': 'cached-component-shape-mismatch',
+                'duplicate-element': 'cached-component-shape-mismatch',
+                'foreign-option': 'preview-option-binding-mismatch',
+                'wrong-renderer': 'preview-option-binding-mismatch',
+                'wrong-render-group': 'preview-option-binding-mismatch',
+                'missing-math': 'rendered-math-unavailable',
+                'image': 'image-option-unsupported',
+                'unreadable': 'raw-options-unreadable',
+                'changed-variable': 'raw-cached-template-mismatch',
+            };
+            assert.deepEqual(await inspectChoiceAssociation(page), { category: reasons[mutation] });
+            assert.ok(refusal.reason.includes(`(${reasons[mutation]})`), mutation + refusal.reason);
+            assert.doesNotMatch(refusal.reason, /synthetic-choice|x\^|DUPLICATE|https|block align/);
             assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 0, mutation);
         }
+        for (const result of [null, { kind: 'unsupported', reason: 'private-url-secret' }, { kind: 'choice', correct: ['private-answer'], key: 'private-key' }]) {
+            assert.deepEqual(await inspectChoiceAssociation({ evaluate: async () => result }), { category: 'association-unavailable' });
+        }
+        assert.deepEqual(await inspectChoiceAssociation({ evaluate: async () => { throw new Error('private-error'); } }), { category: 'association-unavailable' });
         for (const mutation of ['round','template','marking','multi','detached']) {
             await setup(page, origin); const d = await detectQuestion(page);
             await page.evaluate(mutation => {
