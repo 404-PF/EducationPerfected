@@ -73,6 +73,8 @@ function testChoiceRefusals() {
 // accepts case variants of the Correct string. These are synthetic mutations,
 // not a capture of the user's failing slide or a live compatibility claim.
 async function testChoiceMetadataVariants(page, origin) {
+    // The loops share one page: navigation, mutation, detection and clicks must
+    // stay sequential. Parallel awaits would mix fixtures and answer state.
     for (const flag of ['True', 'TRUE', 'tRuE', true]) {
         await page.goto(`${origin}/lesson`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('div.multi-choice-component[role=radiogroup]');
@@ -127,6 +129,14 @@ async function testChoiceMetadataVariants(page, origin) {
         }, shape);
         const d = await detectQuestion(page);
         assert.equal(d.kind, 'unsupported', shape);
+        const expectedReason = shape === 'extra-visible-group'
+            ? /multiple visible choice components/
+            : shape === 'extra-component'
+                ? /without exactly one identifiable multi-choice component/
+                : shape.endsWith('options')
+                    ? /choice option metadata is missing or unreadable/
+                    : /correct-marked choice option has no usable text/;
+        assert.match(d.reason, expectedReason, shape);
         assert.equal(await page.$eval('input:checked', () => true).catch(() => false), false);
     }
     check('malformed and partially unreadable correct-answer sets, options and ambiguous components fail closed');
