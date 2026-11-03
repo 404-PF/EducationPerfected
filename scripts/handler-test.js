@@ -69,6 +69,79 @@ function testChoiceRefusals() {
     check('no-guess rule: zero/multiple/empty matches refuse, single exact match wins');
 }
 
+// Regression for the reported empty-correct[] refusal. EP's public renderer
+// accepts case variants of the Correct string. These are synthetic mutations,
+// not a capture of the user's failing slide or a live compatibility claim.
+async function testChoiceMetadataVariants(page, origin) {
+    // The loops share one page: navigation, mutation, detection and clicks must
+    // stay sequential. Parallel awaits would mix fixtures and answer state.
+    for (const flag of ['True', 'TRUE', 'tRuE', true]) {
+        await page.goto(`${origin}/lesson`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('div.multi-choice-component[role=radiogroup]');
+        await page.evaluate(value => {
+            const comp = window.angular.element().scope().self.model._currentQuestion.questionDef.Components[0];
+            comp.Options.find(o => o.Correct === 'true').Correct = value;
+        }, flag);
+        const d = await detectQuestion(page);
+        assert.deepEqual(d.correct, [LESSON_ROUNDS[0].correct]);
+        const result = await playChoiceRound(page, d, { enter: true, timeout: 5000, shouldStop: () => false });
+        assert.equal(result.status, 'advanced', JSON.stringify(result));
+    }
+    check('source-shaped Correct case variants and boolean true select the exact answer');
+
+    for (const flag of [false, 'false', 'FALSE', 1, '1', null, {}, ' true ']) {
+        await page.goto(`${origin}/lesson`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('div.multi-choice-component[role=radiogroup]');
+        await page.evaluate(value => {
+            const comp = window.angular.element().scope().self.model._currentQuestion.questionDef.Components[0];
+            comp.Options.find(o => o.Correct === 'true').Correct = value;
+        }, flag);
+        const d = await detectQuestion(page);
+        assert.deepEqual(d.correct, []);
+        const result = await playChoiceRound(page, d, { enter: true, timeout: 100, shouldStop: () => false });
+        assert.equal(result.status, 'stopped');
+        assert.match(result.message, /no usable correct-option text could be read/);
+        assert.doesNotMatch(result.message, /EP shipped/);
+        assert.equal(await page.$eval('input:checked', () => true).catch(() => false), false);
+        assert.equal((await detectQuestion(page)).key, d.key);
+    }
+    check('missing/unusable correctness metadata stops without selection, submission or blaming EP');
+
+    for (const shape of ['mixed-missing-text', 'mixed-non-string-text', 'mixed-markup-only-text', 'missing-options', 'non-array-options', 'missing-text', 'non-string-text', 'markup-only-text', 'extra-component', 'extra-visible-group']) {
+        await page.goto(`${origin}/lesson`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('div.multi-choice-component[role=radiogroup]');
+        await page.evaluate(value => {
+            const q = window.angular.element().scope().self.model._currentQuestion;
+            const comp = q.questionDef.Components[0];
+            if (value === 'missing-options') delete comp.Options;
+            if (value === 'non-array-options') comp.Options = {};
+            if (value === 'missing-text') delete comp.Options.find(o => o.Correct === 'true').TextTemplate;
+            if (value === 'non-string-text') comp.Options.find(o => o.Correct === 'true').TextTemplate = 1;
+            if (value === 'markup-only-text') comp.Options.find(o => o.Correct === 'true').TextTemplate = '@@009900@@@ [multichoice id="empty"]';
+            if (value.startsWith('mixed-')) {
+                const option = { Correct: 'True' };
+                if (value === 'mixed-non-string-text') option.TextTemplate = 1;
+                if (value === 'mixed-markup-only-text') option.TextTemplate = '[multichoice id="empty"]';
+                comp.Options.push(option);
+            }
+            if (value === 'extra-component') q.questionDef.Components.push({ ...comp });
+            if (value === 'extra-visible-group') document.querySelector('main').appendChild(document.querySelector('.multi-choice-component').cloneNode(true));
+        }, shape);
+        const d = await detectQuestion(page);
+        assert.equal(d.kind, 'unsupported', shape);
+        const expectedReason = shape === 'extra-visible-group'
+            ? /multiple visible choice components/
+            : shape === 'extra-component'
+                ? /without exactly one identifiable multi-choice component/
+                : shape.endsWith('options')
+                    ? /choice option metadata is missing or unreadable/
+                    : /correct-marked choice option has no usable text/;
+        assert.match(d.reason, expectedReason, shape);
+        assert.equal(await page.$eval('input:checked', () => true).catch(() => false), false);
+    }
+    check('malformed and partially unreadable correct-answer sets, options and ambiguous components fail closed');
+}
+
 async function testOptionReorder(page, origin) {
     // the DOM is reordered AFTER detection but before the click: the handler
     // must re-match at click time, not trust the detection-time index
@@ -861,6 +934,7 @@ async function main() {
             // handler level
             await testChoiceFlow(page, origin);
             testChoiceRefusals();
+            await testChoiceMetadataVariants(page, origin);
             await testOptionReorder(page, origin);
             await testSemiAutoControl(page, origin);
             await testAutoMarkingGate(page, origin);
