@@ -64,6 +64,15 @@ async function setup(page, origin) {
         const automatic = await playChoiceRound(page, auto, { enter: true, timeout: 1000, shouldStop: () => false });
         assert.equal(automatic.status, 'advanced', JSON.stringify(automatic));
         assert.equal(await page.evaluate(() => window.mathFixture.clicks.length), 1);
+        await setup(page, origin);
+        await page.evaluate(() => {
+            const f = window.mathFixture;
+            f.comp.Options.forEach((o, i) => { o.Correct = i === 1; });
+            f.metadata.Options.forEach((o, i) => { o.Correct = i === 1; });
+        });
+        const booleanDescriptor = await detectQuestion(page);
+        assert.equal(booleanDescriptor.kind, 'choice', 'preserve coherent boolean marking');
+        assert.equal(booleanDescriptor.correct.length, 1);
         // Source-shaped resolution changes template AND marking before render.
         // Deliberately use a different correct option than the raw metadata.
         await setup(page, origin);
