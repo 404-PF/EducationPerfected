@@ -38,8 +38,14 @@ async function setup(page, origin, mutation = '') {
             const next = document.createElement('button'); next.textContent = '3 seconds'; next.disabled = true;
             next.addEventListener('click', () => { window.transitionFixture.clicks++; model._currentQuestion.questionIndex++; document.body.append(group); group.style.display = ''; explanation.remove(); model.isExplanationDisplayed = false; });
             bar.append(next);
-            if (mutation !== 'locked') setTimeout(() => { next.textContent = 'Next Question'; next.disabled = false; }, 80);
-            if (mutation === 'duplicate-next') { const other = next.cloneNode(true); other.disabled = true; other.textContent = '3 seconds'; bar.append(other); setTimeout(() => { other.disabled = false; other.textContent = 'Next Question'; }, 80); }
+            const nextButtons = [next];
+            if (mutation === 'duplicate-next') {
+                const other = next.cloneNode(true); bar.append(other); nextButtons.push(other);
+            }
+            // One task exposes the complete ready state, never one enabled twin.
+            if (mutation !== 'locked') setTimeout(() => {
+                for (const button of nextButtons) { button.textContent = 'Next Question'; button.disabled = false; }
+            }, 80);
         }, true);
     }, mutation);
     return descriptor;
