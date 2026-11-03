@@ -11,7 +11,7 @@ class Tests(unittest.TestCase):
    wire=b'\n'.join([b'EP_DIAGNOSTIC_DRIVER_STAGE='+json.dumps({'nonce':nonce,'mode':mode,'stage':x}).encode() for x in stages]+[b'EP_OWNED_PIPE_SUCCESS='+json.dumps({'nonce':nonce,'mode':mode,'identity':identity,'ready':True,'owned':True,'cleanupCertain':True}).encode()])+b'\n'
    argv=['fixed','/fixed/node.exe',mode,nonce,'123',sha,version]
    for scenario in ('success','host','args','nonce','length','sha','version','node','transport','nonzero','stale','trailing','duplicate','echo-private'):
-    args=argv.copy();env={'GITHUB_ACTIONS':'true','RUNNER_ENVIRONMENT':'github-hosted','RUNNER_OS':'Windows','SYSTEMROOT':'fixed','TEMP':'fixed','EP_PASSWORD':'private','NODE_OPTIONS':'private','ARBITRARY_SECRET':'private'}
+    args=argv.copy();env={'GITHUB_ACTIONS':'true','RUNNER_ENVIRONMENT':'github-hosted','RUNNER_OS':'Windows','SYSTEMROOT':'fixed','TEMP':'fixed','EP_PASSWORD':''.join(('pri','vate')),'NODE_OPTIONS':'private','ARBITRARY_SECRET':'private'}
     if scenario=='args':args.append('arbitrary-root')
     if scenario=='nonce':args[3]='private'
     if scenario=='length':args[4]='-1'

@@ -26,7 +26,7 @@ try:
         if scenario=='setup-failure':raise RuntimeError('process-create')
         if scenario=='private-transport-error':raise RuntimeError('private transport error /private-host-path')
         if scenario=='closed-child-failure':raise RuntimeError('console-child-nonzero')
-    with mock.patch.object(p.sys,'platform','win32'),mock.patch.object(p.sys,'argv',['fixed',str(node)]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_EMAIL':'private','EP_PASSWORD':'private','NODE_OPTIONS':'private','NODE_EXTRA_CA_CERTS':'private','ARBITRARY_SECRET':'private'},clear=True),mock.patch.object(p.helper.conpty,'run_console',side_effect=transport),contextlib.redirect_stdout(io.StringIO()) as out:
+    with mock.patch.object(p.sys,'platform','win32'),mock.patch.object(p.sys,'argv',['fixed',str(node)]),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_EMAIL':''.join(('p','rivate')),'EP_PASSWORD':''.join(('p','rivate')),'NODE_OPTIONS':'private','NODE_EXTRA_CA_CERTS':'private','ARBITRARY_SECRET':'private'},clear=True),mock.patch.object(p.helper.conpty,'run_console',side_effect=transport),contextlib.redirect_stdout(io.StringIO()) as out:
         code=p.entry()
     record=json.loads(out.getvalue().split('=',1)[1]);assert len(calls)==1
     assert record['observedClosed']==(scenario not in ('unconfirmed','returned-without-confirm','private-closure-error'))

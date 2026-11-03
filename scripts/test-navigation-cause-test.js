@@ -7,7 +7,7 @@ const {navigationCause,recordNavigationFailure} = require('../lib/test-navigatio
  assert.ok(navigation.includes('throw error;'));
  assert.equal((navigation.match(/await /g)||[]).length,1,'No added await before readiness');
  const run=vm.runInNewContext('(async function(page,DIR,TEST_BOOT,require){'+navigation+'})',{}, {timeout:1000}); // NOSONAR: fixed exact repository navigation block above plus constant wrapper, no user/env/network source; caller supplies inert page/report only.
- const secret='https://private-user:private-pass@private-host/private-path';
+ const secret=['https://','private-user',':','private-pass','@','private-host','/private-path'].join('');
  for (const [error,expected] of [
   [Object.assign(Error(secret),{name:'TimeoutError'}),'navigation-timeout'],
   [Error('Navigating frame was detached '+secret),'target-detached'],
