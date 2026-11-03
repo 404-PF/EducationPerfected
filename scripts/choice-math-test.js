@@ -72,7 +72,12 @@ async function setup(page, origin) {
         });
         const booleanDescriptor = await detectQuestion(page);
         assert.equal(booleanDescriptor.kind, 'choice', 'preserve coherent boolean marking');
-        assert.equal(booleanDescriptor.correct.length, 1);
+        const booleanExpected = await page.evaluate(() => window.mathFixture.metadata.Options[1].TextTemplate);
+        assert.deepEqual(booleanDescriptor.correct, [booleanExpected]);
+        let booleanSelected = false;
+        await playChoiceRound(page, booleanDescriptor, { enter: false, timeout: 30, shouldStop: () => booleanSelected,
+            log: message => { if (message.startsWith('Selected ')) booleanSelected = true; } });
+        assert.deepEqual(await page.evaluate(() => window.mathFixture.clicks), [booleanExpected]);
         // Source-shaped resolution changes template AND marking before render.
         // Deliberately use a different correct option than the raw metadata.
         await setup(page, origin);
