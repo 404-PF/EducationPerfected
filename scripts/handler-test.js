@@ -793,6 +793,8 @@ async function testRealAudioMissingAnswers(page, origin, output) {
                 else q.validAnswers = answers;
                 window.missingAnswerKey = q.contentID + ':' + q.questionIndex;
                 window.missingAnswerEnters = 0;
+                window.missingAnswerInputs = 0;
+                document.querySelector('#answer-text').addEventListener('input', () => { window.missingAnswerInputs++; });
                 document.addEventListener('keydown', event => { if (event.key === 'Enter') window.missingAnswerEnters++; }, true);
             }, answers);
             const mark = output().length;
@@ -800,10 +802,11 @@ async function testRealAudioMissingAnswers(page, origin, output) {
             await page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
             const state = await page.evaluate(() => {
                 const q = window.angular.element().scope().self.model._currentQuestion;
-                return { submissions: window.missingAnswerEnters, value: document.querySelector('#answer-text').value,
+                return { inputs: window.missingAnswerInputs, submissions: window.missingAnswerEnters, value: document.querySelector('#answer-text').value,
                     key: q.contentID + ':' + q.questionIndex, originalKey: window.missingAnswerKey };
             });
             assert.equal(state.submissions, 0, route + ':' + label);
+            assert.equal(state.inputs, 0, route + ':' + label + ' must never type then clear');
             assert.equal(state.value, '', route + ':' + label + ' must not type');
             assert.equal(state.key, state.originalKey, route + ':' + label + ' must not advance');
             assert.ok(output().slice(mark).includes('ships no accepted answers to answer with'), route + ':' + label + ' must report safe refusal');
