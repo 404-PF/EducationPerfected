@@ -82,7 +82,15 @@ def run(executable,args,env,cwd,api=None,clock=time.monotonic,sleep=time.sleep):
                     if info.active==0:break
                     # Descendants must end naturally for success. Termination is failure.
                     if clock()>=deadline:
-                        k.TerminateJobObject(job,1);raise Uncertain('job-zero')
+                        check(k.TerminateJobObject(job,1),'job-zero')
+                        # Termination request is not completion. Confirm owned job
+                        # zero before releasing the last tracking handle.
+                        deadline=clock()+5
+                        while True:
+                            ended=abi.ACCOUNTING();check(k.QueryInformationJobObject(job,1,c.byref(ended),c.sizeof(ended),None),'job-zero')
+                            if ended.active==0:break
+                            check(clock()<deadline,'job-zero');sleep(.01)
+                        raise Uncertain('job-zero')
                     drain();sleep(.01)
                 deadline=clock()+5
                 while not eof:

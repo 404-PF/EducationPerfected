@@ -2,9 +2,9 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { createWindowsBinding } = require('../lib/packaged-windows-binding');
 (async () => {
- let worker, data;
+ let worker, data, constructed=0;
  class FakeWorker extends EventEmitter {
-  constructor(source,options) {super();worker=this;data=options.workerData;}
+  constructor(source,options) {super();constructed++;worker=this;data=options.workerData;}
   unref() {}
   async terminate() {this.emit('exit',1);}
  }
@@ -27,7 +27,17 @@ const { createWindowsBinding } = require('../lib/packaged-windows-binding');
  worker.emit('message',{ok:true,value:'must not resolve before exit'});
  await assert.rejects(late,{code:'EP_NATIVE_STORE'});
  assert.equal(stalled.hasLiveWorkers(),true);assert.equal(idle,0);
+ const count=constructed;
+ const blockedEntry=new stalled.AsyncEntry('EducationPerfected','login-v1');
+ for (const action of [()=>blockedEntry.getPassword(),()=>blockedEntry.setPassword('inert'),()=>blockedEntry.deletePassword()]) await assert.rejects(action(),{code:'EP_NATIVE_STORE'});
+ assert.equal(constructed,count,'No overlapping native operation while timed-out worker remains live');
  worker.emit('exit',0);assert.equal(stalled.hasLiveWorkers(),false);assert.equal(idle,1);
+ const resumed=blockedEntry.getPassword();worker.emit('message',{ok:true,value:null});worker.emit('exit',0);assert.equal(await resumed,null);
+ const idleFailure=createWindowsBinding('/synthetic/keyring.node',{WorkerClass:FakeWorker,onIdle:()=>{throw Error('private callback');}});
+ const callbackFailed=new idleFailure.AsyncEntry('EducationPerfected','login-v1').getPassword();
+ worker.emit('message',{ok:true,value:null});worker.emit('exit',0);
+ await assert.rejects(callbackFailed,error=>error.code==='EP_NATIVE_STORE'&&!error.message.includes('private'));
+ assert.equal(idleFailure.hasLiveWorkers(),false);
  class ConstructorFailure {constructor(){throw new Error('secret constructor');}}
  const broken=createWindowsBinding('/synthetic/keyring.node',{WorkerClass:ConstructorFailure});
  await assert.rejects(new broken.AsyncEntry('EducationPerfected','login-v1').getPassword(),error=>error.code==='EP_NATIVE_STORE'&&!error.message.includes('secret'));
