@@ -4,7 +4,7 @@
 Works for word-to-word (translation) tasks and Dash mode.  
 **Does not work with Audio-based tasks... yet.** 
 
-### **Read this, then read the [main README of this repository](../README.md) (the live V2026 program is the [index.js](../index.js) in the root, not this frozen copy)**
+### **Read this, then read the [main README of this repository](../README.md) (the V2026 development program is the [index.js](../index.js) in the root, not this frozen copy)**
 
 > [!WARNING]
 > **Read-only archive.** This folder is a frozen copy of V2 exactly as it stood at release **v2.2.0**:

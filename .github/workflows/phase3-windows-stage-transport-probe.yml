@@ -1,0 +1,74 @@
+# PRIVATE REVIEW CANDIDATE. Not published or authorized for execution.
+name: Phase 3 single Windows stage transport probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: phase3-single-windows-stage-transport-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - name: Reject unapproved duplicate expired or rerun invocation before effects
+        shell: python
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import datetime,json,os,urllib.request
+          cutoff_text='2026-11-02T03:00:00+00:00'
+          if os.environ['GITHUB_REPOSITORY']!='404-PF/EducationPerfected' or os.environ['GITHUB_EVENT_NAME']!='workflow_dispatch' or os.environ['GITHUB_REF']!='refs/heads/main' or os.environ['GITHUB_RUN_ATTEMPT']!='1':raise SystemExit('Probe invocation rejected')
+          cutoff=datetime.datetime.fromisoformat(cutoff_text)
+          reserve=datetime.timedelta(minutes=5)
+          if cutoff.tzinfo is None or datetime.datetime.now(datetime.timezone.utc)+reserve>=cutoff:raise SystemExit('Probe window expired')
+          url='https://api.github.com/repos/404-PF/EducationPerfected/actions/workflows/phase3-windows-stage-transport-probe.yml/runs?per_page=100'
+          request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request,timeout=15) as response:payload=json.load(response)
+          runs=payload['workflow_runs'];run_id=int(os.environ['GITHUB_RUN_ID'])
+          if payload['total_count']!=len(runs) or not any(r['id']==run_id for r in runs) or any(r['id']<run_id for r in runs):raise SystemExit('Probe first invocation rejected')
+          jobs_url=f'https://api.github.com/repos/404-PF/EducationPerfected/actions/runs/{run_id}/jobs?per_page=100'
+          jobs_request=urllib.request.Request(jobs_url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(jobs_request,timeout=15) as response:jobs_payload=json.load(response)
+          jobs=jobs_payload['jobs']
+          matches=[job for job in jobs if job['name']=='probe' and job['status']=='in_progress' and job['run_attempt']==1]
+          if jobs_payload['total_count']!=len(jobs) or len(matches)!=1:raise SystemExit('Probe job identity unavailable')
+          started=datetime.datetime.fromisoformat(matches[0]['started_at'].replace('Z','+00:00'))
+          if started.tzinfo is None:raise SystemExit('Probe job clock unavailable')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as handle:handle.write('EP_PROBE_JOB_START='+str(started.timestamp())+'\n')
+          print('One retained-history first invocation only; no browser or product validation.')
+      - timeout-minutes: 1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: 7300bb6fcedc2e936cbf23a8f56900ebb8bf10c7
+      - timeout-minutes: 1
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.4
+      - name: Check exact identity and inert contracts
+        timeout-minutes: 1
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($actual -ne '7300bb6fcedc2e936cbf23a8f56900ebb8bf10c7') { throw 'Probe source identity mismatch' }
+          node -e "if(process.platform!=='win32'||process.arch!=='x64'||process.version!=='v22.23.4')process.exit(1);"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/windows-stage-transport-probe-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: One zero-browser fixed child transport probe
+        timeout-minutes: 2
+        run: |
+          python -c "import datetime,os,sys; now=datetime.datetime.now(datetime.timezone.utc); elapsed=now.timestamp()-float(os.environ['EP_PROBE_JOB_START']); sys.exit(0 if 0<=elapsed<120 and now+datetime.timedelta(minutes=5)<datetime.datetime.fromisoformat('2026-11-02T03:00:00+00:00') else 'Probe time reserve unavailable')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $node = (Get-Command node -CommandType Application).Source
+          python scripts/windows-stage-transport-probe.py $node
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # No npm/dependencies/archive/build/browser/account/credential APIs/artifacts/retries.
+      # observedClosed is solely existing owner callback, never a stream inference.
+      # Deleted run history remains an explicit at-most-once limitation within the cutoff.
+      # Five-minute wall-clock reserve is an admission margin, not an OS hard-stop guarantee.
+      # Pre-child job-age check reserves cleanup time; late/terminated/missing receipt stays unknown.

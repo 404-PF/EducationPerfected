@@ -18,7 +18,7 @@ The original's README used to claim its status was: **_CURRECT STATUS: ALL inten
 _*Last time they checked... which was... two years ago???*_  
 That has since been re-verified here: **the program has been run against the live Education Perfect service and confirmed working** for the supported (word-to-word / Dash) tasks. Don't assume it stays working forever, though - EP can still change.
 
-- This repo's program is version **V2026** (package version `2026.0.0`): an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
+- This repo's development program is **V2026** (package version `2026.0.0`), not a published packaged release: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
 - The program has been run against the live Education Perfect service and confirmed working for the supported (word-to-word / Dash) tasks.
 - The task-page and wrong-answer-modal selectors were checked against what EP's live bundles currently ship, and an end-to-end run through a real task on the live service confirmed the markup reading was correct.
@@ -40,7 +40,7 @@ It worked great, and notably, at **super** speeds. However, after a long while, 
 anti-cheat features that partially disabled the userscript.
 
 To circumvent this, the script needed more control over the web page and must not run in the page debugger console.  
-_The independent program started as V2 and now continues as V2026:_
+_The independent program started as V2 and now continues in V2026 development:_
 **At the current stage**, it's an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the 
 [Puppeteer](https://github.com/puppeteer/puppeteer) library to carry out web-browser automation. The goal is the same
 as V1 and the functionality is largely the same. Unfortunately, the standalone structure does make installation slightly 
