@@ -4,16 +4,16 @@
 Works for word-to-word (translation) tasks and Dash mode.  
 **Does not work with Audio-based tasks... yet.** 
 
-### **Read this, then read the [main README of this repository](../README.md) (V2026 development is in [PR #49](https://github.com/404-PF/EducationPerfected/pull/49); the main-branch program is the [index.js](../index.js) in the root, not this frozen copy)**
+### **Read this, then read the [main README of this repository](../README.md) (the V2026 development program is the [index.js](../index.js) in the root, not this frozen copy)**
 
 > [!WARNING]
 > **Read-only archive.** This folder is a frozen copy of V2 exactly as it stood at release **v2.2.0**:
 > tagged [`v2.2.0`](https://github.com/404-PF/EducationPerfected/tree/v2.2.0) (commit `445c008`), frozen at
 > the exact source commit `7b548f2` - `HEAD` when the snapshot was taken, one README-only commit ahead of the
 > tag, so the engine code here is identical to the tagged release either way.
-> Development continues on the root codebase as **V2026** in [PR #49](https://github.com/404-PF/EducationPerfected/pull/49),
-> not yet merged or released; the main-branch package remains `2.2.0`. Fixes and new work belong at the root,
-> never in this folder. This archive is only re-snapshotted if that is ever decided.
+> The program at the repository root now continues as **V2026**, so fixes
+> and new work belong at the root - never in this folder. This archive is only re-snapshotted if that is
+> ever decided.
 
 ![example image](result.png)
 

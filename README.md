@@ -18,7 +18,7 @@ The original's README used to claim its status was: **_CURRECT STATUS: ALL inten
 _*Last time they checked... which was... two years ago???*_  
 That has since been re-verified here: **the program has been run against the live Education Perfect service and confirmed working** for the supported (word-to-word / Dash) tasks. Don't assume it stays working forever, though - EP can still change.
 
-- The current main-branch package is **v2.2.0**. The next program version is **V2026** (package version `2026.0.0`), in development in [PR #49](https://github.com/404-PF/EducationPerfected/pull/49) and not released. The program is an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
+- This repo's development program is **V2026** (package version `2026.0.0`), not a published packaged release: an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the [Puppeteer](https://github.com/puppeteer/puppeteer) library to drive a web browser around.
 - As of the latest updates, the anti-cheat workaround no longer trips anti-cheat detection.
 - The program has been run against the live Education Perfect service and confirmed working for the supported (word-to-word / Dash) tasks.
 - The task-page and wrong-answer-modal selectors were checked against what EP's live bundles currently ship, and an end-to-end run through a real task on the live service confirmed the markup reading was correct.
@@ -40,24 +40,24 @@ It worked great, and notably, at **super** speeds. However, after a long while, 
 anti-cheat features that partially disabled the userscript.
 
 To circumvent this, the script needed more control over the web page and must not run in the page debugger console.  
-_The independent program started as V2; its next development version is V2026:_  
+_The independent program started as V2 and now continues in V2026 development:_
 **At the current stage**, it's an independent JavaScript ([node.js](https://nodejs.org/)) program that uses the 
 [Puppeteer](https://github.com/puppeteer/puppeteer) library to carry out web-browser automation. The goal is the same
 as V1 and the functionality is largely the same. Unfortunately, the standalone structure does make installation slightly 
 more complicated, but it is currently the only way to enable full anti-cheat bypass.  
 Either way, I have provided detailed instructions for installation and usage below.
 
-A snapshot of V2 exactly as it stands - version **v2.2.0** - is frozen in [V2_Archive/](V2_Archive), alongside the
-[V1](V1_Archive) snapshot. Development continues on the root codebase as **V2026**, skipping V3 as a release name.
-That work is in [PR #49](https://github.com/404-PF/EducationPerfected/pull/49), not yet merged or released;
-the main-branch package remains `2.2.0`. The copy in [V2_Archive](V2_Archive) stays read-only
+A snapshot of V2 at version **v2.2.0** is frozen in [V2_Archive/](V2_Archive), alongside the
+[V1](V1_Archive) snapshot. The live root codebase continues as **V2026**, skipping V3 as a release name.
+All fixes and new work happen here; the copy in [V2_Archive](V2_Archive) stays read-only
 (see [V2_Archive/README.md](V2_Archive/README.md) for exactly what was frozen).
+This version name does not mean the packaged CLI has shipped; its release gates still apply.
 
 
 ## Installation
 1. download the EducationPerfected program, starter script, launcher, and test scripts ([index.js](index.js), [start.cmd](start.cmd) or [start.sh](start.sh), the [bin/](bin/) folder, and the [scripts/](scripts/) folder) and place them in the same folder  
    (the scripts expect [package.json](package.json) and [package-lock.json](package-lock.json) in that same folder - get them from the repo; if you copied the files out of a git checkout, copy those along with the `bin/` and `scripts/` folders)
-2. install [node.js](https://nodejs.org/) - version **22.12 or newer** (that's what the pinned Puppeteer requires)
+2. install [node.js](https://nodejs.org/) - version **22.12 or newer** for running the source program (that's what the pinned Puppeteer requires). Building a standalone development executable requires **Node 22.23.4 exactly**, as explained below.
 3. open Command Prompt/Terminal **in the folder where `index.js` is located** (right click -> open in terminal or use the `cd` command to change the directory)
 4. install the dependencies with `npm ci` in your opened Command Prompt/Terminal window
 5. set your **Education Perfect credentials** as environment variables - the program will use them for auto-login  
@@ -99,6 +99,7 @@ The program's only runtime dependency is [Puppeteer](https://github.com/puppetee
 
 That version was exercised by a local smoke test ([scripts/smoke-test.js](scripts/smoke-test.js)) against a mock EP site ([scripts/mock-ep.js](scripts/mock-ep.js)) covering the Puppeteer calls this program makes: login form fill and submit, reading the word lists, typing and submitting answers, reading and dismissing the wrong-answer modal, and the completion screen. Run it yourself with `npm run smoke` (use `SMOKE_HEADFUL=1` to watch a visible window, or `SMOKE_EXECUTABLE_PATH`/`SMOKE_BROWSER_URL` to target a browser you already have).  
 The Smart Lesson and audio handlers have their own end-to-end test ([scripts/handler-test.js](scripts/handler-test.js), run it with `npm run test:handlers`). It drives the program's real answer loop against local fixtures ([scripts/mock-ep.js](scripts/mock-ep.js)) that were built from notes taken while inspecting the live site (a multiple-choice lesson slide and an audio task, sanitised of account data) - they are reconstructions, not recorded sessions.  
+The interactive CLI groundwork has a separate local regression command: `npm run test:phase3`. It runs shared-control unit tests, startup-failure tests for all three entrypoints with both invalid-URL and connection-refused scenarios, startup and legacy-entrypoint SIGINT/SIGTERM cleanup, pending-launch cancellation feedback, the CLI browser fixture, and stop-during-completion-proof coverage. Run `node scripts/cli-test.js --signal` and `node scripts/cli-test.js --external-close` for signal and external-browser-close cases. These are local fixtures, not live-service or cross-platform release certification. Only the Windows taskkill path resolver has unit coverage; the cleanup itself has not been executed on Windows.
 *This smoke test proves the dependency setup works. An end-to-end run against EP's live service (not just the mock) has since confirmed the supported word-to-word/Dash task flow works as expected - though the live site can still change, so re-verify if you suspect breakage.*
 
 ### Features
@@ -220,3 +221,41 @@ and is not part of this repository.
 This project does not claim any license and does not grant any permission for the use of Education Perfect's services
 or for automated access to them. Use of the service may be subject to [Education Perfect's terms of service](https://www.educationperfect.com/).
 The code and documentation here are provided as-is for educational and hobby purposes.
+
+
+## CLI credential setup (source build)
+
+Run `node bin/cli.js --setup` in a terminal to save your login in the native OS credential store. Both fields use hidden input. Empty input cancels without changing the saved login. Run `node bin/cli.js --forget-credentials` to remove this app's saved login. Run `node bin/cli.js --check-credentials` to check whether this app's saved native record is present and valid, without showing either field or changing it. A valid or absent record exits successfully; an unavailable or malformed record exits with an error. This checks the native record only, not environment variables, older keytar entries or whether EP will accept the login. These commands do not open a browser or submit an answer. Packaged executables accept the same flags.
+
+The native store uses Windows Credential Manager, macOS Keychain, or Linux Secret Service. On Linux, an unlocked Secret Service session (for example GNOME Keyring or KWallet) is required; there is no plaintext or nonpersistent kernel-keyring fallback. If the store is unavailable, ordinary browser/manual login still works. Never put a password in a command argument.
+
+A saved login is read as one versioned record. Existing environment-variable and optional legacy keytar inputs are retained for source-build compatibility. Setup does not delete older legacy-keytar entries. `--forget-credentials` removes only the new record, so older inputs may still supply a login.
+
+This is source-build work, not a packaged release. Native disposable tests now cover Linux x64/ARM64 private-store CRUD, Windows x64 source-worker CRUD and SEA hidden-input setup, cancellation, raw byte3 interruption, health-read and deletion, plus Mac ARM64/Intel source CRUD and packaged setup/health-read/delete. Mac exact packaged values and normal saved-login use remain unproved; see `release/native-validation.md`. Browser bundling, native module extraction, signing/distribution and five-target release checks must pass before claiming standalone support. Run `npm run test:store` for isolated adapter/setup contract tests; those tests never access a real credential store.
+
+## Standalone development builder prerequisite
+
+All three SEA development builders (`build:linux-dev`, `build:windows-dev` and `build:macos-dev`) require **Node 22.23.4 exactly** on the matching native host. This is narrower than the `package.json` engine range (`>=22.12.0`), which describes source-program installation and runtime requirements, not the SEA builder matrix. The builder copies the current Node executable and includes the checked-in Node 22.23.4 runtime LICENSE and bundled-component notices. A different Node version fails with `Node runtime notice version mismatch` before archive, bundle or native executable generation; do not remove that check to build with another version. Supporting another builder version needs matching reviewed runtime notices and native validation first. No other Node builder version is currently supported by these commands.
+
+## Linux x64/ARM64 standalone development build
+
+`npm run build:linux-dev` creates `build/linux-<arch>/educationperfected` (`x64` or `arm64`, matching the native build host) using the current Node executable, pinned JavaScript tooling, native keyring module, and the full Chrome for Testing already installed by Puppeteer. Run `npm run test:packaged` for local fixture checks. No live Education Perfect answers are submitted by these tests.
+
+This is an unsigned native glibc Linux x64/ARM64 development build, not a released artifact or a claim of support on the five target platforms. It extracts the native module and browser into a private temporary directory on each launch and checks the browser payload's build-time SHA256 before extracting it. Normal exit, setup interruption and pre-launch interruption remove that directory. SIGKILL, power loss or a crashed process can leave temporary files behind. Disk space and OS browser libraries are still required. macOS development builds have ad-hoc signature verification; certificate signing, notarization and Windows signature policy remain unproved.
+
+The build writes available third-party notices and an inventory of every installed production dependency beside the executable. Missing notice files are explicitly listed. Exact-version Puppeteer source licenses omitted from npm tarballs are recovered with checksum/source provenance; copying them is not legal clearance. Distribution remains blocked until notices, rights and native evidence are reviewed. Do not distribute a binary without its notices or before completing the project's rights/licensing review, browser redistribution review, signing and clean-machine/native-platform release checks. Existing contributions have no repository-wide license grant documented here. The local development build does not settle those release gates.
+Native-store test prerequisites: `npm run test:store` uses an inert adapter and needs only Node/dependencies. `npm run test:store:pty` uses Python 3's standard-library PTY support on Linux/macOS and preloads an inert store, so it cannot save a real login. `npm run test:store:integration` additionally needs Linux `dbus-run-session`, `gdbus` and `gnome-keyring-daemon`; it creates a fresh temporary HOME and private D-Bus session for synthetic native-store write/read/delete. No real user's keyring is used. These developer-test tools are not runtime prerequisites for the CLI.
+
+
+OS-delivered child-signal fixtures (`startup-signal-test`, `legacy-drain-signal-test` and `cli-test --signal`) are POSIX-only and explicitly report SKIP on Windows. Node's `child.kill()` force-terminates Windows children rather than delivering the console event these tests need. The platform-neutral run-control and pending-launch handler tests still run, but they do not certify Windows console shutdown. Native Windows console close/Ctrl+C and process cleanup remain required release checks.
+
+A Windows x64 development builder is available via `npm run build:windows-dev`. Its native browser/local CLI and corruption fixtures passed experimentally, and disposable Windows source-worker synthetic save/read/delete and SEA hidden-input setup now pass with an independent exact source-store pair, fresh SEA valid-shape health read, unchanged source pair, deletion and cleanup. Empty-email/password cancellation and raw byte3 interruption at both armed setup prompts also pass without mutation or native deletion. The raw-input check is not OS console-event delivery or physical terminal-close proof. Browser-startup reliability, normal saved-login use, locked/unavailable-store behavior, real console events and clean-machine checks remain incomplete. See `release/native-validation.md`; this is not a release or a signed/unsigned distribution-policy decision.
+
+The Linux development package embeds the browser as a SEA asset with a checksum checked before unpacking. Full-size build and packaged CLI/integrity fixtures passed on a standard 16 GB Ubuntu 22.04 runner. Smaller-memory full-size injection was killed, so this is not a promise that every development machine can build it. Ubuntu 24.04 sandbox compatibility remains unresolved; the Ubuntu 22.04 pass does not clear that platform's prerequisites or the native release gates. No browser sandbox bypass is enabled.
+
+The SEA runtime maps the full embedded browser asset, verifies its checksum in a complete pass, and only then extracts it. It uses a read-only raw asset view with bounded stream chunks instead of copying the full archive into a Blob. Short synthetic workflow-command memory observations are recorded in `release/native-validation.md`; total process-tree peak and minimum supported RAM remain unproved.
+
+Native Ubuntu 22.04 x64 and ARM64 runners passed full SEA builds and the packaged mock CLI, checksum-corruption and startup-interruption fixtures. Current-source private Secret Service tests also passed native synthetic save/read/delete and packaged setup/delete verified by independent source reads. These runs do not prove normal answer-path credential use, a separate no-Node machine, platform signatures or distribution rights. Ubuntu 24.04 sandbox compatibility and a longer-term runner baseline remain open.
+
+
+Native macOS ARM64 and Intel development runs passed source controls, full SEA builds, ad-hoc signature verification, packaged local-mock browser controls and owned extraction cleanup. An isolated disposable runner keychain also passed source exact synthetic save/read/delete and packaged setup, fresh-process `--check-credentials`, deletion and independent source absence. This uses inherited runner HOME with verified owned User keychain selection and restoration, not a clean profile. Packaged health checks prove a valid parsed record, not its exact synthetic value or normal sign-in use. A source Node read of a packaged-created record timed out; its cause remains unproved and cross-executable read is not cleared. Historical Intel startup timing also remains unexplained despite later passes. See `release/native-validation.md` for exact evidence and remaining gates.

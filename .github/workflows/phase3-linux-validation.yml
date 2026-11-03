@@ -1,0 +1,60 @@
+name: Phase 3 Linux development validation
+on:
+  push:
+    branches: [phase3-cli-core]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase3-linux-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - name: Record exact development source and host
+        run: |
+          git rev-parse HEAD
+          uname -a
+          node --version
+          echo 'Development validation only. No release, clean-machine, Ubuntu 24, Windows or Mac proof.'
+      - name: Install pinned dependencies without dependency lifecycle hooks
+        run: npm ci --ignore-scripts
+      - name: Check Windows workflow fail-fast source policy
+        run: python3 scripts/windows-workflow-policy-test.py
+      - name: Check resolver mutation path portability with inert source
+        run: node scripts/native-resolver-portability-test.js
+      - name: Install pinned Puppeteer browsers explicitly
+        run: |
+          node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
+          node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome-headless-shell
+      - name: Install disposable Secret Service and virtual display prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus-x11 gnome-keyring libglib2.0-bin xvfb xauth
+      - name: Run source and synthetic regression contracts
+        run: |
+          npm run test:packaged-harness
+          npm run test:store
+          npm run test:release-gate
+          npm run test:phase3
+      - name: Exercise real native store in private synthetic session
+        run: npm run test:store:integration
+      - name: Build current-source full browser SEA development executable
+        run: npm run build:linux-dev
+      - name: Exercise packaged setup and deletion in private synthetic session
+        run: sh scripts/packaged-store-integration.sh
+      - name: Exercise embedded browser, local mock controls, checksum and cleanup
+        run: xvfb-run -a npm run test:packaged
+      # No upload/release step. Logs are evidence of this exact lane, not distribution authority.
