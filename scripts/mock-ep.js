@@ -12,6 +12,7 @@
 // correction modal, a right one advances the round.
 const http = require('node:http');
 const { installMultiChoiceFixture } = require('./multi-choice-fixture');
+const { installGapsFixture } = require('./gaps-fixture');
 
 const WORDS = [
     ['one', 'eins'],
@@ -382,6 +383,7 @@ function createServer() {
             return send(taskPage(start));
         }
         if (url.pathname === '/lesson') return send(lessonPage(false));
+        if (url.pathname === '/lesson-gaps') return send(lessonPage(false).replace('</body></html>', `<script>(${installGapsFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-async') return send(lessonAsyncPage);
         if (url.pathname === '/audio') return send(audioPage(2));

@@ -4,6 +4,7 @@ const puppeteer = require('puppeteer');
 const { detectQuestion } = require('./lib/detect-question');
 const { audioAllowed, audioPolicyUnchanged } = require('./lib/audio-policy');
 const { playChoiceRound } = require('./lib/choice-handler');
+const { playGapsRound } = require('./lib/gaps-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { diagnostic } = require('./lib/diagnostics');
 
@@ -1671,6 +1672,7 @@ async function launchProgram({ legacySignals = false } = {}) {
             // and returns false to stop the run, true to keep looping.
             const QUESTION_HANDLERS = [
                 { type: 'choice', play: playChoiceDescriptorRound },
+                { type: 'gaps', play: playChoiceDescriptorRound },
                 { type: 'audio', play: handleTypedRound },
                 { type: 'typed', play: handleTypedRound },
             ];
@@ -1708,11 +1710,12 @@ async function launchProgram({ legacySignals = false } = {}) {
                     // EP swaps slides asynchronously, like it swaps question text: require
                     // the detected slide to hold still across two reads before clicking.
                     const again = await detectQuestion(page);
-                    if (again === null || again.kind !== 'choice' || again.key !== descriptor.key) {
+                    if (again === null || again.kind !== descriptor.kind || again.key !== descriptor.key) {
                         console.log('Choice slide changed during detection; re-reading it in a fresh pass.');
                         return true;
                     }
-                    const result = await playChoiceRound(page, again, {
+                    const play = descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
+                    const result = await play(page, again, {
                         enter: ENTER,
                         timeout: ADVANCE_TIMEOUT,
                         shouldStop: () => !TOGGLE,
