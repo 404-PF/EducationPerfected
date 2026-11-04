@@ -296,3 +296,13 @@ Open that approved question, then enter `fill once` in this validation terminal.
 Only `fill once`, `stop`, `status` and `quit` are supported. Browser answering hotkeys are disabled in this session. `stop` drains an in-flight action; it cannot undo a key already delivered. `quit` closes the owned browser. `EP_FILL_ONCE` reports a fixed, content-free result: `filled-only` confirms filling was verified, not marking, submission or advance.
 
 Use a fresh source ZIP containing this entrypoint and its matching handler files. The earlier Console diagnostics contain their own reader and do not prove an old installed CLI has been updated. This is a developer validation path, not full lesson completion or packaged-release proof.
+
+### Ordinary lesson textbox source contract
+
+A source-derived handler recognizes a narrow ordinary `TEXT_BOX_COMPONENT` in explicitly auto-marked Smart Lessons. It requires initially empty `input.text-box-component` fields, one cached component per field, exact component/state/DOM identities, `Marked === 1`, and nonempty plain-text accepted options. The current cached options must equal the metadata options; variable-resolved answer differences are refused in this first contract. It types the first supplied accepted option, not a guessed answer or a model answer inferred from lesson text.
+
+Source checked 5 November 2026: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), `NewTextBoxComponent`, `TextBoxComponentState` and `ComponentIndex`. EP's input events update the cached answer; Enter can submit, so this handler never types Enter. It uses trusted character input, checking the same question, renderer, options, field focus and exact answer prefix before and after each character. Changed or uncertain state stops without clearing, overwriting or retrying. The final input/click cannot be atomic against concurrent page or user input.
+
+Semi-auto fills only. Automatic mode rechecks the exact filled set and associated unique Submit button before one click; it never clicks Next for that question. Missing controls, stored/prefilled answers, initial text, extra editable fields, mixed components, numeric boxes, long/rich answers, fill-in-the-gaps textbox variants, maths editors, assessments and manually marked questions are not covered by this contract. Other textbox variants remain in the support queue, rather than being treated as equivalent inputs.
+
+Invented sanitized source-derived fixtures cover DOM/metadata order differences, trusted typing, semi-auto, one Submit, changed-state refusals and the normal CLI/Alt+S workflow. No live ordinary lesson textbox detection, filling, grading or full-lesson result has been verified.
