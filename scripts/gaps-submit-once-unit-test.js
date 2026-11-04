@@ -148,6 +148,33 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         });
         assert.equal((await waiting(page, { shouldStop: () => stopWaiting })).status, 'aborted');
         assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
+        await setup();
+        const boundFill = createFillGapsOnce({ detectQuestion, playGapsRound });
+        const switched = factory(async (...args) => {
+            await page.evaluate(() => { gapsFixture.q.questionIndex++; });
+            return boundFill(...args);
+        });
+        assert.equal((await switched(page)).status, 'stopped');
+        assert.deepEqual(await page.evaluate(() => [gapsFixture.inputs.length, gapsFixture.submits]), [0, 0]);
+        await setup();
+        const coverFill = createFillGapsOnce({ detectQuestion, playGapsRound });
+        const covered = factory(async (...args) => {
+            const result = await coverFill(...args);
+            await page.evaluate(() => {
+                const cover = document.createElement('div');
+                cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:transparent';
+                window.coverClicks = 0;
+                cover.addEventListener('click', () => { window.coverClicks++; });
+                document.body.append(cover);
+            });
+            return result;
+        });
+        assert.equal((await covered(page)).status, 'refused');
+        assert.deepEqual(await page.evaluate(() => [gapsFixture.submits, window.coverClicks]), [0, 0]);
+        await setup();
+        const abortedFill = factory(async () => ({ status: 'aborted' }));
+        assert.equal((await abortedFill(page)).status, 'aborted');
+        assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
         console.log('Submit-once browser fixtures PASS: exact2inputs/1Submit/0Next/auto-advance1; no later-question input; repeat/refusal/prefill/cancel/mutation/uncertain-click permanent consumption.');
     } finally {
         try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); }
