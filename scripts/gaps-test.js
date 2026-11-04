@@ -4,6 +4,27 @@ const { createServer } = require('./mock-ep');
 const { installGapsFixture } = require('./gaps-fixture');
 const { detectQuestion } = require('../lib/detect-question');
 const { playGapsRound } = require('../lib/gaps-handler');
+// All cases share a browser page, so preserve sequential setup/input/assertion order.
+const eachSequential = (values, run) => values.reduce((previous, value) => previous.then(() => run(value)), Promise.resolve());
+async function testInvisibleText(page, setup) {
+        // Invisible/bidi characters must not create blank-looking or misleading sources.
+    await eachSequential([0x0085,0x00ad,0x061c,0x180e,0x200b,0x200c,0x200d,0x200e,0x200f,0x202a,0x202b,0x202c,0x202d,0x202e,0x2060,0xfeff,0x2061,0x2062,0x2063,0x2064,0x2066,0x2067,0x2068,0x2069], async code => {
+        await eachSequential(['hint','correct'], async where => {
+                await setup();await page.evaluate(({code,where})=>{
+                    const f=gapsFixture,c=String.fromCodePoint(code);
+                    if(where==='hint'){f.state.hintsShown[0]=' '+c+' ';f.renderer.draggables[0].target.textContent=' '+c+' ';}
+                    else f.metadata.Gaps[0].CorrectOptions=['alpha'+c];
+                },{code,where});
+                assert.equal((await detectQuestion(page)).kind,'unsupported',where+':'+code);
+                assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
+        });
+    });
+    await eachSequential(['\u2028','\u2029','\u2060','\u200e','\u00ad',' ','\u200b'], async decoration => {
+            await setup();await page.evaluate(c=>{const f=gapsFixture;f.afterInput=()=>{for(const z of f.renderer.dropZones)if(z.droppedDragID!==null)z.span.textContent=c+z.span.textContent+c;};},decoration);
+            assert.equal((await playGapsRound(page,await detectQuestion(page),{enter:true,timeout:100})).status,'stopped');
+            assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[1,0]);
+        });
+}
 (async () => {
     const server = createServer(); await new Promise(r=>server.listen(0,'127.0.0.1',r));
     let browser;
@@ -17,13 +38,13 @@ const { playGapsRound } = require('../lib/gaps-handler');
         const result=await playGapsRound(page,d,{enter:true,timeout:300});assert.equal(result.status,'advanced',JSON.stringify(result));
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
         // EP uses raw textContent, so safe padding on a distractor needs no normalization.
-        for (const padding of [' wrong ', '\u00a0wrong\u00a0', '\u2003wrong\u2003']) {
+        await eachSequential([' wrong ', '\u00a0wrong\u00a0', '\u2003wrong\u2003'], async padding => {
             await setup();await page.evaluate(text=>{gapsFixture.state.hintsShown[0]=text;gapsFixture.renderer.draggables[0].target.textContent=text;},padding);
             const padded=await detectQuestion(page);assert.equal(padded.kind,'gaps');
             assert.equal((await playGapsRound(page,padded,{enter:true,timeout:300})).status,'advanced');
             assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
-        }
-        for (const mutation of ['paddedCollision','blankHint','tabHint','newlineHint','paddedMarkup','paddedCorrectMetadata','paddedCorrectHint','paddedDOMMismatch','paddedRawLength','secondCorrectPadded','lineSeparatorHint','paragraphSeparatorHint','wordJoinerHint']) {
+        });
+        await eachSequential(['paddedCollision','blankHint','tabHint','newlineHint','paddedMarkup','paddedCorrectMetadata','paddedCorrectHint','paddedDOMMismatch','paddedRawLength','secondCorrectPadded','lineSeparatorHint','paragraphSeparatorHint','wordJoinerHint'], async mutation => {
             await setup();await page.evaluate(m=>{
                 const f=gapsFixture;
                 let text=' wrong ';
@@ -44,24 +65,8 @@ const { playGapsRound } = require('../lib/gaps-handler');
             },mutation);
             assert.equal((await detectQuestion(page)).kind,'unsupported',mutation);
             assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
-        }
-        // Invisible/bidi characters must not create blank-looking or misleading sources.
-        for (const code of [0x0085,0x00ad,0x061c,0x180e,0x200e,0x200f,0x202a,0x202b,0x202c,0x202d,0x202e,0x2061,0x2062,0x2063,0x2064,0x2066,0x2067,0x2068,0x2069]) {
-            for (const where of ['hint','correct']) {
-                await setup();await page.evaluate(({code,where})=>{
-                    const f=gapsFixture,c=String.fromCharCode(code);
-                    if(where==='hint'){f.state.hintsShown[0]=' '+c+' ';f.renderer.draggables[0].target.textContent=' '+c+' ';}
-                    else f.metadata.Gaps[0].CorrectOptions=['alpha'+c];
-                },{code,where});
-                assert.equal((await detectQuestion(page)).kind,'unsupported',where+':'+code);
-                assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
-            }
-        }
-        for (const decoration of ['\u2028','\u2029','\u2060','\u200e','\u00ad',' ','\u200b']) {
-            await setup();await page.evaluate(c=>{const f=gapsFixture;f.afterInput=()=>{for(const z of f.renderer.dropZones)if(z.droppedDragID!==null)z.span.textContent=c+z.span.textContent+c;};},decoration);
-            assert.equal((await playGapsRound(page,await detectQuestion(page),{enter:true,timeout:100})).status,'stopped');
-            assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[1,0]);
-        }
+        });
+        await testInvisibleText(page, setup);
         await setup();let selected=false;
         assert.equal((await playGapsRound(page,await detectQuestion(page),{enter:false,timeout:100,log:()=>{selected=true;},shouldStop:()=>selected})).status,'aborted');
         assert.equal(await page.evaluate(()=>gapsFixture.submits),0);
@@ -115,6 +120,6 @@ const { playGapsRound } = require('../lib/gaps-handler');
             const r=await playGapsRound(page,await detectQuestion(page),{enter:true,timeout:100});assert.equal(r.status,'stopped',mutation);
             assert.equal(await page.evaluate(()=>gapsFixture.submits),mutation==='sameKeyNext'?1:0,mutation);
         }
-        console.log('Gaps: trusted DOM-order exact answers, one submit, semi-auto, 3 padded-distractor successes, 73 initial refusals and 16 post-input/no-Next refusals PASS. Source-derived synthetic only.');
+        console.log('Gaps: trusted DOM-order exact answers, one submit, semi-auto, 3 padded-distractor successes, 83 initial refusals and 16 post-input/no-Next refusals PASS. Source-derived synthetic only.');
     } finally {if(browser)await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
