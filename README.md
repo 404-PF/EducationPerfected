@@ -286,3 +286,13 @@ Native Ubuntu 22.04 x64 and ARM64 runners passed full SEA builds and the package
 
 
 Native macOS ARM64 and Intel development runs passed source controls, full SEA builds, ad-hoc signature verification, packaged local-mock browser controls and owned extraction cleanup. An isolated disposable runner keychain also passed source exact synthetic save/read/delete and packaged setup, fresh-process `--check-credentials`, deletion and independent source absence. This uses inherited runner HOME with verified owned User keychain selection and restoration, not a clean profile. Packaged health checks prove a valid parsed record, not its exact synthetic value or normal sign-in use. A source Node read of a packaged-created record timed out; its cause remains unproved and cross-executable read is not cleared. Historical Intel startup timing also remains unexplained despite later passes. See `release/native-validation.md` for exact evidence and remaining gates.
+
+### One-question fill-only validation
+
+`node bin/validate-gaps-fill.js` opens a separate stopped validation session. Use it only after approving a specific practice question for alteration. Filling may save a draft in EP even though this session never clicks Submit or Next.
+
+Open that approved question, then enter `fill once` in this validation terminal. It calls only the guarded gaps handler, with submission disabled, and stops after the exact filled set is verified or on the first mismatch. It does not enter the ordinary answering loop. The attempt is consumed before inspection; a failed, cancelled or successful attempt cannot be retried in the same process, even on a new question. Do not open another validation process as a retry without checking what changed and getting any needed approval.
+
+Only `fill once`, `stop`, `status` and `quit` are supported. Browser answering hotkeys are disabled in this session. `stop` drains an in-flight action; it cannot undo a key already delivered. `quit` closes the owned browser. `EP_FILL_ONCE` reports a fixed, content-free result: `filled-only` confirms filling was verified, not marking, submission or advance.
+
+Use a fresh source ZIP containing this entrypoint and its matching handler files. The earlier Console diagnostics contain their own reader and do not prove an old installed CLI has been updated. This is a developer validation path, not full lesson completion or packaged-release proof.

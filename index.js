@@ -6,6 +6,7 @@ const { audioAllowed, audioPolicyUnchanged } = require('./lib/audio-policy');
 const { playChoiceRound } = require('./lib/choice-handler');
 const { playGapsRound } = require('./lib/gaps-handler');
 const { createRunControls } = require('./lib/run-controls');
+const { createFillGapsOnce } = require('./lib/gaps-fill-once');
 const { diagnostic } = require('./lib/diagnostics');
 
 // ===== Credentials ===== //
@@ -352,7 +353,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false } = {}) {
+async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {}) {
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -2262,8 +2263,17 @@ async function launchProgram({ legacySignals = false } = {}) {
                 }, msg, DIR.toast_id);
             }
 
+            const fillOnce = createFillGapsOnce({ detectQuestion, playGapsRound });
+            const runFillOnly = async () => {
+                TOGGLE = true;
+                try {
+                    const result = await fillOnce(page, { shouldStop: () => !TOGGLE });
+                    console.log('EP_FILL_ONCE ' + JSON.stringify(result));
+                    return result;
+                } finally { TOGGLE = false; }
+            };
             const controls = createRunControls({
-                run: startLoop,
+                run: gapsFillOnly ? runFillOnly : startLoop,
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
@@ -2275,8 +2285,8 @@ async function launchProgram({ legacySignals = false } = {}) {
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
             await page.exposeFunction('refresh', refreshControl);
-            await page.exposeFunction('startAnswer', toggleLoop);
-            await page.exposeFunction('toggleMode', toggleAuto);
+            await page.exposeFunction('startAnswer', gapsFillOnly ? () => 'Validation session: use the terminal fill once command.' : toggleLoop);
+            await page.exposeFunction('toggleMode', gapsFillOnly ? () => 'Validation mode is fixed to fill only.' : toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
             // from log text or exposed during normal runs.
             if (TEST_BOOT) {
@@ -2308,8 +2318,10 @@ async function launchProgram({ legacySignals = false } = {}) {
                 });
             };
 
-            await page.evaluateOnNewDocument(installHotkeysInPage);
-            await page.evaluate(installHotkeysInPage);
+            if (!gapsFillOnly) {
+                await page.evaluateOnNewDocument(installHotkeysInPage);
+                await page.evaluate(installHotkeysInPage);
+            }
 
             console.log('Education Perfected V2026 fully Loaded.');
             if (legacySignals) {
