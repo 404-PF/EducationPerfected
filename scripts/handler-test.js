@@ -1062,6 +1062,12 @@ async function main() {
             // integration level: the real program's loop
             program = await bootRealProgram(origin);
             await testRealLoopAsyncLesson(program.page, program.output);
+            await program.page.goto(origin + '/lesson-multi', { waitUntil: 'domcontentloaded' });
+            await program.page.evaluate(() => { window.multiFixture.completeOnSubmit = true; window.startAnswer(); });
+            await program.page.waitForFunction(() => window.multiFixture?.submits === 1, { timeout: 8000 }).catch(e => { throw new Error(e.message + '\n' + program.output()); });
+            await program.page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
+            assert.deepEqual(await program.page.evaluate(() => ({clicks: multiFixture.clicks.sort(), submits: multiFixture.submits})), {clicks:[0,2],submits:1});
+            check('real loop: multi-select exact set clicked, verified and submitted once on source-derived local fixture');
             await testRealAudioFlow(program.page, program.output);
             await testAssignedClassicAudio(program.page, origin, program.output);
             await testRealAudioMissingAnswers(program.page, origin, program.output);

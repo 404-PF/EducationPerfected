@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node bin/launch.js",
     "smoke": "node scripts/smoke-test.js",
-    "test:handlers": "node scripts/handler-test.js && node scripts/choice-math-test.js && node scripts/choice-transition-test.js && node scripts/audio-policy-test.js",
+    "test:handlers": "node scripts/handler-test.js && node scripts/choice-math-test.js && node scripts/choice-transition-test.js && node scripts/choice-multi-test.js && node scripts/audio-policy-test.js",
     "cli": "node bin/cli.js",
     "release:check": "node scripts/release-gate.js",
     "test:release-gate": "node scripts/release-gate-test.js",
