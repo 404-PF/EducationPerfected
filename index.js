@@ -7,6 +7,7 @@ const { playChoiceRound } = require('./lib/choice-handler');
 const { playGapsRound } = require('./lib/gaps-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
+const { createSubmitGapsOnce } = require('./lib/gaps-submit-once');
 const { diagnostic } = require('./lib/diagnostics');
 
 // ===== Credentials ===== //
@@ -353,7 +354,8 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {}) {
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, gapsSubmitOnce = false } = {}) {
+    const gapsValidation = gapsFillOnly || gapsSubmitOnce;
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -2264,16 +2266,17 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
             }
 
             const fillOnce = createFillGapsOnce({ detectQuestion, playGapsRound });
+            const submitOnce = createSubmitGapsOnce({ fillGapsOnce: fillOnce });
             const runFillOnly = async () => {
                 TOGGLE = true;
                 try {
-                    const result = await fillOnce(page, { shouldStop: () => !TOGGLE });
-                    console.log('EP_FILL_ONCE ' + JSON.stringify(result));
+                    const result = await (gapsSubmitOnce ? submitOnce : fillOnce)(page, { shouldStop: () => !TOGGLE });
+                    console.log((gapsSubmitOnce ? 'EP_SUBMIT_ONCE ' : 'EP_FILL_ONCE ') + JSON.stringify(result));
                     return result;
                 } finally { TOGGLE = false; }
             };
             const controls = createRunControls({
-                run: gapsFillOnly ? runFillOnly : startLoop,
+                run: gapsValidation ? runFillOnly : startLoop,
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
@@ -2285,8 +2288,8 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
             await page.exposeFunction('refresh', refreshControl);
-            await page.exposeFunction('startAnswer', gapsFillOnly ? () => 'Validation session: use the terminal fill once command.' : toggleLoop);
-            await page.exposeFunction('toggleMode', gapsFillOnly ? () => 'Validation mode is fixed to fill only.' : toggleAuto);
+            await page.exposeFunction('startAnswer', gapsValidation ? () => 'Validation session: use the terminal fill once command.' : toggleLoop);
+            await page.exposeFunction('toggleMode', gapsValidation ? () => gapsSubmitOnce ? 'Validation mode is fixed to one Submit.' : 'Validation mode is fixed to fill only.' : toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
             // from log text or exposed during normal runs.
             if (TEST_BOOT) {
@@ -2318,7 +2321,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                 });
             };
 
-            if (!gapsFillOnly) {
+            if (!gapsValidation) {
                 await page.evaluateOnNewDocument(installHotkeysInPage);
                 await page.evaluate(installHotkeysInPage);
             }

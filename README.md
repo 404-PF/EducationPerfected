@@ -296,3 +296,13 @@ Open that approved question, then enter `fill once` in this validation terminal.
 Only `fill once`, `stop`, `status` and `quit` are supported. Browser answering hotkeys are disabled in this session. `stop` drains an in-flight action; it cannot undo a key already delivered. `quit` closes the owned browser. `EP_FILL_ONCE` reports a fixed, content-free result: `filled-only` confirms filling was verified, not marking, submission or advance.
 
 Use a fresh source ZIP containing this entrypoint and its matching handler files. The earlier Console diagnostics contain their own reader and do not prove an old installed CLI has been updated. This is a developer validation path, not full lesson completion or packaged-release proof.
+
+### One-question automated Submit validation
+
+`node bin/validate-gaps-submit.js` is a separate, stopped validation session. It requires approval for one fresh, initially empty supported practice gaps question, including filling, one automated Submit and any result or points EP records. Do not use the previously filled or submitted question. No live run of this command has been verified.
+
+After opening only the approved question, enter `submit once` exactly once. The session consumes the attempt before inspection, uses the guarded fill-only operation, then rechecks the same question, exact filled set and associated Submit control before one trusted click. It returns immediately after that click. It never clicks Next, retries, answers another question or enters the ordinary answer loop. EP may automatically display the next question, an explanation or a completion screen after Submit.
+
+Only `submit once`, `stop`, `status` and `quit` are supported; browser answering hotkeys are disabled. A refusal, cancellation, uncertain input or completed attempt cannot be retried in the same process, even on a fresh question. Do not start a new process as a retry without checking what changed and getting any needed approval. `EP_SUBMIT_ONCE` reports a fixed, content-free result: `submitted-once` means the one click returned, not that EP accepted or graded the answer. An uncertain click reports `stopped` and may still have taken effect. Stop cannot undo an already dispatched key or click; shutdown may wait for an in-flight browser call.
+
+Use a fresh matching source ZIP, not the ordinary launcher or the fill-only command. Synthetic browser and real-program fixtures cover at-most-one Submit, no Next, no further answering after automatic advancement, permanent attempt consumption, cancellation and stale-state refusals. These are not live automated-submission or full-lesson proof.
