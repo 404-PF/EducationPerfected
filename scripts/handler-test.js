@@ -1077,9 +1077,12 @@ async function main() {
             await program.page.goto(origin + '/lesson-gaps', { waitUntil: 'domcontentloaded' });
             const beforeUnproven = program.output().length;
             await program.page.evaluate(() => { window.gapsFixture.continueOnly = true; window.startAnswer(); });
-            await program.page.waitForFunction(() => window.gapsFixture?.submits === 1, { timeout: 8000 });
+            await program.page.waitForFunction(() => window.gapsFixture?.submits === 1, { timeout: 8000 }).catch(e => { throw new Error(e.message + '\n' + program.output()); });
             await program.page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
-            await new Promise(r => setTimeout(r, 100));
+            const outputDeadline = Date.now() + 8000;
+            while (!program.output().slice(beforeUnproven).includes('without proof of task completion') && Date.now() < outputDeadline) {
+                await new Promise(r => setTimeout(r, 20));
+            }
             assert.ok(program.output().slice(beforeUnproven).includes('without proof of task completion'), program.output().slice(beforeUnproven));
             assert.ok(!program.output().slice(beforeUnproven).includes('Lesson completed.'));
             check('real loop: gaps Continue-only stop reports unproven completion, never Lesson completed');

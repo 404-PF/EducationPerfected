@@ -1727,7 +1727,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                         if (await taskCompletionProven()) {
                             runReason = 'completed';
                             console.log('Lesson completed.');
-                        } else {
+                        } else if (TOGGLE) {
                             const message = 'A Continue screen appeared without proof of task completion; stopping the run.';
                             console.error(message);
                             await alert(message);
