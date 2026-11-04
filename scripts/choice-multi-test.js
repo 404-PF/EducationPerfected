@@ -4,6 +4,13 @@ const { createServer } = require('./mock-ep');
 const { detectQuestion } = require('../lib/detect-question');
 const { playChoiceRound } = require('../lib/choice-handler');
 
+// Isolate adversarial normalization so a regression cannot hang the test runner.
+const source = require('node:fs').readFileSync(require.resolve('../lib/multi-choice-state'), 'utf8');
+const stripBody = source.slice(source.indexOf('    const strip ='), source.indexOf('    const rows ='));
+const bounded = require('node:child_process').spawnSync(process.execPath, ['-e', stripBody + ";if (strip('['.repeat(120000) + ' unmatched').length !== 120010) process.exit(1);"], { timeout: 2000 });
+assert.equal(bounded.error, undefined, 'unmatched bracket normalization exceeded its bounded runtime');
+assert.equal(bounded.status, 0, String(bounded.stderr));
+
 // Source-derived, invented content. Not a live multi-select DOM capture.
 // Chunk606 builds role=group/multi-select, checkboxes, selectedOptions by
 // original metadata IDs, and preview.element/option backlinks. DOM order and
@@ -31,6 +38,26 @@ async function setup(page, origin) {
         const subset=await playChoiceRound(page,await detectQuestion(page),{enter:true,timeout:1000});
         assert.equal(subset.status,'advanced','displayed subset mapping must use displayed IDs, not all raw correct options');
         assert.deepEqual(await page.evaluate(() => ({ clicks: multiFixture.clicks.sort(), submits: multiFixture.submits })), { clicks:[0,2],submits:1 });
+        // Preserve the old bracket-normalization contract, including malformed/nested text.
+        for (const [text, rendered] of [['alpha[note] tail', 'alpha tail'], ['a[[nested]b]c', 'ab]c'], ['a]b[c', 'a]b[c'], ['a[]b[x]c', 'abc'], ['@@ABCDEF@ a[n] @@ tail', 'a tail'], ['['.repeat(120000) + ' unmatched', '['.repeat(120000) + ' unmatched']]) {
+            await setup(page, origin);
+            await page.evaluate(({text, rendered}) => {
+                const f = multiFixture, p = f.state.previewOptions[0];
+                f.comp.Options[2].TextTemplate = text;
+                p.option.TextTemplate = text; p.renderer.templateString = text;
+                p.fields.renderGroup.textContent = rendered;
+            }, {text, rendered});
+            const started = Date.now();
+            const normalized = await detectQuestion(page);
+            assert.equal(normalized.kind, 'choice', 'bracket normalization must retain exact matching');
+            assert.ok(Date.now() - started < 1500, 'unmatched bracket normalization must finish within bounded time');
+            await page.evaluate(text => {
+                const p = multiFixture.state.previewOptions[0];
+                p.fields.renderGroup.textContent = text + ' mismatched';
+            }, text);
+            assert.equal((await detectQuestion(page)).kind, 'unsupported', 'normalization must not hide unmatched suffix drift');
+            assert.deepEqual(await page.evaluate(() => [multiFixture.clicks.length, multiFixture.submits]), [0,0]);
+        }
         // Stop before any toggle or submission.
         await setup(page,origin);
         const aborted=await playChoiceRound(page,await detectQuestion(page),{enter:true,timeout:100,shouldStop:()=>true});
