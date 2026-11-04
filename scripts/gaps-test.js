@@ -4,6 +4,7 @@ const { createServer } = require('./mock-ep');
 const { installGapsFixture } = require('./gaps-fixture');
 const { detectQuestion } = require('../lib/detect-question');
 const { playGapsRound } = require('../lib/gaps-handler');
+const { testStaticMath } = require('./gaps-static-math-test');
 // All cases share a browser page, so preserve sequential setup/input/assertion order.
 const eachSequential = (values, run) => values.reduce((previous, value) => previous.then(() => run(value)), Promise.resolve());
 async function testInvisibleText(page, setup) {
@@ -67,6 +68,7 @@ async function testInvisibleText(page, setup) {
             assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
         });
         await testInvisibleText(page, setup);
+        await testStaticMath(page, setup);
         await setup();let selected=false;
         assert.equal((await playGapsRound(page,await detectQuestion(page),{enter:false,timeout:100,log:()=>{selected=true;},shouldStop:()=>selected})).status,'aborted');
         assert.equal(await page.evaluate(()=>gapsFixture.submits),0);
