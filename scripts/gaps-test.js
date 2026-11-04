@@ -23,7 +23,7 @@ const { playGapsRound } = require('../lib/gaps-handler');
             assert.equal((await playGapsRound(page,padded,{enter:true,timeout:300})).status,'advanced');
             assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
         }
-        for (const mutation of ['paddedCollision','blankHint','tabHint','newlineHint','paddedMarkup','paddedCorrectMetadata','paddedCorrectHint','paddedDOMMismatch','paddedRawLength','secondCorrectPadded']) {
+        for (const mutation of ['paddedCollision','blankHint','tabHint','newlineHint','paddedMarkup','paddedCorrectMetadata','paddedCorrectHint','paddedDOMMismatch','paddedRawLength','secondCorrectPadded','lineSeparatorHint','paragraphSeparatorHint','wordJoinerHint']) {
             await setup();await page.evaluate(m=>{
                 const f=gapsFixture;
                 let text=' wrong ';
@@ -31,6 +31,9 @@ const { playGapsRound } = require('../lib/gaps-handler');
                 if(m==='blankHint')text='   ';
                 if(m==='tabHint')text='\twrong ';
                 if(m==='newlineHint')text=' wrong\n';
+                if(m==='lineSeparatorHint')text='\u2028wrong\u2028';
+                if(m==='paragraphSeparatorHint')text='\u2029wrong\u2029';
+                if(m==='wordJoinerHint')text=' \u2060 ';
                 if(m==='paddedMarkup')text=' <wrong> ';
                 if(m==='paddedRawLength')text=' '.repeat(4096)+'wrong';
                 if(m==='paddedCorrectMetadata')f.metadata.Gaps[0].CorrectOptions=[' alpha '];
@@ -95,6 +98,6 @@ const { playGapsRound } = require('../lib/gaps-handler');
             const r=await playGapsRound(page,await detectQuestion(page),{enter:true,timeout:100});assert.equal(r.status,'stopped',mutation);
             assert.equal(await page.evaluate(()=>gapsFixture.submits),mutation==='sameKeyNext'?1:0,mutation);
         }
-        console.log('Gaps: trusted DOM-order exact answers, one submit, semi-auto, 3 padded-distractor successes, 32 initial refusals and 9 post-input/no-Next refusals PASS. Source-derived synthetic only.');
+        console.log('Gaps: trusted DOM-order exact answers, one submit, semi-auto, 3 padded-distractor successes, 35 initial refusals and 9 post-input/no-Next refusals PASS. Source-derived synthetic only.');
     } finally {if(browser)await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
