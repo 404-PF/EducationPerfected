@@ -839,19 +839,30 @@ async function testAssignedClassicAudio(page, origin, output) {
         await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
         assert.equal(await page.evaluate(()=>assignedFixture.enters),1,route);
     }
-    const mutations = [
-        'delete f.q.isEPQuestion', 'f.q.isEPQuestion=true', 'f.q.isSpeakingMode=true',
-        'delete f.q.isSpeakingMode', 'f.q.questionType=6', 'f.q.questionType=1',
-        'f.self.model.gameMode=2', 'f.self.model.gameMode=3',
-        'f.self.model.contentSource.selectedActivity._taskID=0',
-        'f.self.model.contentSource.selectedActivity._taskID="123"',
-        'f.self.model.contentSource.selectedActivity._activityType=3',
-        'f.self.model.contentSource.selectedActivity._contentType=3',
-        'f.self.sectionData={activityGroup:{isAutoMarked:false}}', 'f.self.sectionData=null',
-    ];
+    const mutations = ['missingEP', 'ep', 'speaking', 'missingSpeaking', 'componentType', 'contextType',
+        'assessment', 'lesson', 'zeroTask', 'stringTask', 'activityType', 'contentType', 'manual', 'nullSection'];
     for (const mutation of mutations) {
         await setup('/audio');
-        await page.evaluate(code=>{const f=assignedFixture;eval(code);},mutation);
+        await page.evaluate(change=>{
+            const f=assignedFixture;
+            switch (change) {
+                case 'missingEP': delete f.q.isEPQuestion; break;
+                case 'ep': f.q.isEPQuestion=true; break;
+                case 'speaking': f.q.isSpeakingMode=true; break;
+                case 'missingSpeaking': delete f.q.isSpeakingMode; break;
+                case 'componentType': f.q.questionType=6; break;
+                case 'contextType': f.q.questionType=1; break;
+                case 'assessment': f.self.model.gameMode=2; break;
+                case 'lesson': f.self.model.gameMode=3; break;
+                case 'zeroTask': f.self.model.contentSource.selectedActivity._taskID=0; break;
+                case 'stringTask': f.self.model.contentSource.selectedActivity._taskID='123'; break;
+                case 'activityType': f.self.model.contentSource.selectedActivity._activityType=3; break;
+                case 'contentType': f.self.model.contentSource.selectedActivity._contentType=3; break;
+                case 'manual': f.self.sectionData={activityGroup:{isAutoMarked:false}}; break;
+                case 'nullSection': f.self.sectionData=null; break;
+                default: throw new Error('Unknown synthetic mutation');
+            }
+        },mutation);
         await page.evaluate(()=>window.startAnswer());
         await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
         assert.deepEqual(await page.evaluate(()=>[assignedFixture.inputs,assignedFixture.enters]),[0,0],mutation);
