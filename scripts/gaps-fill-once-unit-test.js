@@ -6,8 +6,9 @@ const { playGapsRound } = require('../lib/gaps-handler');
 const { createFillGapsOnce } = require('../lib/gaps-fill-once');
 (async()=>{
     const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));
-    const browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH || undefined});
+    let browser;
     try {
+        browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH || undefined});
         const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
         const setup=()=>page.goto(origin+'/lesson-gaps');
         const run=createFillGapsOnce({detectQuestion,playGapsRound});
@@ -28,5 +29,5 @@ const { createFillGapsOnce } = require('../lib/gaps-fill-once');
         const lock=createFillGapsOnce({detectQuestion:async()=>{calls++;await waiting;return null;},playGapsRound});
         const first=lock(page);assert.equal((await lock(page)).status,'refused');release();await first;assert.equal(calls,1);
         console.log('One-shot browser-unit fixtures: exact2trustedinputs/0submit/noadvance; prefillrefusal; cancelled0input; mutationstops1input0submit; nongapsrefusal; overlaprefusal PASS');
-    }finally{await browser.close();await new Promise(r=>server.close(r));}
+    }finally{try{if(browser)await browser.close();}finally{await new Promise(r=>server.close(r));}}
 })().catch(e=>{console.error(e);process.exitCode=1;});

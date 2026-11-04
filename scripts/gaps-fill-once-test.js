@@ -18,6 +18,7 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
         browser=await puppeteer.connect({browserWSEndpoint:output.match(/EP_WS_ENDPOINT=(\S+)/)[1]});
         await browser.waitForTarget(target=>target.type()==='page');
         const page=(await browser.pages())[0];await page.waitForSelector('#loginId');
+        await wait(()=>output.includes('EP_TEST_LOGIN_READY'));
         await page.type('#loginId','fixture-user');await page.type('#password','fixture-only');await page.click('form button');
         await wait(()=>output.includes('Commands: fill once'));
         await page.goto(origin+'/lesson-gaps');
