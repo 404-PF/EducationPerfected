@@ -113,6 +113,41 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         assert.equal((await afterDispatch(completePage)).status, 'stopped');
         assert.equal((await afterDispatch(page)).status, 'refused');
         assert.equal(await page.evaluate(() => gapsFixture.submits), 1);
+        await setup();
+        const delayedFill = createFillGapsOnce({ detectQuestion, playGapsRound });
+        const delayed = factory(async (...args) => {
+            const result = await delayedFill(...args);
+            await page.evaluate(() => {
+                const button = document.querySelector('#sa-navigation-controls button');
+                button.disabled = true;
+                setTimeout(() => { button.disabled = false; }, 150);
+            });
+            return result;
+        });
+        assert.equal((await delayed(page)).status, 'submitted-once');
+        assert.equal(await page.evaluate(() => gapsFixture.submits), 1);
+        await setup();
+        const disabledFill = createFillGapsOnce({ detectQuestion, playGapsRound });
+        const disabled = factory(async (...args) => {
+            const result = await disabledFill(...args);
+            await page.evaluate(() => { document.querySelector('#sa-navigation-controls button').disabled = true; });
+            return result;
+        });
+        const since = Date.now();
+        assert.equal((await disabled(page)).status, 'refused');
+        assert.ok(Date.now() - since >= 950);
+        assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
+        await setup();
+        let stopWaiting = false;
+        const waitingFill = createFillGapsOnce({ detectQuestion, playGapsRound });
+        const waiting = factory(async (...args) => {
+            const result = await waitingFill(...args);
+            await page.evaluate(() => { document.querySelector('#sa-navigation-controls button').disabled = true; });
+            setTimeout(() => { stopWaiting = true; }, 100);
+            return result;
+        });
+        assert.equal((await waiting(page, { shouldStop: () => stopWaiting })).status, 'aborted');
+        assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
         console.log('Submit-once browser fixtures PASS: exact2inputs/1Submit/0Next/auto-advance1; no later-question input; repeat/refusal/prefill/cancel/mutation/uncertain-click permanent consumption.');
     } finally {
         try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); }

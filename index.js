@@ -2288,7 +2288,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, gaps
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
             await page.exposeFunction('refresh', refreshControl);
-            await page.exposeFunction('startAnswer', gapsValidation ? () => 'Validation session: use the terminal fill once command.' : toggleLoop);
+            await page.exposeFunction('startAnswer', gapsValidation ? () => gapsSubmitOnce ? 'Validation session: use the terminal submit once command.' : 'Validation session: use the terminal fill once command.' : toggleLoop);
             await page.exposeFunction('toggleMode', gapsValidation ? () => gapsSubmitOnce ? 'Validation mode is fixed to one Submit.' : 'Validation mode is fixed to fill only.' : toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
             // from log text or exposed during normal runs.
