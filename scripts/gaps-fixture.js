@@ -50,6 +50,7 @@ function installGapsFixture() {
         f.submits++;
         if(f.keepSame){submit.textContent='Next Question';return;}
         q.questionIndex++;
+        if(f.continueOnly){group.remove();document.querySelector('#question-container-group')?.remove();f.self.model._currentQuestion=null;let next=document.querySelector('button.continue-button');if(!next){next=document.createElement('button');next.className='continue-button';next.textContent='Continue';document.body.append(next);}next.hidden=false;next.style.display='';}
         if(f.complete){group.hidden=true;const exit=document.querySelector('button.exit-button');exit.hidden=false;exit.style.display='';}
     });
 }

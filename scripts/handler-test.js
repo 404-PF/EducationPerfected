@@ -1072,8 +1072,17 @@ async function main() {
             await program.page.evaluate(() => { window.gapsFixture.complete = true; window.startAnswer(); });
             await program.page.waitForFunction(() => window.gapsFixture?.submits === 1, { timeout: 8000 }).catch(e => { throw new Error(e.message + '\n' + program.output()); });
             await program.page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
-            assert.deepEqual(await program.page.evaluate(() => [gapsFixture.inputs.map(i => i.index), gapsFixture.submits]), [[2,1],1]);
+            assert.deepEqual(await program.page.evaluate(() => [gapsFixture.inputs, gapsFixture.submits]), [[{index:2,trusted:true},{index:1,trusted:true}],1]);
             check('real loop: drag-and-drop gaps use exact DOM-order trusted inputs and submit once on source-derived fixture');
+            await program.page.goto(origin + '/lesson-gaps', { waitUntil: 'domcontentloaded' });
+            const beforeUnproven = program.output().length;
+            await program.page.evaluate(() => { window.gapsFixture.continueOnly = true; window.startAnswer(); });
+            await program.page.waitForFunction(() => window.gapsFixture?.submits === 1, { timeout: 8000 });
+            await program.page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
+            await new Promise(r => setTimeout(r, 100));
+            assert.ok(program.output().slice(beforeUnproven).includes('without proof of task completion'), program.output().slice(beforeUnproven));
+            assert.ok(!program.output().slice(beforeUnproven).includes('Lesson completed.'));
+            check('real loop: gaps Continue-only stop reports unproven completion, never Lesson completed');
             await testRealAudioFlow(program.page, program.output);
             await testAssignedClassicAudio(program.page, origin, program.output);
             await testRealAudioMissingAnswers(program.page, origin, program.output);

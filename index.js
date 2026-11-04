@@ -1671,8 +1671,8 @@ async function launchProgram({ legacySignals = false } = {}) {
             // each handler in turn. Each handler plays one round from the descriptor
             // and returns false to stop the run, true to keep looping.
             const QUESTION_HANDLERS = [
-                { type: 'choice', play: playChoiceDescriptorRound },
-                { type: 'gaps', play: playChoiceDescriptorRound },
+                { type: 'choice', play: playSelectionDescriptorRound },
+                { type: 'gaps', play: playSelectionDescriptorRound },
                 { type: 'audio', play: handleTypedRound },
                 { type: 'typed', play: handleTypedRound },
             ];
@@ -1701,17 +1701,17 @@ async function launchProgram({ legacySignals = false } = {}) {
             }
 
             /**
- * Choice-round handler: re-detects the slide to confirm it held still, then
- * plays it through lib/choice-handler.js and maps the outcome onto the run.
+ * Selection-round handler: re-detects the slide to confirm it held still, then
+ * plays it through the matching selection handler and maps the outcome onto the run.
  * @param {object} descriptor - choice descriptor from detectQuestion
  * @returns {Promise<boolean>} False to stop the run, true to keep looping
  */
-            async function playChoiceDescriptorRound(descriptor) {
+            async function playSelectionDescriptorRound(descriptor) {
                     // EP swaps slides asynchronously, like it swaps question text: require
                     // the detected slide to hold still across two reads before clicking.
                     const again = await detectQuestion(page);
                     if (again === null || again.kind !== descriptor.kind || again.key !== descriptor.key) {
-                        console.log('Choice slide changed during detection; re-reading it in a fresh pass.');
+                        console.log('Selection slide changed during detection; re-reading it in a fresh pass.');
                         return true;
                     }
                     const play = descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
@@ -1724,17 +1724,23 @@ async function launchProgram({ legacySignals = false } = {}) {
                     if (result.status === 'advanced') return TOGGLE;
                     if (result.status === 'aborted') return false;
                     if (result.status === 'complete') {
-                        if (await taskCompletionProven()) runReason = 'completed';
-                        console.log('Lesson completed.');
+                        if (await taskCompletionProven()) {
+                            runReason = 'completed';
+                            console.log('Lesson completed.');
+                        } else {
+                            const message = 'A Continue screen appeared without proof of task completion; stopping the run.';
+                            console.error(message);
+                            await alert(message);
+                        }
                         return false;
                     }
                     if (result.status === 'modal') {
-                        // A modal after a choice submission is not necessarily a
+                        // A modal after a selection submission is not necessarily a
                         // rejection (EP shows info/completion modals too), and the
                         // wrong-answer modal for choice questions has never been
                         // observed live. Stop and report rather than guess which it is.
-                        console.error('A modal appeared during the choice round; stopping so it can be checked. The submission may or may not have been accepted.');
-                        await alert('A modal interrupted the choice round; stopping the run.');
+                        console.error('A modal appeared during the selection round; stopping so it can be checked. The submission may or may not have been accepted.');
+                        await alert('A modal interrupted the selection round; stopping the run.');
                         return false;
                     }
                     // 'stopped'

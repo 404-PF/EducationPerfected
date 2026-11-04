@@ -8,7 +8,7 @@ const { playGapsRound } = require('../lib/gaps-handler');
     const server = createServer(); await new Promise(r=>server.listen(0,'127.0.0.1',r));
     let browser;
     try {
-        browser = await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH || undefined,args:process.env.EP_TEST_NO_SANDBOX ? ['--no-sandbox'] : []});
+        browser = await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH || undefined});
         const page = await browser.newPage(); const origin='http://127.0.0.1:'+server.address().port;
         const setup=async()=>{await page.goto(origin+'/lesson');await page.evaluate(installGapsFixture);};
         await setup();
@@ -46,8 +46,10 @@ const { playGapsRound } = require('../lib/gaps-handler');
                 if(m==='extraGap')f.group.append(f.renderer.dropZones[0].containerSpan.cloneNode(true));
             },mutation);
             const desc=await detectQuestion(page);
-            const r=desc.kind==='gaps'?await playGapsRound(page,desc,{enter:true,timeout:100}):{status:'stopped'};
-            assert.equal(r.status,'stopped',mutation);assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
+            const handlerCases = ['manual','markingUnknown'];
+            assert.equal(desc.kind, handlerCases.includes(mutation) ? 'gaps' : 'unsupported', mutation);
+            if (desc.kind === 'gaps') assert.equal((await playGapsRound(page,desc,{enter:true,timeout:100})).status,'stopped',mutation);
+            assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
         }
         for(const mutation of ['identity','answer','marking','ineffective','wrongGap','sourceReplacement','submitReplacement','sameKeyNext']) {
             await setup();await page.evaluate(m=>{
