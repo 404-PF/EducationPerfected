@@ -16,6 +16,32 @@ const { playGapsRound } = require('../lib/gaps-handler');
         const d=await detectQuestion(page);assert.equal(d.kind,'gaps',JSON.stringify(d));assert.deepEqual(d.gaps.map(g=>g.id),[7,41]);
         const result=await playGapsRound(page,d,{enter:true,timeout:300});assert.equal(result.status,'advanced',JSON.stringify(result));
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
+        // EP uses raw textContent, so safe padding on a distractor needs no normalization.
+        for (const padding of [' wrong ', '\u00a0wrong\u00a0', '\u2003wrong\u2003']) {
+            await setup();await page.evaluate(text=>{gapsFixture.state.hintsShown[0]=text;gapsFixture.renderer.draggables[0].target.textContent=text;},padding);
+            const padded=await detectQuestion(page);assert.equal(padded.kind,'gaps');
+            assert.equal((await playGapsRound(page,padded,{enter:true,timeout:300})).status,'advanced');
+            assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
+        }
+        for (const mutation of ['paddedCollision','blankHint','tabHint','newlineHint','paddedMarkup','paddedCorrectMetadata','paddedCorrectHint','paddedDOMMismatch','paddedRawLength','secondCorrectPadded']) {
+            await setup();await page.evaluate(m=>{
+                const f=gapsFixture;
+                let text=' wrong ';
+                if(m==='paddedCollision')text=' alpha ';
+                if(m==='blankHint')text='   ';
+                if(m==='tabHint')text='\twrong ';
+                if(m==='newlineHint')text=' wrong\n';
+                if(m==='paddedMarkup')text=' <wrong> ';
+                if(m==='paddedRawLength')text=' '.repeat(4096)+'wrong';
+                if(m==='paddedCorrectMetadata')f.metadata.Gaps[0].CorrectOptions=[' alpha '];
+                if(m==='secondCorrectPadded')f.metadata.Gaps[0].CorrectOptions.push(' padded ');
+                if(m==='paddedCorrectHint'){f.state.hintsShown[1]=' alpha ';f.renderer.draggables[1].target.textContent=' alpha ';}
+                f.state.hintsShown[0]=text;
+                if(m!=='paddedDOMMismatch')f.renderer.draggables[0].target.textContent=text;
+            },mutation);
+            assert.equal((await detectQuestion(page)).kind,'unsupported',mutation);
+            assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
+        }
         await setup();let selected=false;
         assert.equal((await playGapsRound(page,await detectQuestion(page),{enter:false,timeout:100,log:()=>{selected=true;},shouldStop:()=>selected})).status,'aborted');
         assert.equal(await page.evaluate(()=>gapsFixture.submits),0);
@@ -51,7 +77,7 @@ const { playGapsRound } = require('../lib/gaps-handler');
             if (desc.kind === 'gaps') assert.equal((await playGapsRound(page,desc,{enter:true,timeout:100})).status,'stopped',mutation);
             assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
         }
-        for(const mutation of ['identity','answer','marking','ineffective','wrongGap','sourceReplacement','submitReplacement','sameKeyNext']) {
+        for(const mutation of ['identity','answer','marking','ineffective','wrongGap','sourceReplacement','submitReplacement','sameKeyNext','hintPaddingChange']) {
             await setup();await page.evaluate(m=>{
                 const f=gapsFixture;
                 if(m==='ineffective')f.ignoreInput=true;
@@ -61,6 +87,7 @@ const { playGapsRound } = require('../lib/gaps-handler');
                     if(m==='answer')f.metadata.Gaps[0].CorrectOptions=['wrong'];
                     if(m==='marking')f.self.sectionData.activityGroup.isAutoMarked=false;
                     if(m==='wrongGap')f.renderer.dropZones[0].span.textContent='wrong';
+                    if(m==='hintPaddingChange'){f.state.hintsShown[0]=' wrong ';f.renderer.draggables[0].target.textContent=' wrong ';}
                     if(m==='sourceReplacement'){const el=f.renderer.draggables[1].target;el.replaceWith(el.cloneNode(true));}
                     if(m==='submitReplacement'){const b=[...document.querySelectorAll('#sa-navigation-controls button')].find(b=>b.textContent==='Submit');b?.remove();}
                 };
@@ -68,6 +95,6 @@ const { playGapsRound } = require('../lib/gaps-handler');
             const r=await playGapsRound(page,await detectQuestion(page),{enter:true,timeout:100});assert.equal(r.status,'stopped',mutation);
             assert.equal(await page.evaluate(()=>gapsFixture.submits),mutation==='sameKeyNext'?1:0,mutation);
         }
-        console.log('Gaps: trusted DOM-order exact answers, one submit, semi-auto, 22 initial refusals and 8 post-input/no-Next refusals PASS. Source-derived synthetic only.');
+        console.log('Gaps: trusted DOM-order exact answers, one submit, semi-auto, 3 padded-distractor successes, 32 initial refusals and 9 post-input/no-Next refusals PASS. Source-derived synthetic only.');
     } finally {if(browser)await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
