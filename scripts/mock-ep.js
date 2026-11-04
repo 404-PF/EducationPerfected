@@ -11,6 +11,7 @@
 // The answers are the German words one..five; a wrong submission shows the
 // correction modal, a right one advances the round.
 const http = require('node:http');
+const { installMultiChoiceFixture } = require('./multi-choice-fixture');
 
 const WORDS = [
     ['one', 'eins'],
@@ -381,6 +382,7 @@ function createServer() {
             return send(taskPage(start));
         }
         if (url.pathname === '/lesson') return send(lessonPage(false));
+        if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-async') return send(lessonAsyncPage);
         if (url.pathname === '/audio') return send(audioPage(2));
         if (url.pathname === '/dictation') return send(audioPage(3));
