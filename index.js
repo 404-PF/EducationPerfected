@@ -2,6 +2,7 @@
 
 const puppeteer = require('puppeteer');
 const { detectQuestion } = require('./lib/detect-question');
+const { audioAllowed, audioPolicyUnchanged } = require('./lib/audio-policy');
 const { playChoiceRound } = require('./lib/choice-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { diagnostic } = require('./lib/diagnostics');
@@ -1513,7 +1514,8 @@ async function launchProgram({ legacySignals = false } = {}) {
                 // as a real boolean on a Smart Lesson, 2026-10-30) must be
                 // explicitly true. List audio tasks ship no sectionData at all
                 // (captured on Listening), so audio is allowed either by an
-                // explicit true flag OR by positive identification of the
+                // explicit true flag, a source-grounded assigned classic translation
+                // context, OR by positive identification of the
                 // captured self-test list context (contentSource.selectedActivity
                 // with _taskID null, _activityType 1, _contentType 1 - see
                 // detect-question.js; the no-teacher-marking-surface reading of
@@ -1523,8 +1525,7 @@ async function launchProgram({ legacySignals = false } = {}) {
                     // the list allowance substitutes ONLY for the captured live
                     // shape: sectionData genuinely ABSENT. A present but
                     // unreadable/malformed sectionData never borrows it.
-                    const allowed = descriptor.autoMarked === true
-                        || (descriptor.autoMarked === 'unknown' && descriptor.sectionDataPresent === false && descriptor.selfTestList === true);
+                    const allowed = audioAllowed(descriptor);
                     if (!allowed) {
                         const message = descriptor.autoMarked === false
                             ? 'This audio task is marked manually (self/peer/teacher), not auto-marked by EP; stopping instead of answering.'
@@ -1581,6 +1582,11 @@ async function launchProgram({ legacySignals = false } = {}) {
                     return true;
                 }
 
+                if (descriptor.kind === 'audio' && !audioPolicyUnchanged(descriptor, fresh, answer)) {
+                    console.error('Audio marking or task context changed while typing; stopping without submission.');
+                    return false;
+                }
+
                 // Recheck the actual value after scope detection, immediately
                 // before Enter. No submission slot is consumed by a lost box.
                 if (await answerBoxValue() !== answer || !TOGGLE) return true;
@@ -1592,6 +1598,11 @@ async function launchProgram({ legacySignals = false } = {}) {
 
                 let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer);
                 if (outcome === 'timeout' && ENTER) {
+                    const beforeRetry = await detectQuestion(page);
+                    if (descriptor.kind === 'audio' && !audioPolicyUnchanged(descriptor, beforeRetry, answer)) {
+                        console.error('Audio marking or task context changed before retry; stopping.');
+                        return false;
+                    }
                     // same single-retry policy as the classic path: EP can swallow
                     // an Enter. But a quiet rejection CLEARS the box, so never
                     // retry blind: re-read it and retype the exact answer first,
@@ -1616,6 +1627,10 @@ async function launchProgram({ legacySignals = false } = {}) {
                     }
                     const retryQuestion = await detectQuestion(page);
                     if (!retryQuestion || retryQuestion.key !== key) return true;
+                    if (descriptor.kind === 'audio' && !audioPolicyUnchanged(descriptor, retryQuestion, answer)) {
+                        console.error('Audio marking or task context changed while retyping; stopping without submission.');
+                        return false;
+                    }
                     if (await answerBoxValue() !== answer || !TOGGLE) return true;
                     const retryCount = typedSubmissionsByKey.get(key) || 0;
                     if (retryCount >= 2) {
