@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
+const { installGapsFixture } = require('./gaps-fixture');
+const gapsMode = process.argv.includes('--gaps');
 (async () => {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -11,6 +13,8 @@ const { createServer } = require('./mock-ep');
     Object.assign(process.env, { EP_TEST_BOOT: '1', EP_LOGIN_URL: origin + '/app/login', EP_LOGIN_HOST: '127.0.0.1' });
     delete process.env.EP_EMAIL; delete process.env.EP_PASSWORD;
     let browser, controls, stopPromise, intercepted = false, loginReady = false;
+    const errors = [], originalError = console.error;
+    console.error = (...args) => { errors.push(args.join(' ')); originalError(...args); };
     const load = Module._load, launchBrowser = puppeteer.launch.bind(puppeteer), log = console.log;
     Module._load = function (id, ...args) {
         const value = load.call(this, id, ...args);
@@ -35,12 +39,24 @@ const { createServer } = require('./mock-ep');
         await page.click('form button');
         controls = await launch;
         await page.goto(origin + '/lesson');
+        if (gapsMode) {
+        await page.evaluate(installGapsFixture);
+        await page.evaluate(() => {
+            gapsFixture.complete = true;
+            document.querySelector('#sa-navigation-controls button').addEventListener('click', () => {
+                gapsFixture.group.remove();
+                document.querySelector('#question-container-group')?.remove();
+                gapsFixture.self.model._currentQuestion = null;
+            });
+        });
+        } else {
         await page.evaluate(() => {
             document.querySelector('#ep-question-container').remove();
             const exit = document.createElement('button'); exit.className = 'exit-button'; document.body.append(exit);
             window.fixtureExitClicks = 0;
             exit.click = () => { window.fixtureExitClicks += 1; };
         });
+        }
         const evaluate = page.evaluate.bind(page);
         page.evaluate = async (fn, ...args) => {
             const result = await evaluate(fn, ...args);
@@ -58,11 +74,16 @@ const { createServer } = require('./mock-ep');
         }
         await stopPromise;
         assert.equal(intercepted, true);
-        assert.equal(await evaluate(() => window.fixtureExitClicks), 0);
+        if (gapsMode) {
+            assert.equal(await evaluate(() => gapsFixture.submits), 1);
+            assert.ok(!errors.some(s => s.includes('without proof of task completion')), 'user stop must not emit an unproven-completion warning');
+        } else {
+            assert.equal(await evaluate(() => window.fixtureExitClicks), 0);
+        }
         assert.equal(controls.status().state, 'stopped');
-        console.log('Stop during completion proof prevents exit click.');
+        console.log(gapsMode ? 'Stop during gaps completion proof stops quietly without an unproven-completion warning.' : 'Stop during completion proof prevents exit click.');
     } finally {
-        Module._load = load; console.log = log;
+        Module._load = load; console.log = log; console.error = originalError;
         if (controls) await controls.close(); else if (browser) await browser.close();
         for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
         Object.assign(process.env, savedEnv);
