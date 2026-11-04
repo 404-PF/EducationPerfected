@@ -816,6 +816,76 @@ async function testRealAudioMissingAnswers(page, origin, output) {
     check('real loop: Listening/Dictation missing, null, empty and unusable accepted answers stop without typing, submission, advance or navigation');
 }
 
+async function testAssignedClassicAudio(page, origin, output) {
+    const setup = async (route) => {
+        await page.goto(origin + route, { waitUntil: 'domcontentloaded' });
+        await page.evaluate(() => {
+            const self = window.angular.element().scope().self;
+            self.model.gameMode = 1;
+            self.model.contentSource.selectedActivity._taskID = 123; // invented
+            const q = self.model._currentQuestion;
+            Object.assign(q, {questionType:0,isEPQuestion:false,isSpeakingMode:false});
+            window.assignedFixture = { self, q, enters:0, inputs:0 };
+            document.addEventListener('keydown',e=>{if(e.key==='Enter')window.assignedFixture.enters++;},true);
+            document.querySelector('#answer-text').addEventListener('input',()=>window.assignedFixture.inputs++);
+        });
+    };
+    for (const route of ['/audio','/dictation']) {
+        await setup(route);
+        const d=await detectQuestion(page); assert.equal(d.classicAssignedAudio,true);
+        await page.evaluate(()=>window.startAnswer());
+        // The fixture's later round intentionally lacks the new positive fields:
+        // prove the observed first round works, then refuses the unknown next one.
+        await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
+        assert.equal(await page.evaluate(()=>assignedFixture.enters),1,route);
+    }
+    const mutations = ['missingEP', 'ep', 'speaking', 'missingSpeaking', 'componentType', 'contextType',
+        'assessment', 'lesson', 'zeroTask', 'stringTask', 'activityType', 'contentType', 'manual', 'nullSection'];
+    for (const mutation of mutations) {
+        await setup('/audio');
+        await page.evaluate(change=>{
+            const f=assignedFixture;
+            switch (change) {
+                case 'missingEP': delete f.q.isEPQuestion; break;
+                case 'ep': f.q.isEPQuestion=true; break;
+                case 'speaking': f.q.isSpeakingMode=true; break;
+                case 'missingSpeaking': delete f.q.isSpeakingMode; break;
+                case 'componentType': f.q.questionType=6; break;
+                case 'contextType': f.q.questionType=1; break;
+                case 'assessment': f.self.model.gameMode=2; break;
+                case 'lesson': f.self.model.gameMode=3; break;
+                case 'zeroTask': f.self.model.contentSource.selectedActivity._taskID=0; break;
+                case 'stringTask': f.self.model.contentSource.selectedActivity._taskID='123'; break;
+                case 'activityType': f.self.model.contentSource.selectedActivity._activityType=3; break;
+                case 'contentType': f.self.model.contentSource.selectedActivity._contentType=3; break;
+                case 'manual': f.self.sectionData={activityGroup:{isAutoMarked:false}}; break;
+                case 'nullSection': f.self.sectionData=null; break;
+                default: throw new Error('Unknown synthetic mutation');
+            }
+        },mutation);
+        await page.evaluate(()=>window.startAnswer());
+        await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
+        assert.deepEqual(await page.evaluate(()=>[assignedFixture.inputs,assignedFixture.enters]),[0,0],mutation);
+    }
+    for (const change of ['manual','assignedID','ep','mode','answers']) {
+        await setup('/audio');
+        await page.evaluate(change=>{
+            const f=assignedFixture;
+            document.querySelector('#answer-text').addEventListener('input',()=>{
+                if(change==='manual')f.self.sectionData={activityGroup:{isAutoMarked:false}};
+                if(change==='assignedID')f.self.model.contentSource.selectedActivity._taskID=456;
+                if(change==='ep')f.q.isEPQuestion=true;
+                if(change==='mode')f.self.model.gameMode=2;
+                if(change==='answers')f.q.validAnswers=[];
+            },{once:true});
+        },change);
+        await page.evaluate(()=>window.startAnswer());
+        await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
+        assert.equal(await page.evaluate(()=>assignedFixture.enters),0,change);
+    }
+    check('real loop: assigned classic Listening/Dictation positive,14 unknown/manual/nonclassic refusals and5 typing-time context changes stop before Enter');
+}
+
 async function testRestartBound(page, output) {
     await drive(page, '/audio-reject', 8, output);
     const before = await page.evaluate(() => window.__submissions.length);
@@ -999,6 +1069,7 @@ async function main() {
             assert.deepEqual(await program.page.evaluate(() => ({clicks: multiFixture.clicks.sort(), submits: multiFixture.submits})), {clicks:[0,2],submits:1});
             check('real loop: multi-select exact set clicked, verified and submitted once on source-derived local fixture');
             await testRealAudioFlow(program.page, program.output);
+            await testAssignedClassicAudio(program.page, origin, program.output);
             await testRealAudioMissingAnswers(program.page, origin, program.output);
             await testRestartBound(program.page, program.output);
             await testTypedSubmitRaces(program.page, origin);
