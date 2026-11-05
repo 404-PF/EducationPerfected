@@ -124,6 +124,18 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         } });
         assert.equal((await playTextboxRound(guardedPage, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
         assert.deepEqual([pointClicks, recomputedClicks, await page.evaluate(() => textboxFixture.submits)], [1, 0, 1]);
+        await setup();
+        descriptor = await detectQuestion(page);
+        const uncertainPage = new Proxy(page, { get(target, key) {
+            if (key === 'evaluateHandle') return async () => { throw new Error('PRIVATE synthetic exception'); };
+            const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+        } });
+        const uncertain = await playTextboxRound(uncertainPage, descriptor, { enter: true, timeout: 200 });
+        assert.equal(uncertain.status, 'stopped');
+        assert.equal(uncertain.reason, 'inspection-or-dispatch-uncertain');
+        assert.equal(uncertain.message, 'Lesson textboxes stopped: inspection or input result uncertain; no retry.');
+        assert.ok(!JSON.stringify(uncertain).includes('PRIVATE'));
+        assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
         console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 22 initial refusals; 3 mid-input stops after1character/0Submit. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
