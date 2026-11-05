@@ -1,16 +1,28 @@
 // Invented sanitized fixture derived from public chunk606, not live account DOM.
-function installGapsFixture() {
-    document.querySelector('#question-container-group').textContent = 'Synthetic drag-and-drop gaps: beta then alpha.';
+function installGapsFixture(config = {}) {
+    document.querySelector('#question-container-group').textContent = config.repeated
+        ? 'Synthetic repeated-label gaps: circumference and diameter.'
+        : 'Synthetic drag-and-drop gaps: beta then alpha.';
     const old = document.querySelector('.multi-choice-component');
     const self = window.angular.element(old).scope().self, q = self.model._currentQuestion;
     self.model.gameMode = 3;
     const group = document.createElement('div'); group.className = 'fitg-component fitg-drag-drop'; old.replaceWith(group);
     const comp = { ComponentTypeCode: 'FILL_IN_GAPS_COMPONENT', ComponentID: 'synthetic-gaps', InputType: 2,
         Gaps: [{ ID: 41, CorrectOptions: ['alpha'], IncorrectOptions: ['wrong'] }, { ID: 7, CorrectOptions: ['beta'], IncorrectOptions: ['wrong'] }, { ID: 88, CorrectOptions: ['unshown'], IncorrectOptions: [] }], TextTemplate: 'Gap [7:beta] then [41:alpha] and hidden [88:unshown]' };
+    if (config.repeated) {
+        comp.Gaps = [
+            {ID:41,CorrectOptions:['Diameter'],IncorrectOptions:[]},
+            {ID:7,CorrectOptions:['Circumference'],IncorrectOptions:[]},
+            {ID:88,CorrectOptions:['Circumference'],IncorrectOptions:[]},
+            {ID:52,CorrectOptions:['Diameter'],IncorrectOptions:[]}
+        ];
+        comp.TextTemplate = 'Step 1 [7:Circumference] Step 2 [41:Diameter] Step 3 [88:Circumference] = pi x [52:Diameter]';
+    }
     const metadata = JSON.parse(JSON.stringify(comp));
     q.questionDef.Components = [comp];
     const state = { metadataInstance: metadata, gapIDtoIndex: { 41: 0, 7: 1, 88: 2 }, gapIndexesShown: [0,1], hintsShown: ['wrong','alpha','beta'],
         usersAnswers: {}, checkOptions: [], identifiedComponents: { baseComponents: {} } };
+    if (config.repeated) Object.assign(state, {gapIDtoIndex:{41:0,7:1,88:2,52:3},gapIndexesShown:[0,1,2,3],hintsShown:['Circumference','π','Radius','Circumference','Diameter','Diameter']});
     const renderer = { id: comp.ComponentID, componentState: state, container: group, renderingParameters: {mode:1}, dropZones: [], draggables: [] };
     const component = { id: comp.ComponentID, componentState: state, visualElement: group, renderingParameters: {mode:1}, questionRenderer: renderer };
     const f = window.gapsFixture = { self, q, comp, metadata, state, renderer, component, group, inputs: [], submits: 0, nexts: 0 };
@@ -35,7 +47,7 @@ function installGapsFixture() {
         });
     }
     // DOM order beta then alpha intentionally differs from metadata order.
-    for (const id of [7,41]) {
+    for (const id of (config.repeated ? [7,41,88,52] : [7,41])) {
         const wrap = document.createElement('span'); wrap.className='fitg-inline-dropzone empty';wrap.id=comp.ComponentID+'_input_'+id;
         const span = document.createElement('span'); span.className='dropzone-answer'; span.id=String(id);span.textContent='\u00a0';wrap.append(span);
         wrap.style.cssText='display:inline-block;min-width:70px;min-height:22px;border:1px solid #777;padding:4px;margin:4px';

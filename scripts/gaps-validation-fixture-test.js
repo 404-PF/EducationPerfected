@@ -4,7 +4,8 @@ const path = require('node:path');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
 const { cleanupTestProcess } = require('./test-process-cleanup');
-async function testGapsValidation(submit) {
+const { installGapsFixture } = require('./gaps-fixture');
+async function testGapsValidation(submit, repeated = false) {
     const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));
     const origin='http://127.0.0.1:'+server.address().port;
     const env={...process.env,EP_TEST_BOOT:'1',EP_LOGIN_URL:origin+'/app/login',EP_LOGIN_HOST:'127.0.0.1'};
@@ -21,7 +22,8 @@ async function testGapsValidation(submit) {
         await wait(()=>output.includes('EP_TEST_LOGIN_READY'));
         await page.type('#loginId','fixture-user');await page.type('#password','fixture-only');await page.click('form button');
         await wait(()=>output.includes(`Commands: ${submit ? 'submit' : 'fill'} once`));
-        await page.goto(origin+'/lesson-gaps');
+        await page.goto(origin+(repeated ? '/lesson' : '/lesson-gaps'));
+        if (repeated) await page.evaluate(installGapsFixture, {repeated:true});
         await page.evaluate(() => {
             document.addEventListener('click', e => {
                 const button = e.target.closest('#sa-navigation-controls button');
@@ -47,16 +49,17 @@ async function testGapsValidation(submit) {
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
         child.stdin.write(`${submit ? 'submit' : 'fill'} once\n`);
         await wait(()=>output.includes(submit ? 'EP_SUBMIT_ONCE {"status":"submitted-once"}' : 'EP_FILL_ONCE {"status":"filled-only"}'));
-        assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits,gapsFixture.q.questionIndex]),[[{index:2,trusted:true},{index:1,trusted:true}],submit ? 1 : 0,submit ? 1 : 0]);
+        const expected = (repeated ? [0,4,3,5] : [2,1]).map(index => ({index,trusted:true}));
+        assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits,gapsFixture.q.questionIndex]),[expected,submit ? 1 : 0,submit ? 1 : 0]);
         await new Promise(r=>setTimeout(r,300));
-        assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits,gapsFixture.nexts,gapsFixture.q.questionIndex]),[2,submit ? 1 : 0,0,submit ? 1 : 0]);
+        assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits,gapsFixture.nexts,gapsFixture.q.questionIndex]),[expected.length,submit ? 1 : 0,0,submit ? 1 : 0]);
         await page.goto(origin+'/lesson-gaps'); // Even a new empty page cannot consume a second attempt.
         child.stdin.write(`${submit ? 'submit' : 'fill'} once\n`);await wait(()=>output.includes('Attempt already consumed'));
         await page.evaluate(()=>window.startAnswer());
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
         child.stdin.write('status\nquit\n');await wait(()=>child.exitCode!==null);
         assert.equal(child.exitCode,0);
-        console.log(`One-shot ${submit ? 'Submit' : 'fill'} real-program fixture: stoppedboot, hotkey/start/mode blocked, exactfill, ${submit ? '1submit/automaticadvance1' : '0submit/noadvance'}, instrumented0Next/noinputonfollowingquestion, permanent repeat refusal, cleanquit PASS`);
+        console.log(`One-shot ${repeated ? 'repeated exact labels' : 'unique labels'} ${submit ? 'Submit' : 'fill'} real-program fixture: stoppedboot, hotkey/start/mode blocked, exactfill, ${submit ? '1submit/automaticadvance1' : '0submit/noadvance'}, instrumented0Next/noinputonfollowingquestion, permanent repeat refusal, cleanquit PASS`);
     } finally {
         try { browser?.disconnect(); if(child.exitCode===null)cleanupTestProcess(child); } finally { await new Promise(r=>server.close(r)); }
     }
