@@ -53,9 +53,9 @@ async function setup(page, origin) {
             await setup(page, origin);
             await page.evaluate(mutation => {
                 const f = mathFixture, state = f.component.componentState;
-                if (mutation === 'single-line-block') f.comp.Options.forEach((option, i) => { option.TextTemplate = '[block unknown]Synthetic plain answer ' + i; });
-                if (mutation === 'leading-block') f.comp.Options[0].TextTemplate = ' [block unknown]text';
-                if (mutation === 'embedded-block') f.comp.Options[0].TextTemplate = 'prefix[block unknown]text';
+                if (mutation === 'single-line-block') f.comp.Options.forEach((option, i) => { option.TextTemplate = '[block]Synthetic plain answer ' + i; });
+                if (mutation === 'leading-block') f.comp.Options[0].TextTemplate = ' [block\ntext\n]';
+                if (mutation === 'embedded-block') f.comp.Options[0].TextTemplate = 'prefix[block\ntext\n]';
                 if (mutation === 'no-parser') delete f.q.cachedRenderers[1].parser;
                 if (mutation === 'foreign-index') f.q.cachedRenderers[1].parser.identifiedComponents = { baseComponents: {} };
                 if (mutation === 'image') f.previews[1].element.append(document.createElement('img'));
