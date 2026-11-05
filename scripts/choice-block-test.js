@@ -48,6 +48,36 @@ async function setup(page, origin) {
         });
         assert.equal((await playChoiceRound(page, automatic, { enter: true, timeout: 1000 })).status, 'advanced');
         assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, blockSubmits, indexGetterCalls]), [1, 1, 0]);
+        // Conservative textContent contract: whitespace must be explicit between
+        // paragraph nodes. Visual block layout alone does not insert a text node.
+        for (const spaced of [true, false]) {
+            await setup(page, origin);
+            const rendered = await page.evaluate(spaced => {
+                const f = mathFixture;
+                for(let i=0;i<f.previews.length;i++) {
+                    const first='Synthetic first '+i, second='Synthetic second '+i;
+                    const template='[block\n'+first+'\n'+second+'\n]';
+                    f.comp.Options[i].TextTemplate=template;f.metadata.Options[i].TextTemplate=template;
+                    f.previews[i].renderer.templateString=template;
+                    const a=document.createElement('p'), b=document.createElement('p');
+                    a.textContent=first;b.textContent=second;
+                    f.previews[i].fields.renderGroup.replaceChildren(a,...(spaced?[document.createTextNode('\n')]:[]),b);
+                }
+                return f.previews[0].fields.renderGroup.textContent;
+            },spaced);
+            assert.equal(rendered,spaced?'Synthetic first 0\nSynthetic second 0':'Synthetic first 0Synthetic second 0');
+            const multi=await detectQuestion(page);
+            if(spaced) {
+                assert.equal(multi.kind,'choice');assert.equal(multi.plainBlock,true);
+                let selected=false;
+                assert.equal((await playChoiceRound(page,multi,{enter:false,timeout:30,shouldStop:()=>selected,log:message=>{if(message.startsWith('Selected '))selected=true;}})).status,'aborted');
+                assert.deepEqual(await page.evaluate(()=>mathFixture.clicks),multi.correct);
+                assert.equal(await page.evaluate(()=>navigationClicks),0);
+            } else {
+                assert.equal(multi.kind,'unsupported');
+                assert.equal(await page.evaluate(()=>mathFixture.clicks.length),0);
+            }
+        }
         const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'unknown-attribute', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview', 'single-line-block', 'leading-block', 'embedded-block'];
         for (const mutation of mutations) {
             await setup(page, origin);
@@ -123,6 +153,6 @@ async function setup(page, origin) {
             assert.equal(lateMutations, 1, mutation);
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls,25 initial refusals+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,25 initial refusals+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
