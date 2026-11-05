@@ -15,11 +15,13 @@ async function setup(page, origin) {
         const previews = elements.map((el, i) => {
             el.querySelectorAll('.shortcut-key').forEach(e => e.remove());
             el.replaceChildren();
-            const renderGroup = document.createElement('div');
+            const buttonGroup = document.createElement('div'); buttonGroup.id = 'button-group';
+            const check = document.createElement('input'); check.id = 'check'; check.type = 'radio'; check.name = comp.ComponentID; check.setAttribute('tabindex', '-1');
+            const renderGroup = document.createElement('div'); renderGroup.id = 'render-group';
             renderGroup.innerHTML = '<span class="inline-formula"><span class="katex"><math><annotation encoding="application/x-tex">DUPLICATE MATH TEXT</annotation></math><span>DUPLICATE MATH TEXT</span></span></span>';
-            el.append(renderGroup);
+            buttonGroup.append(check, renderGroup); el.append(buttonGroup);
             const option = metadata.Options[i];
-            const preview = { componentID: comp.ComponentID, correct: option.Correct.toLowerCase() === 'true', element: el, option, fields: { renderGroup }, renderer: { templateString: option.TextTemplate } };
+            const preview = { componentID: comp.ComponentID, correct: option.Correct.toLowerCase() === 'true', element: el, option, fields: { renderGroup, check }, renderer: { templateString: option.TextTemplate } };
             option.PreviewOption = preview;
             return preview;
         });
