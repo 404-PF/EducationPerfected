@@ -1,3 +1,4 @@
+const { guardVerifiedPointDispatch } = require('./verified-point-dispatch-fixture');
 const assert = require('node:assert/strict');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
@@ -107,24 +108,9 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
         await setup();
         descriptor = await detectQuestion(page);
-        let recomputedClicks = 0, pointClicks = 0;
-        const guardedPage = new Proxy(page, { get(target, key) {
-            if (key === 'mouse') return { click: async (...args) => { pointClicks++; return target.mouse.click(...args); } };
-            if (key !== 'evaluateHandle') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
-            return async (...args) => {
-                const handle = await target.evaluateHandle(...args);
-                if (args[2] !== 'submit') return handle;
-                const getProperty = handle.getProperty.bind(handle);
-                handle.getProperty = async name => {
-                    const button = await getProperty(name), asElement = button.asElement.bind(button);
-                    button.asElement = () => { const element = asElement(); element.click = async () => { recomputedClicks++; throw new Error('Must dispatch verified point'); }; return element; };
-                    return button;
-                };
-                return handle;
-            };
-        } });
+        const dispatch = guardVerifiedPointDispatch(page), guardedPage = dispatch.page;
         assert.equal((await playTextboxRound(guardedPage, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
-        assert.deepEqual([pointClicks, recomputedClicks, await page.evaluate(() => textboxFixture.submits)], [1, 0, 1]);
+        assert.deepEqual([...dispatch.counts(), await page.evaluate(() => textboxFixture.submits)], [1, 0, 1]);
         await setup();
         descriptor = await detectQuestion(page);
         const uncertainPage = new Proxy(page, { get(target, key) {

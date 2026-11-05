@@ -1,3 +1,4 @@
+const { guardVerifiedPointDispatch } = require('./verified-point-dispatch-fixture');
 const assert = require('node:assert/strict');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
@@ -148,24 +149,9 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         assert.deepEqual(await abortedFill(page), { status: 'aborted', reason: 'fill-cancelled-input-may-be-partial' });
         assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
         await setup();
-        let recomputedClicks = 0, pointClicks = 0;
-        const guardedPage = new Proxy(page, { get(target, key) {
-            if (key === 'mouse') return { click: async (...args) => { pointClicks++; return target.mouse.click(...args); } };
-            if (key !== 'evaluateHandle') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
-            return async (...args) => {
-                const handle = await target.evaluateHandle(...args);
-                if (args[2] !== 'submit') return handle;
-                const getProperty = handle.getProperty.bind(handle);
-                handle.getProperty = async name => {
-                    const button = await getProperty(name), asElement = button.asElement.bind(button);
-                    button.asElement = () => { const element = asElement(); element.click = async () => { recomputedClicks++; throw new Error('Must dispatch verified point'); }; return element; };
-                    return button;
-                };
-                return handle;
-            };
-        } });
+        const dispatch = guardVerifiedPointDispatch(page), guardedPage = dispatch.page;
         assert.equal((await factory()(guardedPage)).status, 'submitted-once');
-        assert.deepEqual([pointClicks, recomputedClicks, await page.evaluate(() => gapsFixture.submits)], [1, 0, 1]);
+        assert.deepEqual([...dispatch.counts(), await page.evaluate(() => gapsFixture.submits)], [1, 0, 1]);
         console.log('Submit-once browser fixtures PASS: exact2inputs/1Submit/0Next/auto-advance1; no later-question input; repeat/refusal/prefill/cancel/mutation/uncertain-click permanent consumption.');
     } finally {
         try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); }
