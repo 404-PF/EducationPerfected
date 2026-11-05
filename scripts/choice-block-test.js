@@ -48,7 +48,7 @@ async function setup(page, origin) {
         });
         assert.equal((await playChoiceRound(page, automatic, { enter: true, timeout: 1000 })).status, 'advanced');
         assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, blockSubmits, indexGetterCalls]), [1, 1, 0]);
-        const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview', 'single-line-block', 'leading-block', 'embedded-block'];
+        const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'unknown-attribute', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview', 'single-line-block', 'leading-block', 'embedded-block'];
         for (const mutation of mutations) {
             await setup(page, origin);
             await page.evaluate(mutation => {
@@ -62,6 +62,7 @@ async function setup(page, origin) {
                 if (mutation === 'math') { const formula = document.createElement('span'); formula.className = 'katex'; f.previews[1].element.append(formula); }
                 if (mutation === 'extra-editable') f.previews[1].element.append(document.createElement('input'));
                 if (mutation === 'render-text') f.previews[1].fields.renderGroup.textContent = 'foreign text';
+                if (mutation === 'unknown-attribute') f.comp.Options[0].TextTemplate = '[block unknown\ntext\n]';
                 if (mutation === 'unknown-grammar') f.comp.Options[0].TextTemplate = '[unknown\ntext\n]';
                 if (mutation === 'mixed-plain') f.comp.Options[0].TextTemplate = 'plain';
                 if (mutation === 'nested-directive') f.comp.Options[0].TextTemplate = '[block\n[image url="x"]\n]';
@@ -122,6 +123,6 @@ async function setup(page, origin) {
             assert.equal(lateMutations, 1, mutation);
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls,24 initial refusals+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls,25 initial refusals+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
