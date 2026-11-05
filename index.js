@@ -8,6 +8,8 @@ const { playGapsRound } = require('./lib/gaps-handler');
 const { playTextboxRound } = require('./lib/textbox-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
+const { createSelectChoiceOnce } = require('./lib/choice-select-once');
+const { detectQuestionInPage } = require('./lib/detect-question');
 const { diagnostic } = require('./lib/diagnostics');
 const { guardClassicEnter } = require('./lib/classic-enter');
 
@@ -355,7 +357,8 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {}) {
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false } = {}) {
+    if (choiceSelectOnly && (gapsFillOnly || legacySignals)) throw new Error('Choice validation requires an exclusive nonlegacy session.');
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -2315,8 +2318,18 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     return result;
                 } finally { TOGGLE = false; }
             };
+            const selectOnce = createSelectChoiceOnce({ detectQuestion, detectQuestionInPage });
+            const runSelectOnly = async () => {
+                TOGGLE = true;
+                try {
+                    const result = await selectOnce(page, { shouldStop: () => !TOGGLE });
+                    console.log('EP_SELECT_ONCE ' + JSON.stringify(result));
+                    return result;
+                } finally { TOGGLE = false; }
+            };
+            const validationOnly = gapsFillOnly || choiceSelectOnly;
             const controls = createRunControls({
-                run: gapsFillOnly ? runFillOnly : startLoop,
+                run: choiceSelectOnly ? runSelectOnly : gapsFillOnly ? runFillOnly : startLoop,
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
@@ -2328,8 +2341,8 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
             await page.exposeFunction('refresh', refreshControl);
-            await page.exposeFunction('startAnswer', gapsFillOnly ? () => 'Validation session: use the terminal fill once command.' : toggleLoop);
-            await page.exposeFunction('toggleMode', gapsFillOnly ? () => 'Validation mode is fixed to fill only.' : toggleAuto);
+            await page.exposeFunction('startAnswer', validationOnly ? () => 'Validation session: use the approved terminal one-shot command.' : toggleLoop);
+            await page.exposeFunction('toggleMode', validationOnly ? () => 'Validation mode is fixed to one-shot only.' : toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
             // from log text or exposed during normal runs.
             if (TEST_BOOT) {
@@ -2361,7 +2374,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                 });
             };
 
-            if (!gapsFillOnly) {
+            if (!validationOnly) {
                 await page.evaluateOnNewDocument(installHotkeysInPage);
                 await page.evaluate(installHotkeysInPage);
             }
