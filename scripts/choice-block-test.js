@@ -19,7 +19,8 @@ async function setup(page, origin) {
         const index = f.q.cachedRenderers[1].identifiedComponents;
         f.q.cachedRenderers[1] = Object.create({ get identifiedComponents() { window.indexGetterCalls++; throw new Error('Must read own parser'); } });
         f.q.cachedRenderers[1].parser = { identifiedComponents: index };
-        window.indexGetterCalls = 0;
+        window.indexGetterCalls = 0; window.blockSubmits = 0; window.navigationClicks = 0;
+        document.querySelector('#sa-navigation-controls').addEventListener('click', () => { navigationClicks++; }, true);
     });
 }
 (async () => {
@@ -34,22 +35,27 @@ async function setup(page, origin) {
         assert.equal(descriptor.kind, 'choice'); assert.equal(descriptor.plainBlock, true);
         await page.evaluate(() => { const f = mathFixture; f.group.prepend(f.previews[1].element); f.previews.reverse(); });
         let selected = false;
-        await playChoiceRound(page, descriptor, { enter: false, timeout: 30, shouldStop: () => selected, log: message => { if(message.startsWith('Selected ')) selected = true; } });
+        const semi = await playChoiceRound(page, descriptor, { enter: false, timeout: 30, shouldStop: () => selected, log: message => { if(message.startsWith('Selected ')) selected = true; } });
+        assert.equal(semi.status, 'aborted');
+        assert.deepEqual(await page.evaluate(() => [blockSubmits, navigationClicks]), [0, 0]);
         assert.deepEqual(await page.evaluate(() => mathFixture.clicks), descriptor.correct);
         assert.equal(await page.evaluate(() => indexGetterCalls), 0);
         await setup(page, origin);
         const automatic = await detectQuestion(page);
         await page.evaluate(() => {
             window.blockSubmits = 0;
-            document.querySelector('#sa-navigation-controls button').addEventListener('click', event => { event.stopImmediatePropagation(); blockSubmits++; mathFixture.q.questionIndex++; }, true);
+            [...document.querySelectorAll('#sa-navigation-controls button')].find(button => button.textContent.trim() === 'Submit' && button.getClientRects().length).addEventListener('click', event => { event.stopImmediatePropagation(); blockSubmits++; mathFixture.q.questionIndex++; }, true);
         });
         assert.equal((await playChoiceRound(page, automatic, { enter: true, timeout: 1000 })).status, 'advanced');
         assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, blockSubmits, indexGetterCalls]), [1, 1, 0]);
-        const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview'];
+        const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview', 'single-line-block', 'leading-block', 'embedded-block'];
         for (const mutation of mutations) {
             await setup(page, origin);
             await page.evaluate(mutation => {
                 const f = mathFixture, state = f.component.componentState;
+                if (mutation === 'single-line-block') f.comp.Options.forEach((option, i) => { option.TextTemplate = '[block unknown]Synthetic plain answer ' + i; });
+                if (mutation === 'leading-block') f.comp.Options[0].TextTemplate = ' [block unknown]text';
+                if (mutation === 'embedded-block') f.comp.Options[0].TextTemplate = 'prefix[block unknown]text';
                 if (mutation === 'no-parser') delete f.q.cachedRenderers[1].parser;
                 if (mutation === 'foreign-index') f.q.cachedRenderers[1].parser.identifiedComponents = { baseComponents: {} };
                 if (mutation === 'image') f.previews[1].element.append(document.createElement('img'));
@@ -86,9 +92,36 @@ async function setup(page, origin) {
                 if (mutation === 'detached') f.previews[1].element.remove();
                 if (mutation === 'graph') f.component.componentState.originalMultiChoiceOptions[0] = { ...f.metadata.Options[0] };
             }, mutation);
-            assert.equal((await playChoiceRound(page, descriptor, { enter: false, timeout: 20 })).status, 'stopped', mutation);
+            assert.equal((await playChoiceRound(page, descriptor, { enter: false, timeout: 20, shouldStop: (() => { const end = Date.now() + 1000; return () => Date.now() >= end; })() })).status, 'stopped', mutation);
             assert.equal(await page.evaluate(() => mathFixture.clicks.length), 0);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls,21 initial refusals+6 changed-state0select PASS. No live answering proof.');
+        for (const mutation of ['marking', 'detach']) {
+            await setup(page, origin); const descriptor = await detectQuestion(page);
+            let chosenReads = 0, lateMutations = 0;
+            const driftPage = new Proxy(page, { get(target, key) {
+                if (key !== '$$') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
+                return async (...args) => {
+                    const handles = await target.$$(...args);
+                    for (const handle of handles) {
+                        const evaluate = handle.evaluate.bind(handle);
+                        handle.evaluate = async (...args) => {
+                            const chosen = await evaluate(element => element === mathFixture.previews[1].element);
+                            if (chosen && ++chosenReads === 2) {
+                                lateMutations++;
+                                await target.evaluate(mutation => { if (mutation === 'marking') mathFixture.metadata.Options[1].Correct = 'false'; else mathFixture.previews[1].element.remove(); }, mutation);
+                            }
+                            return evaluate(...args);
+                        };
+                    }
+                    return handles;
+                };
+            } });
+            const end = Date.now() + 1000;
+            const result = await playChoiceRound(driftPage, descriptor, { enter: false, shouldStop: () => Date.now() >= end });
+            assert.equal(result.status, 'stopped', mutation);
+            assert.equal(lateMutations, 1, mutation);
+            assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
+        }
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls,24 initial refusals+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
