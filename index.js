@@ -1742,8 +1742,9 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         // rejection (EP shows info/completion modals too), and the
                         // wrong-answer modal for choice questions has never been
                         // observed live. Stop and report rather than guess which it is.
-                        console.error('A modal appeared during the selection round; stopping so it can be checked. The submission may or may not have been accepted.');
-                        await alert('A modal interrupted the selection round; stopping the run.');
+                        const roundLabel = descriptor.kind === 'textbox' ? 'textbox' : 'selection';
+                        console.error(`A modal appeared during the ${roundLabel} round; stopping so it can be checked. The submission may or may not have been accepted.`);
+                        await alert(`A modal interrupted the ${roundLabel} round; stopping the run.`);
                         return false;
                     }
                     // 'stopped'
