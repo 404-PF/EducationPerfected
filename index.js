@@ -1290,6 +1290,11 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
             async function waitForAdvance(previous, timeout, submitted) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
+                    if ((await detectQuestion(page))?.kind === 'unsupported') {
+                        TOGGLE = false;
+                        console.error('Classic practice context changed while waiting; stopping without further input.');
+                        return 'aborted';
+                    }
                     const state = await page.evaluate((qCss, mCss, aCss) => {
                         const q = document.querySelector(qCss);
                         const box = document.querySelector(aCss);
@@ -1476,11 +1481,16 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
  * @param {string} submitted - The answer that was submitted
  * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
  */
-            async function waitForAdvanceKey(key, timeout, submitted) {
+            async function waitForAdvanceKey(key, timeout, submitted, allowed) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
                     if (await page.$(DIR.modal_css) !== null) return 'modal';
                     const current = await detectQuestion(page);
+                    if (current?.kind === 'unsupported' || (current?.key === key && allowed && !await allowed(current))) {
+                        TOGGLE = false;
+                        console.error('Answer context changed while waiting; stopping without further input.');
+                        return 'aborted';
+                    }
                     if (current === null) {
                         // a transition, or the task ended: only the VISIBLE completion
                         // controls prove completion (they exist hidden on every round)
@@ -1576,8 +1586,8 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     return false;
                 }
 
-                const contextUnchanged = async () => {
-                    const current = await detectQuestion(page);
+                const contextUnchanged = async (current = undefined) => {
+                    if (current === undefined) current = await detectQuestion(page);
                     return descriptor.kind === 'audio' ? audioPolicyUnchanged(descriptor, current, answer)
                         : current?.kind === 'typed' && current.key === key && current.autoMarked === true && current.answers?.includes(answer);
                 };
@@ -1613,7 +1623,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                 }
                 lastSubmitted = { question: key, answer };
 
-                let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer);
+                let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer, contextUnchanged);
                 if (outcome === 'timeout' && ENTER) {
                     const beforeRetry = await detectQuestion(page);
                     if (descriptor.kind === 'audio' && !audioPolicyUnchanged(descriptor, beforeRetry, answer)) {
@@ -1660,7 +1670,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     }
                     typedSubmissionsByKey.set(key, retryCount + 1);
                     await page.keyboard.press('Enter');
-                    outcome = await waitForAdvanceKey(key, ADVANCE_TIMEOUT, answer);
+                    outcome = await waitForAdvanceKey(key, ADVANCE_TIMEOUT, answer, contextUnchanged);
                     if (outcome === 'timeout') {
                         console.error(`Question ${key} did not advance after submitting its answer. Stopping.`);
                         await alert(`Answer loop stopped: ${key} did not advance.`);
@@ -1670,7 +1680,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                 if (outcome === 'timeout' && !ENTER) {
                     // semi-auto: the answer is typed and awaiting the user's Enter
                     console.log(`Waiting for the answer to ${key} to be submitted.`);
-                    outcome = await waitForAdvanceKey(key, 0, answer);
+                    outcome = await waitForAdvanceKey(key, 0, answer, contextUnchanged);
                 }
                 if (outcome === 'aborted') return false;
                 if (outcome === 'modal') {
