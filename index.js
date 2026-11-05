@@ -8,6 +8,7 @@ const { playGapsRound } = require('./lib/gaps-handler');
 const { playTextboxRound } = require('./lib/textbox-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
+const { createFillTextboxesOnce } = require('./lib/textbox-fill-once');
 const { createSubmitGapsOnce } = require('./lib/gaps-submit-once');
 const { createSelectChoiceOnce } = require('./lib/choice-select-once');
 const { detectQuestionInPage } = require('./lib/detect-question');
@@ -358,8 +359,8 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false } = {}) {
-    if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false } = {}) {
+    if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -2329,9 +2330,18 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     return result;
                 } finally { TOGGLE = false; }
             };
-            const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce;
+            const fillTextboxesOnce = createFillTextboxesOnce({ detectQuestion, playTextboxRound });
+            const runTextboxFillOnly = async () => {
+                TOGGLE = true;
+                try {
+                    const result = await fillTextboxesOnce(page, { shouldStop: () => !TOGGLE });
+                    console.log('EP_TEXTBOX_FILL_ONCE ' + JSON.stringify(result));
+                    return result;
+                } finally { TOGGLE = false; }
+            };
+            const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly;
             const controls = createRunControls({
-                run: choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
+                run: textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
