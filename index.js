@@ -1481,12 +1481,18 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
  * @param {string} submitted - The answer that was submitted
  * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
  */
+            async function waitContextLost(current, key, allowed) {
+                if (current?.kind === 'unsupported') return true;
+                if (current?.key !== key || !allowed) return false;
+                return !await allowed(current);
+            }
+
             async function waitForAdvanceKey(key, timeout, submitted, allowed) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
                     if (await page.$(DIR.modal_css) !== null) return 'modal';
                     const current = await detectQuestion(page);
-                    if (current?.kind === 'unsupported' || (current?.key === key && allowed && !await allowed(current))) {
+                    if (await waitContextLost(current, key, allowed)) {
                         TOGGLE = false;
                         console.error('Answer context changed while waiting; stopping without further input.');
                         return 'aborted';
@@ -2106,7 +2112,8 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     }
                     if (!TOGGLE) break;
 
-                    if ((await detectQuestion(page))?.kind !== 'text') break;
+                    const beforeEnter = await detectQuestion(page);
+                    if (beforeEnter?.kind !== 'text' || beforeEnter.text !== question || await answerBoxValue() !== answer) break;
                     if (ENTER) await page.keyboard.press('Enter');
                     lastSubmitted = { question, answer };
                     // a real submission happened: any box-interference streak is over
@@ -2160,7 +2167,8 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         if (!TOGGLE) break;
                         await page.click(DIR.answer_box_css).catch(() => { });
                         if (!TOGGLE) break;
-                        if ((await detectQuestion(page))?.kind !== 'text') break;
+                        const beforeRetryEnter = await detectQuestion(page);
+                        if (beforeRetryEnter?.kind !== 'text' || beforeRetryEnter.text !== question || await answerBoxValue() !== answer) break;
                         await page.keyboard.press('Enter');
                         const retry = await waitForAdvance(question, ADVANCE_TIMEOUT, answer);
                         if (retry === 'timeout') {

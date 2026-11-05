@@ -321,7 +321,7 @@ async function testDetectorRegressions(page, origin) {
     for (const route of ['/audio', '/lesson', '/typed-fixture']) {
         await page.goto(`${origin}${route === '/typed-fixture' ? '/audio' : route}`);
         if (route === '/typed-fixture') {
-            await page.evaluate(() => { document.querySelector('.voice-speaker').remove(); });
+            await page.evaluate(() => { document.querySelector('.voice-speaker').remove(); window.angular.element().scope().self.model.gameMode = 3; });
         }
         const original = await page.evaluate(() => {
             const q = window.angular.element().scope().self.model._currentQuestion;
@@ -333,7 +333,9 @@ async function testDetectorRegressions(page, origin) {
                     const q = window.angular.element().scope().self.model._currentQuestion;
                     Object.assign(q, original); q[field] = bad;
                 }, { field, bad, original });
-                assert.equal((await detectQuestion(page)).kind, 'unsupported', `${route}: invalid ${field}`);
+                const refusal = await detectQuestion(page);
+                assert.equal(refusal.kind, 'unsupported', `${route}: invalid ${field}`);
+                if (route === '/typed-fixture') assert.match(refusal.reason, /stable identity/);
             }
         }
     }
@@ -916,20 +918,26 @@ async function testPracticeContexts(page, origin) {
     // A formerly valid descriptor must not bypass context checks.
     for (const enter of [false,true]) {
         await page.goto(origin+'/lesson'); const descriptor=await detectQuestion(page);
-        await page.evaluate(()=>{window.angular.element().scope().self.model.gameMode=2;window.contextClicks=0;document.addEventListener('click',()=>contextClicks++,true);});
+        await page.evaluate(()=>{window.angular.element().scope().self.model.gameMode=2;window.contextClicks=0;document.addEventListener('click',()=>window.contextClicks++,true);});
         const result=await playChoiceRound(page,descriptor,{enter,timeout:100,shouldStop:()=>false});
         assert.equal(result.status,'stopped');assert.equal(await page.evaluate(()=>contextClicks),0);
     }
+    await page.goto(origin+'/lesson');
+    const staleKey = await detectQuestion(page);
+    await page.evaluate(()=>{window.angular.element().scope().self.model._currentQuestion.questionIndex++;});
+    assert.equal((await playChoiceRound(page,staleKey,{enter:true,timeout:100,shouldStop:()=>false})).status,'stopped');
+    assert.equal(await page.evaluate(()=>document.querySelectorAll('input:checked').length),0);
     // Drift exactly before the last handle read must stop before click.
     await page.goto(origin+'/lesson'); const descriptor=await detectQuestion(page);
     const original=page.$$; let reads=0;
-    page.$$=async function(...args){const handles=await original.apply(this,args);for(const handle of handles){const evaluate=handle.evaluate.bind(handle);handle.evaluate=async(...values)=>{if(++reads===handles.length+1)await page.evaluate(()=>window.angular.element().scope().self.model.gameMode=2);return evaluate(...values);};}return handles;};
+    page.$$=async function(...args){const handles=await original.apply(this,args);for(const handle of handles){const evaluate=handle.evaluate.bind(handle);handle.evaluate=async(...values)=>{if(++reads===handles.length+1) { await page.evaluate(()=>window.angular.element().scope().self.model.gameMode=2); }
+                    return evaluate(...values);};}return handles;};
     try {assert.equal((await playChoiceRound(page,descriptor,{enter:true,timeout:100,shouldStop:()=>false})).status,'stopped');}
     finally {page.$$=original;}
     assert.equal(await page.evaluate(()=>document.querySelectorAll('input:checked').length),0);
     // Mode change caused by focus is caught before clearing or typing.
     await page.goto(origin+'/audio');
-    await page.evaluate(()=>{const box=document.querySelector('#answer-text');box.blur();window.contextInputs=0;window.contextKeys=0;box.addEventListener('focus',()=>window.angular.element().scope().self.model.gameMode=2,{once:true});box.addEventListener('input',()=>contextInputs++);box.addEventListener('keydown',()=>contextKeys++);});
+    await page.evaluate(()=>{const box=document.querySelector('#answer-text');box.blur();window.contextInputs=0;window.contextKeys=0;box.addEventListener('focus',()=>window.angular.element().scope().self.model.gameMode=2,{once:true});box.addEventListener('input',()=>window.contextInputs++);box.addEventListener('keydown',()=>window.contextKeys++);});
     await page.evaluate(()=>window.startAnswer());await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
     assert.deepEqual(await page.evaluate(()=>[contextInputs,contextKeys]),[0,0]);
     for (const route of ['/task/play','/audio','/typed-fixture']) {
@@ -937,14 +945,28 @@ async function testPracticeContexts(page, origin) {
         await page.evaluate(typed=>{
             if(typed){document.querySelector('.multi-choice-component').remove();const box=document.createElement('input');box.id='answer-text';document.querySelector('#ep-question-container').append(box);window.angular.element().scope().self.model._currentQuestion.validAnswers=[{outputString:'synthetic'}];}
             const box=document.querySelector('#answer-text');window.contextInputs=0;window.contextEnters=0;
-            box.addEventListener('input',()=>{contextInputs++;window.angular.element(box).scope().self.model.gameMode=2;},{once:true});
-            box.addEventListener('keydown',e=>{if(e.key==='Enter')contextEnters++;});
+            box.addEventListener('input',()=>{window.contextInputs++;window.angular.element(box).scope().self.model.gameMode=2;},{once:true});
+            box.addEventListener('keydown',e=>{if(e.key==='Enter')window.contextEnters++;});
         },route==='/typed-fixture');
         await page.evaluate(()=>window.startAnswer());await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
         assert.deepEqual(await page.evaluate(()=>[contextInputs,contextEnters]),[1,0],route+' first-input drift');
         assert.equal(await page.$eval('#answer-text',b=>b.value.length),1,route+' must not continue typing');
     }
     check('practice context: 35 Assessment/unknown-mode real-loop refusals 0input/0selection/0Submit; stale semi/auto descriptors, final-read mode drift and focus-time mode drift stop before input;3 first-input mode changes stop further typing/Enter');
+}
+
+async function testClassicFinalGuards() {
+    const source = require('node:fs').readFileSync(path.join(__dirname,'..','index.js'),'utf8');
+    for(const name of ['beforeEnter','beforeRetryEnter']) {
+        const line=source.split('\n').find(line=>line.includes(`if (${name}?.kind !== 'text'`));
+        assert.ok(line);
+        const expression=line.trim().slice(4,-8); // production condition, strip if ( and ) break;
+        const check = new (Object.getPrototypeOf(async function(){}).constructor)(name,'question','answer','answerBoxValue',`return (${expression});`);
+        for(const [current,value,stopped] of [[{kind:'text',text:'original'},'answer',false],[{kind:'text',text:'replacement'},'answer',true],[{kind:'text',text:'original'},'',true],[{kind:'unsupported'},'answer',true]]) {
+            assert.equal(await check(current,'original','answer',async()=>value),stopped,name);
+        }
+    }
+    check('classic Enter guards: production initial/retry expressions refuse changed text, changed box and unsupported context; exact original state remains allowed');
 }
 
 async function testContextWaits(page, origin) {
@@ -964,19 +986,21 @@ async function testContextWaits(page, origin) {
                 await page.goto(origin+(route==='/typed-fixture'?'/lesson':route));
                 await page.evaluate(typed=>{
                     if(typed){document.querySelector('.multi-choice-component').remove();const box=document.createElement('input');box.id='answer-text';document.querySelector('#ep-question-container').append(box);window.angular.element().scope().self.model._currentQuestion.validAnswers=[{outputString:'synthetic'}];}
-                    window.waitEnters=0;document.querySelector('#answer-text').addEventListener('keydown',e=>{if(e.key==='Enter')waitEnters++;});
+                    window.waitEnters=0;document.querySelector('#answer-text').addEventListener('keydown',e=>{if(e.key==='Enter')window.waitEnters++;});
                 },route==='/typed-fixture');
                 await page.evaluate(()=>window.startAnswer());
                 await page.waitForFunction(()=>document.querySelector('#answer-text')?.value.length>1,{timeout:8000});
                 // Wait for final character: context must change during waiting, not typing.
                 if(route==='/task/play') {
-                    await page.waitForFunction(()=>{const v=document.querySelector('#answer-text').value;const now=performance.now();if(window.lastWaitValue!==v){window.lastWaitValue=v;window.lastWaitChange=now;}return v.length>=8 && now-window.lastWaitChange>=500;},{timeout:8000});
+                    await page.waitForFunction(()=>{const v=document.querySelector('#answer-text').value;const now=performance.now();if(window.lastWaitValue!==v){window.lastWaitValue=v;window.lastWaitChange=now;}return v.length>0 && now-window.lastWaitChange>=500;},{timeout:8000});
                 } else {
                     await page.waitForFunction(()=>{const box=document.querySelector('#answer-text');const self=window.angular.element(box).scope().self;return box.value===self.model._currentQuestion.validAnswers[0].outputString;},{timeout:8000});
                     await new Promise(r=>setTimeout(r,200));
                 }
                 const before=await page.$eval('#answer-text',b=>b.value);
-                await page.evaluate(m=>{const self=window.angular.element().scope().self;if(m==='assessment')self.model.gameMode=2;if(m==='unknown')delete self.model.gameMode;if(m==='manual')self.sectionData={activityGroup:{isAutoMarked:false}};},mutation);
+                await page.evaluate(m=>{const self=window.angular.element().scope().self;if(m==='assessment') { self.model.gameMode=2; }
+                    if(m==='unknown') { delete self.model.gameMode; }
+                    if(m==='manual') { self.sectionData={activityGroup:{isAutoMarked:false}}; }},mutation);
                 await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:1500});
                 assert.equal(await page.evaluate(()=>waitEnters),0,route+':'+mutation);
                 assert.equal(await page.$eval('#answer-text',b=>b.value),before,'must not erase or type after drift');
@@ -1162,6 +1186,7 @@ async function main() {
             // integration level: the real program's loop
             program = await bootRealProgram(origin);
             await testPracticeContexts(program.page, origin);
+            await testClassicFinalGuards();
             await testContextWaits(program.page, origin);
             await testRealLoopAsyncLesson(program.page, program.output);
             await program.page.goto(origin + '/lesson-multi', { waitUntil: 'domcontentloaded' });
