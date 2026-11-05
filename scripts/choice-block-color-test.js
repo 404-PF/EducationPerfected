@@ -35,6 +35,8 @@ async function colorFixture(page, origin, pattern = '@@009900@BODY@@') {
             assert.ok(d.correct.every(t => t.includes('@@' + token + '@')));
             assert.equal((await playChoiceRound(page, d, { enter: true, timeout: 1000 })).status, 'advanced');
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, colorSubmits]), [1,1]);
+            assert.ok(d.correct[0].includes('Synthetic answer 1'));
+            assert.equal(await page.evaluate(() => mathFixture.clicks[0]), d.correct[0]);
         }
         // Disjoint spans retain plain text and exact raw answer identity.
         await colorFixture(page, origin, '@@3@Synthetic@@ answer @@abc@BODY@@');
@@ -67,7 +69,7 @@ async function colorFixture(page, origin, pattern = '@@009900@BODY@@') {
             } else result=await playChoiceRound(page,d,{enter:true,timeout:300});
             assert.notEqual(result.status,'advanced',mutation);assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,colorSubmits]),[0,0],mutation);
         }
-        const controlMutations = ['missing-field','foreign-field','extra-input','text-input','checkbox','name','id','tabindex','disabled','disabled-fieldset','wrong-parent','render-id','render-parent','inside-render','textarea','select','editable'];
+        const controlMutations = ['missing-field','foreign-field','extra-input','text-input','checkbox','name','id','tabindex','disabled','disabled-fieldset','wrong-parent','render-id','render-parent','inside-render','textarea','select','editable','editable-true','editable-option','editable-group','editable-ancestor','group-input','group-textarea','group-select','group-editable'];
         for (const mutation of controlMutations) {
             await colorFixture(page, origin); const d=await detectQuestion(page); assert.equal(d.kind,'choice');
             await page.evaluate(mutation=>{
@@ -88,12 +90,20 @@ async function colorFixture(page, origin, pattern = '@@009900@BODY@@') {
                 if(mutation==='inside-render') r.append(c);
                 if(mutation==='textarea') p.element.append(document.createElement('textarea'));
                 if(mutation==='select') p.element.append(document.createElement('select'));
+                if(mutation==='editable-true') p.element.append(Object.assign(document.createElement('span'),{contentEditable:'true'}));
+                if(mutation==='editable-option') p.element.contentEditable='true';
+                if(mutation==='editable-group') f.group.contentEditable='true';
+                if(mutation==='editable-ancestor') f.group.parentElement.contentEditable='true';
+                if(mutation==='group-input') f.group.append(document.createElement('input'));
+                if(mutation==='group-textarea') f.group.append(document.createElement('textarea'));
+                if(mutation==='group-select') f.group.append(document.createElement('select'));
+                if(mutation==='group-editable') f.group.append(Object.assign(document.createElement('span'),{contentEditable:'true'}));
                 if(mutation==='editable') p.element.append(Object.assign(document.createElement('span'),{contentEditable:'false'}));
             },mutation);
             assert.equal((await detectQuestion(page)).kind,'unsupported',mutation);
             assert.notEqual((await playChoiceRound(page,d,{enter:true,timeout:300})).status,'advanced',mutation);
             assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,colorSubmits]),[0,0],mutation);
         }
-        console.log('Block color synthetic: 14 palette/hex auto positives, disjoint spans,19 malformed/unsafe refusals,10 association/context/final-drift +17 exact-radio/foreign-editable guards zero selection/Submit PASS. No live compatibility proof.');
+        console.log('Block color synthetic: 14 palette/hex auto positives, disjoint spans,19 malformed/unsafe refusals,10 association/context/final-drift +25 exact-radio/foreign-editable guards zero selection/Submit PASS. No live compatibility proof.');
     } finally {if(browser)await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
