@@ -9,7 +9,11 @@ function installTextboxFixture() {
     q.questionDef.Components = [];
     const base = {};
     q.cachedRenderers = { 1: { identifiedComponents: { baseComponents: base } } };
-    const f = window.textboxFixture = { self, q, group, base, inputs: [], submits: 0, nexts: 0 };
+    const f = window.textboxFixture = { self, q, group, base, inputs: [], submits: 0, nexts: 0, initialQuestionIndex: q.questionIndex };
+    document.addEventListener('click', e => {
+        const button = e.target.closest('#sa-navigation-controls button');
+        if (button && button.textContent.trim() !== 'Submit') f.nexts++;
+    }, true);
     const angular = window.angular;
     window.angular = { ...angular, element: el => el === group ? { scope: () => ({ self }) } : angular.element(el) };
     for (const [id, answer] of [['box-b', 'beta'], ['box-a', 'alpha']]) {

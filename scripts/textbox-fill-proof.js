@@ -10,14 +10,16 @@ async function assertTextboxFillProof(page) {
                 return [component.id, input.value, component.componentState.userAnswer, component.componentState.isUserAnswerSet];
             }),
             submits: f.submits,
-            nexts: f.nexts
+            nexts: f.nexts,
+            questionUnchanged: f.q.questionIndex === f.initialQuestionIndex
         };
     });
     assert.deepEqual(proof, {
         inputs: [...Array(4).fill('box-b'), ...Array(5).fill('box-a')].map(id => ({id, trusted:true})),
         answers: [['box-b','beta','beta',true], ['box-a','alpha','alpha',true]],
         submits:0,
-        nexts:0
+        nexts:0,
+        questionUnchanged:true
     });
 }
 module.exports = { assertTextboxFillProof };

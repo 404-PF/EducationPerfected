@@ -7,11 +7,13 @@ const {createFillTextboxesOnce}=require('../lib/textbox-fill-once');
 try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
 const setup=()=>page.goto(origin+'/lesson-textbox'),factory=()=>createFillTextboxesOnce({detectQuestion,playTextboxRound});
 await setup();const once=factory();assert.deepEqual(await once(page),{status:'filled-only'});await assertTextboxFillProof(page);
-// Negative controls prove this oracle rejects untrusted events and incorrect DOM/cache answers.
-for(const mutation of ['trust','dom','cache','unset']){
- await page.evaluate(m=>{const f=textboxFixture,c=f.base['box-b'][0];if(m==='trust')f.inputs[0].trusted=false;if(m==='dom')c.textBox.value='wrong';if(m==='cache')c.componentState.userAnswer='wrong';if(m==='unset')c.componentState.isUserAnswerSet=false;},mutation);
- await assert.rejects(()=>assertTextboxFillProof(page));
- await page.evaluate(()=>{const f=textboxFixture,c=f.base['box-b'][0];f.inputs[0].trusted=true;c.textBox.value='beta';c.componentState.userAnswer='beta';c.componentState.isUserAnswerSet=true;});
+// Negative controls prove the oracle rejects trust/answer/state failures and detects navigation.
+for(const mutation of ['trust','dom','cache','unset','next','advance']){
+ await page.evaluate(m=>{const f=textboxFixture,c=f.base['box-b'][0];if(m==='trust')f.inputs[0].trusted=false;if(m==='dom')c.textBox.value='wrong';if(m==='cache')c.componentState.userAnswer='wrong';if(m==='unset')c.componentState.isUserAnswerSet=false;if(m==='advance')f.q.questionIndex++;if(m==='next'){const button=document.querySelector('#sa-navigation-controls button'),clone=button.cloneNode(true);clone.textContent='Next Question';button.parentElement.append(clone);clone.click();clone.remove();}},mutation);
+ if(mutation==='next')assert.equal(await page.evaluate(()=>textboxFixture.nexts),1);
+ if(mutation==='advance')assert.equal(await page.evaluate(()=>textboxFixture.q.questionIndex-textboxFixture.initialQuestionIndex),1);
+ await assert.rejects(()=>assertTextboxFillProof(page),{name:'AssertionError',code:'ERR_ASSERTION'});
+ await page.evaluate(()=>{const f=textboxFixture,c=f.base['box-b'][0];f.inputs[0].trusted=true;c.textBox.value='beta';c.componentState.userAnswer='beta';c.componentState.isUserAnswerSet=true;f.nexts=0;f.q.questionIndex=f.initialQuestionIndex;});
  await assertTextboxFillProof(page);
 }
 await setup();assert.equal((await once(page)).reason,'attempt-consumed');assert.equal(await page.evaluate(()=>textboxFixture.inputs.length),0);
