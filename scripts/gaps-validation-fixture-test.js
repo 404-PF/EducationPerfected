@@ -40,10 +40,10 @@ async function testGapsValidation(submit) {
         assert.equal(await page.evaluate(() => gapsFixture.nexts), 1);
         await page.evaluate(() => { gapsFixture.nexts = 0; });
         const instruction = await page.evaluate(()=>window.startAnswer());
-        assert.equal(instruction, `Validation session: use the terminal ${submit ? 'submit' : 'fill'} once command.`);
+        assert.equal(instruction, 'Validation session: use the approved terminal one-shot command.');
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
         child.stdin.write('start\nmode auto\n');
-        await wait(()=>output.includes(`Use ${submit ? 'submit' : 'fill'} once`));
+        await wait(()=>(output.match(new RegExp(`Use ${submit ? 'submit' : 'fill'} once`,'g'))||[]).length>=2);
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
         child.stdin.write(`${submit ? 'submit' : 'fill'} once\n`);
         await wait(()=>output.includes(submit ? 'EP_SUBMIT_ONCE {"status":"submitted-once"}' : 'EP_FILL_ONCE {"status":"filled-only"}'));

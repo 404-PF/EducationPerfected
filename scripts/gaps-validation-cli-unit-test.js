@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { PassThrough } = require('node:stream');
 const { runGapsValidation } = require('../lib/gaps-validation-cli');
+const { launchProgram } = require('../index');
 (async () => {
     for (const submit of [false, true]) {
         const input = new PassThrough(), output = new PassThrough();
@@ -29,5 +30,11 @@ const { runGapsValidation } = require('../lib/gaps-validation-cli');
         assert.match(text, /Validation control failed/);
         assert.deepEqual(['SIGINT', 'SIGTERM', 'SIGHUP'].map(name => process.listenerCount(name)), before);
     }
+    for(const options of [
+        {gapsSubmitOnce:true,gapsFillOnly:true}, {gapsSubmitOnce:true,choiceSelectOnly:true},
+        {gapsFillOnly:true,choiceSelectOnly:true}, {gapsSubmitOnce:true,legacySignals:true},
+        {gapsFillOnly:true,legacySignals:true}, {choiceSelectOnly:true,legacySignals:true}
+    ]) await assert.rejects(launchProgram(options),/exclusive nonlegacy/);
+    console.log('All mixed validation modes and legacy validation launches refuse before browser startup PASS');
     console.log('Shared validation CLI: rejected close clears cached promise, second quit succeeds, no answering starts, listeners removed in both modes PASS.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
