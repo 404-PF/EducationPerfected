@@ -75,6 +75,8 @@ const taskPage = (start) => {
     </main>
     <script>
         const rounds = ${JSON.stringify(round)};
+        const classicSelf = { model: { gameMode: 1, _currentQuestion: {} } };
+        window.angular = { element: () => ({ scope: () => ({ self: classicSelf }) }) };
         let index = 0;
         const question = document.getElementById('question-text');
         const box = document.getElementById('answer-text');
@@ -286,7 +288,7 @@ const audioPage = (mode = 2) => PAGE(`
         let index = 0;
         // live-captured shape: list audio tasks ship no sectionData; the
         // self-test list context comes from contentSource.selectedActivity
-        const SELF = { model: { _currentQuestion: null, contentSource: { selectedActivity: ${JSON.stringify(LIST_SELF_TEST_VALUE)} } } };
+        const SELF = { model: { gameMode: 1, _currentQuestion: null, contentSource: { selectedActivity: ${JSON.stringify(LIST_SELF_TEST_VALUE)} } } };
         window.angular = { element: () => ({ scope: () => ({ self: SELF }) }) };
 
         const speaker = document.querySelector('.voice-speaker');
@@ -349,7 +351,7 @@ const audioRejectPage = (selectedActivity, sectionDataSnippet) => PAGE(`
     </main>
     <script>
         window.__submissions = [];
-        const SELF = { model: { _currentQuestion: {
+        const SELF = { model: { gameMode: 1, _currentQuestion: {
             contentID: 173943,
             questionIndex: 0,
             validAnswers: [{ outputString: 'Ho la febbre' }],

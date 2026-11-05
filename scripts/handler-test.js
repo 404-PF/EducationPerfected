@@ -886,6 +886,67 @@ async function testAssignedClassicAudio(page, origin, output) {
     check('real loop: assigned classic Listening/Dictation positive,14 unknown/manual/nonclassic refusals and5 typing-time context changes stop before Enter');
 }
 
+// Refusal-only context safety: no live EP or account data.
+async function testPracticeContexts(page, origin) {
+    for (const route of ['/lesson','/lesson-multi','/lesson-gaps','/audio','/dictation','/task/play','/typed-fixture']) {
+        for (const mode of [2, undefined, null, '3', 4]) {
+            const actual = route === '/typed-fixture' ? '/lesson' : route;
+            await page.goto(origin + actual);
+            await page.evaluate((mode, typed) => {
+                if (typed) {
+                    document.querySelector('.multi-choice-component').remove();
+                    const box = document.createElement('input'); box.id = 'answer-text';
+                    document.querySelector('#ep-question-container').append(box);
+                    window.angular.element().scope().self.model._currentQuestion.validAnswers=[{outputString:'synthetic'}];
+                }
+                const model = window.angular.element(document.querySelector('#question-text') || document.querySelector('#ep-question-container')).scope().self.model;
+                model.gameMode = mode;
+                window.contextEffects = { inputs:0, selections:0, submits:0 };
+                document.addEventListener('input',()=>contextEffects.inputs++,true);
+                document.addEventListener('click',e=>{if(e.target.closest('.mcq-preview-option'))contextEffects.selections++;},true);
+                document.addEventListener('keydown',e=>{if(e.key==='Enter')contextEffects.submits++;},true);
+                document.addEventListener('click',e=>{if(e.target.closest('button'))contextEffects.submits++;},true);
+            },mode,route==='/typed-fixture');
+            assert.equal((await detectQuestion(page)).kind,'unsupported',route+':'+mode);
+            await page.evaluate(()=>window.startAnswer());
+            await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
+            assert.deepEqual(await page.evaluate(()=>contextEffects),{inputs:0,selections:0,submits:0},route+':'+mode);
+        }
+    }
+    // A formerly valid descriptor must not bypass context checks.
+    for (const enter of [false,true]) {
+        await page.goto(origin+'/lesson'); const descriptor=await detectQuestion(page);
+        await page.evaluate(()=>{window.angular.element().scope().self.model.gameMode=2;window.contextClicks=0;document.addEventListener('click',()=>contextClicks++,true);});
+        const result=await playChoiceRound(page,descriptor,{enter,timeout:100,shouldStop:()=>false});
+        assert.equal(result.status,'stopped');assert.equal(await page.evaluate(()=>contextClicks),0);
+    }
+    // Drift exactly before the last handle read must stop before click.
+    await page.goto(origin+'/lesson'); const descriptor=await detectQuestion(page);
+    const original=page.$$; let reads=0;
+    page.$$=async function(...args){const handles=await original.apply(this,args);for(const handle of handles){const evaluate=handle.evaluate.bind(handle);handle.evaluate=async(...values)=>{if(++reads===handles.length+1)await page.evaluate(()=>window.angular.element().scope().self.model.gameMode=2);return evaluate(...values);};}return handles;};
+    try {assert.equal((await playChoiceRound(page,descriptor,{enter:true,timeout:100,shouldStop:()=>false})).status,'stopped');}
+    finally {page.$$=original;}
+    assert.equal(await page.evaluate(()=>document.querySelectorAll('input:checked').length),0);
+    // Mode change caused by focus is caught before clearing or typing.
+    await page.goto(origin+'/audio');
+    await page.evaluate(()=>{const box=document.querySelector('#answer-text');box.blur();window.contextInputs=0;window.contextKeys=0;box.addEventListener('focus',()=>window.angular.element().scope().self.model.gameMode=2,{once:true});box.addEventListener('input',()=>contextInputs++);box.addEventListener('keydown',()=>contextKeys++);});
+    await page.evaluate(()=>window.startAnswer());await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
+    assert.deepEqual(await page.evaluate(()=>[contextInputs,contextKeys]),[0,0]);
+    for (const route of ['/task/play','/audio','/typed-fixture']) {
+        await page.goto(origin+(route==='/typed-fixture'?'/lesson':route));
+        await page.evaluate(typed=>{
+            if(typed){document.querySelector('.multi-choice-component').remove();const box=document.createElement('input');box.id='answer-text';document.querySelector('#ep-question-container').append(box);window.angular.element().scope().self.model._currentQuestion.validAnswers=[{outputString:'synthetic'}];}
+            const box=document.querySelector('#answer-text');window.contextInputs=0;window.contextEnters=0;
+            box.addEventListener('input',()=>{contextInputs++;window.angular.element(box).scope().self.model.gameMode=2;},{once:true});
+            box.addEventListener('keydown',e=>{if(e.key==='Enter')contextEnters++;});
+        },route==='/typed-fixture');
+        await page.evaluate(()=>window.startAnswer());await page.waitForFunction(async()=>!(await window.epTestState()).running,{timeout:8000});
+        assert.deepEqual(await page.evaluate(()=>[contextInputs,contextEnters]),[1,0],route+' first-input drift');
+        assert.equal(await page.$eval('#answer-text',b=>b.value.length),1,route+' must not continue typing');
+    }
+    check('practice context: 35 Assessment/unknown-mode real-loop refusals 0input/0selection/0Submit; stale semi/auto descriptors, final-read mode drift and focus-time mode drift stop before input;3 first-input mode changes stop further typing/Enter');
+}
+
 async function testRestartBound(page, output) {
     await drive(page, '/audio-reject', 8, output);
     const before = await page.evaluate(() => window.__submissions.length);
@@ -1061,6 +1122,7 @@ async function main() {
         if (phase === 'all' || phase === 'integration') {
             // integration level: the real program's loop
             program = await bootRealProgram(origin);
+            await testPracticeContexts(program.page, origin);
             await testRealLoopAsyncLesson(program.page, program.output);
             await program.page.goto(origin + '/lesson-multi', { waitUntil: 'domcontentloaded' });
             await program.page.evaluate(() => { window.multiFixture.completeOnSubmit = true; window.startAnswer(); });
