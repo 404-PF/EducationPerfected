@@ -7,16 +7,17 @@ const {installOnceFixture}=require('./choice-select-once-fixture');
 try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
 const reset=async(effect='select')=>{await setup(page,origin);await page.evaluate(installOnceFixture,effect);};
 const helper=()=>createSelectChoiceOnce({detectQuestion,detectQuestionInPage});
+const selectedSnapshot=()=>page.evaluate(()=>{const state=mathFixture.component.componentState,value=state.selectedOptions;return {own:Object.hasOwn(state,'selectedOptions'),type:typeof value,value};});
 await reset();const run=helper();assert.deepEqual(await run(page),{status:'selected-only'});assert.deepEqual(await page.evaluate(()=>onceEffects),{clicks:1,trusted:[true],submits:0,keys:0});assert.equal(await page.evaluate(()=>mathFixture.clicks.length),0);await reset();assert.equal((await run(page)).reason,'attempt-consumed');assert.equal(await page.evaluate(()=>onceEffects.clicks),0);
-// Live aggregate evidence: untouched EP state has undefined selectedOptions,
-// false previews/native radios and absent ARIA, not the fixture's initialized [].
+// Synthetic reproduction of user-run read-only aggregate evidence; not live selection proof.
+// Untouched state had undefined selectedOptions, false previews/native radios and absent ARIA.
 await reset();await page.evaluate(()=>{delete mathFixture.component.componentState.selectedOptions;for(const p of mathFixture.previews)p.element.removeAttribute('aria-selected');});
 const initial=helper();assert.deepEqual(await initial(page),{status:'selected-only'});assert.deepEqual(await page.evaluate(()=>onceEffects),{clicks:1,trusted:[true],submits:0,keys:0});assert.equal((await initial(page)).reason,'attempt-consumed');
 for(const mutation of ['null','object','string','selected','checked','aria','bad-aria','unknown-preview','foreign-option']) {
  await reset();await page.evaluate(m=>{const f=mathFixture;delete f.component.componentState.selectedOptions;for(const p of f.previews)p.element.removeAttribute('aria-selected');
  if(m==='null')f.component.componentState.selectedOptions=null;if(m==='object')f.component.componentState.selectedOptions={};if(m==='string')f.component.componentState.selectedOptions='';
  if(m==='selected')f.previews[0].isSelected=true;if(m==='checked')f.previews[0].fields.check.checked=true;if(m==='aria')f.previews[0].element.setAttribute('aria-selected','true');if(m==='bad-aria')f.previews[0].element.setAttribute('aria-selected','unknown');if(m==='unknown-preview')delete f.previews[0].isSelected;if(m==='foreign-option')f.previews[0].option={...f.previews[0].option};},mutation);
- const once=helper();assert.equal((await once(page)).reason,mutation==='foreign-option'?'requires-supported-single-block-choice':'not-confirmed-empty',mutation);assert.equal((await once(page)).reason,'attempt-consumed');assert.equal(await page.evaluate(()=>onceEffects.clicks),0,mutation);
+ const before=await selectedSnapshot(),once=helper();assert.equal((await once(page)).reason,mutation==='foreign-option'?'requires-supported-single-block-choice':'not-confirmed-empty',mutation);assert.deepEqual(await selectedSnapshot(),before,mutation);assert.equal((await once(page)).reason,'attempt-consumed');assert.deepEqual(await selectedSnapshot(),before,mutation);assert.equal(await page.evaluate(()=>onceEffects.clicks),0,mutation);
 }
 for(const effect of ['inert','preview-only','stale-id']) {
  await reset(effect);await page.evaluate(()=>{delete mathFixture.component.componentState.selectedOptions;for(const p of mathFixture.previews)p.element.removeAttribute('aria-selected');});
