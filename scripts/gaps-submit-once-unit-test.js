@@ -57,12 +57,14 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         assert.equal((await cancelAfterFill(page, { shouldStop: () => cancelled })).status, 'aborted');
         assert.deepEqual(await page.evaluate(() => [gapsFixture.inputs.length, gapsFixture.submits]), [2, 0]);
         await setup();
+        let uncertainClicks = 0;
         const uncertainPage = new Proxy(page, { get(target, key) {
-            if (key === 'mouse') return { click: async () => { throw new Error('Uncertain click'); } };
+            if (key === 'mouse') return { click: async () => { uncertainClicks++; throw new Error('Uncertain click'); } };
             const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
         } });
         const uncertain = factory();
-        assert.equal((await uncertain(uncertainPage)).status, 'stopped');
+        assert.deepEqual(await uncertain(uncertainPage), { status: 'stopped', reason: 'inspection-or-dispatch-uncertain' });
+        assert.equal(uncertainClicks, 1);
         assert.equal((await uncertain(page)).status, 'refused');
         assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
         await setup();
