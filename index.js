@@ -9,6 +9,7 @@ const { playTextboxRound } = require('./lib/textbox-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
 const { diagnostic } = require('./lib/diagnostics');
+const { guardClassicEnter } = require('./lib/classic-enter');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -1291,6 +1292,11 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
             async function waitForAdvance(previous, timeout, submitted) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
+                    if ((await detectQuestion(page))?.kind === 'unsupported') {
+                        TOGGLE = false;
+                        console.error('Classic practice context changed while waiting; stopping without further input.');
+                        return 'aborted';
+                    }
                     const state = await page.evaluate((qCss, mCss, aCss) => {
                         const q = document.querySelector(qCss);
                         const box = document.querySelector(aCss);
@@ -1329,11 +1335,13 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
  * EP's asynchronous content restoration.
  * @returns {Promise<boolean>} True if box is empty, false if box missing or content persisted
  */
-            async function clearAnswerBox() {
+            async function clearAnswerBox(allowed) {
                 for (let attempt = 0; attempt < 5; attempt++) {
                     const before = await answerBoxValue();
                     if (before === null) return false;
+                    if (allowed && !await allowed()) { TOGGLE = false; return false; }
                     await page.click(DIR.answer_box_css, { clickCount: 3 }).catch(() => { });
+                    if (allowed && !await allowed()) { TOGGLE = false; return false; }
                     if (attempt % 2 === 1) {
                         // the mouse triple-click selection can be swallowed by the page;
                         // select-all via the keyboard is a different code path. The chord
@@ -1345,6 +1353,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         await page.keyboard.press('a').catch(() => { });
                         await page.keyboard.up('Control').catch(() => { });
                     }
+                    if (allowed && !await allowed()) { TOGGLE = false; return false; }
                     await page.keyboard.press('Backspace');
                     const value = await answerBoxValue();
                     if (value === null) return false;
@@ -1407,10 +1416,11 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
  * @returns {Promise<boolean>} True if answer was entered and verified, false if box vanished
  * @throws {Error} If answer could not be entered after all retries
  */
-            async function enterAnswer(answer) {
+            async function enterAnswer(answer, allowed = async () => (await detectQuestion(page))?.kind === 'text') {
                 const delays = [TYPE_DELAY_MS, TYPE_DELAY_MS * 3, TYPE_DELAY_MS * 8];
                 for (let attempt = 0; attempt < delays.length; attempt++) {
-                    if (!await clearAnswerBox()) {
+                    if (!await allowed()) { TOGGLE = false; console.error('Answer context changed; stopping before further input.'); return false; }
+                    if (!await clearAnswerBox(allowed)) {
                         // Never type into an uncleared box: EP-restored text would combine
                         // with the fresh keystrokes. A vanished box is a round transition
                         // (the caller re-reads it); otherwise clear again on the next attempt.
@@ -1419,7 +1429,11 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     }
                     if (!TOGGLE) return false;
 
-                    await page.keyboard.type(answer, { delay: delays[attempt] });
+                    for (const character of answer) {
+                        if (!TOGGLE) return false;
+                        if (!await allowed()) { TOGGLE = false; console.error('Answer context changed; stopping before further input.'); return false; }
+                        await page.keyboard.type(character, { delay: delays[attempt] });
+                    }
                     if (!TOGGLE) return false;
                     const typed = await readSettledBox(answer);
                     if (typed === answer) return true;
@@ -1469,11 +1483,28 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
  * @param {string} submitted - The answer that was submitted
  * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
  */
-            async function waitForAdvanceKey(key, timeout, submitted) {
+            const enterClassic = (question, answer, enter) => guardClassicEnter({
+                readQuestion: () => detectQuestion(page), readValue: answerBoxValue,
+                pressEnter: () => page.keyboard.press('Enter'), shouldStop: () => !TOGGLE,
+                question, answer, enter,
+            });
+
+            async function waitContextLost(current, key, allowed) {
+                if (current?.kind === 'unsupported') return true;
+                if (current?.key !== key || !allowed) return false;
+                return !await allowed(current);
+            }
+
+            async function waitForAdvanceKey(key, timeout, submitted, allowed) {
                 const deadline = timeout > 0 ? Date.now() + timeout : Infinity;
                 while (TOGGLE && Date.now() < deadline) {
                     if (await page.$(DIR.modal_css) !== null) return 'modal';
                     const current = await detectQuestion(page);
+                    if (await waitContextLost(current, key, allowed)) {
+                        TOGGLE = false;
+                        console.error('Answer context changed while waiting; stopping without further input.');
+                        return 'aborted';
+                    }
                     if (current === null) {
                         // a transition, or the task ended: only the VISIBLE completion
                         // controls prove completion (they exist hidden on every round)
@@ -1569,8 +1600,14 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     return false;
                 }
 
+                const contextUnchanged = async (current = undefined) => {
+                    if (current === undefined) current = await detectQuestion(page);
+                    return descriptor.kind === 'audio' ? audioPolicyUnchanged(descriptor, current, answer)
+                        : current?.kind === 'typed' && current.key === key && current.autoMarked === true && current.answers?.includes(answer);
+                };
+                if (!await contextUnchanged()) return false;
                 console.log(`Answering ${descriptor.kind === 'audio' ? 'audio' : 'lesson'} question ${key} from EP's shipped answers.`);
-                if (!await enterAnswer(answer)) {
+                if (!await enterAnswer(answer, contextUnchanged)) {
                     // the box vanished mid-entry: a round transition; the next pass re-detects
                     console.log('Answer box vanished while answering; re-detecting the question.');
                     return true;
@@ -1592,6 +1629,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
 
                 // Recheck the actual value after scope detection, immediately
                 // before Enter. No submission slot is consumed by a lost box.
+                if (!await contextUnchanged()) return false;
                 if (await answerBoxValue() !== answer || !TOGGLE) return true;
                 if (ENTER) {
                     typedSubmissionsByKey.set(key, submissions + 1);
@@ -1599,13 +1637,14 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                 }
                 lastSubmitted = { question: key, answer };
 
-                let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer);
+                let outcome = await waitForAdvanceKey(key, ENTER ? ADVANCE_TIMEOUT : 0, answer, contextUnchanged);
                 if (outcome === 'timeout' && ENTER) {
                     const beforeRetry = await detectQuestion(page);
                     if (descriptor.kind === 'audio' && !audioPolicyUnchanged(descriptor, beforeRetry, answer)) {
                         console.error('Audio marking or task context changed before retry; stopping.');
                         return false;
                     }
+                    if (!await contextUnchanged()) return false;
                     // same single-retry policy as the classic path: EP can swallow
                     // an Enter. But a quiet rejection CLEARS the box, so never
                     // retry blind: re-read it and retype the exact answer first,
@@ -1622,7 +1661,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         console.log(inBox === ''
                             ? 'The answer box was cleared after the submission (quiet rejection); retyping the answer for the retry.'
                             : 'The answer box content changed after the submission; retyping the answer for the retry.');
-                        if (!await enterAnswer(answer)) {
+                        if (!await enterAnswer(answer, contextUnchanged)) {
                             console.log('Answer box vanished while retyping; re-detecting the question.');
                             return true;
                         }
@@ -1634,6 +1673,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         console.error('Audio marking or task context changed while retyping; stopping without submission.');
                         return false;
                     }
+                    if (!await contextUnchanged()) return false;
                     if (await answerBoxValue() !== answer || !TOGGLE) return true;
                     const retryCount = typedSubmissionsByKey.get(key) || 0;
                     if (retryCount >= 2) {
@@ -1644,7 +1684,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     }
                     typedSubmissionsByKey.set(key, retryCount + 1);
                     await page.keyboard.press('Enter');
-                    outcome = await waitForAdvanceKey(key, ADVANCE_TIMEOUT, answer);
+                    outcome = await waitForAdvanceKey(key, ADVANCE_TIMEOUT, answer, contextUnchanged);
                     if (outcome === 'timeout') {
                         console.error(`Question ${key} did not advance after submitting its answer. Stopping.`);
                         await alert(`Answer loop stopped: ${key} did not advance.`);
@@ -1654,7 +1694,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                 if (outcome === 'timeout' && !ENTER) {
                     // semi-auto: the answer is typed and awaiting the user's Enter
                     console.log(`Waiting for the answer to ${key} to be submitted.`);
-                    outcome = await waitForAdvanceKey(key, 0, answer);
+                    outcome = await waitForAdvanceKey(key, 0, answer, contextUnchanged);
                 }
                 if (outcome === 'aborted') return false;
                 if (outcome === 'modal') {
@@ -2082,7 +2122,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     }
                     if (!TOGGLE) break;
 
-                    if (ENTER) await page.keyboard.press('Enter');
+                    if (!await enterClassic(question, answer, ENTER)) break;
                     lastSubmitted = { question, answer };
                     // a real submission happened: any box-interference streak is over
                     boxTamperedRounds = 0;
@@ -2135,7 +2175,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         if (!TOGGLE) break;
                         await page.click(DIR.answer_box_css).catch(() => { });
                         if (!TOGGLE) break;
-                        await page.keyboard.press('Enter');
+                        if (!await enterClassic(question, answer, true)) break;
                         const retry = await waitForAdvance(question, ADVANCE_TIMEOUT, answer);
                         if (retry === 'timeout') {
                             console.error(`Question "${question}" did not advance after submitting "${answer}". Stopping.`);

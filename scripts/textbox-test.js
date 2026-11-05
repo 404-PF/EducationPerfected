@@ -22,13 +22,14 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         let filled = false;
         assert.equal((await playTextboxRound(page, descriptor, { enter: false, timeout: 0, log: () => { filled = true; }, shouldStop: () => filled })).status, 'aborted');
         assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [9, 0]);
-        for (const mutation of ['manual', 'assessment', 'numeric', 'long', 'duplicate', 'disabled', 'prefill', 'answer', 'missing-state', 'initial', 'readonly', 'pattern', 'wrong-element', 'unmarked', 'unicode-control', 'mixed-definition', 'stale-value', 'variable-mismatch', 'raw-option-change', 'editable-empty', 'editable-plain', 'editable-true']) {
+        for (const mutation of ['manual', 'assessment', 'unsupported-mode', 'numeric', 'long', 'duplicate', 'disabled', 'prefill', 'answer', 'missing-state', 'initial', 'readonly', 'pattern', 'wrong-element', 'unmarked', 'unicode-control', 'mixed-definition', 'stale-value', 'variable-mismatch', 'raw-option-change', 'editable-empty', 'editable-plain', 'editable-true']) {
             await setup();
             await page.evaluate(m => {
                 const f = textboxFixture, c = f.base['box-b'][0], s = c.componentState;
                 if (m.startsWith('editable-')) { const extra = document.createElement('div'); extra.textContent = 'Extra editable'; extra.setAttribute('contenteditable', m === 'editable-empty' ? '' : m === 'editable-plain' ? 'plaintext-only' : 'true'); f.group.append(extra); }
                 if (m === 'manual') f.self.sectionData.activityGroup.isAutoMarked = false;
-                if (m === 'assessment') f.self.model.gameMode = 4;
+                if (m === 'assessment') f.self.model.gameMode = 2;
+                if (m === 'unsupported-mode') f.self.model.gameMode = 4;
                 if (m === 'numeric') f.q.questionDef.Components[0].ComponentTypeCode = 'NUMBER_BOX_COMPONENT';
                 if (m === 'long') f.q.questionDef.Components[0].ComponentTypeCode = 'LONG_ANSWER_COMPONENT';
                 if (m === 'duplicate') f.base['box-b'].push(c);
@@ -172,6 +173,6 @@ const { playTextboxRound } = require('../lib/textbox-handler');
                 assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [9, 0]);
             } finally { clearTimeout(timer); }
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 22 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Not live proof.');
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
