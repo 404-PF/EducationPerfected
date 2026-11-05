@@ -151,6 +151,7 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         await setup();
         const dispatch = guardVerifiedPointDispatch(page), guardedPage = dispatch.page;
         assert.equal((await factory()(guardedPage)).status, 'submitted-once');
+        assert.equal(dispatch.targetPaths(), 1);
         assert.deepEqual([...dispatch.counts(), await page.evaluate(() => gapsFixture.submits)], [1, 0, 1]);
         console.log('Submit-once browser fixtures PASS: exact2inputs/1Submit/0Next/auto-advance1; no later-question input; repeat/refusal/prefill/cancel/mutation/uncertain-click permanent consumption.');
     } finally {

@@ -2,7 +2,19 @@ const assert = require('node:assert/strict');
 const { PassThrough } = require('node:stream');
 const { runGapsValidation } = require('../lib/gaps-validation-cli');
 const { launchProgram } = require('../index');
+const { guardVerifiedPointDispatch } = require('./verified-point-dispatch-fixture');
 (async () => {
+    // Negative control: a forbidden handle click must increment and throw;
+    // a verified mouse point is forwarded, and the target path is counted.
+    let forwarded = 0;
+    const element = {click: async () => { throw Error('unpatched click'); }};
+    const button = {asElement: () => element};
+    const handle = {getProperty: async () => button};
+    const dispatch = guardVerifiedPointDispatch({mouse: {click: async () => {forwarded++;}}, evaluateHandle: async () => handle});
+    const evaluated = await dispatch.page.evaluateHandle(null, null, 'submit');
+    await assert.rejects((await evaluated.getProperty('target')).asElement().click(), /Must dispatch verified point/);
+    assert.equal(dispatch.targetPaths(), 1);assert.deepEqual(dispatch.counts(), [0,1]);
+    await dispatch.page.mouse.click(4,5);assert.equal(forwarded,1);assert.deepEqual(dispatch.counts(),[1,1]);
     for (const submit of [false, true]) {
         const input = new PassThrough(), output = new PassThrough();
         let text = '', closes = 0, starts = 0;

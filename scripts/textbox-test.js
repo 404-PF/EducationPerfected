@@ -110,6 +110,7 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         descriptor = await detectQuestion(page);
         const dispatch = guardVerifiedPointDispatch(page), guardedPage = dispatch.page;
         assert.equal((await playTextboxRound(guardedPage, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
+        assert.equal(dispatch.targetPaths(), 1);
         assert.deepEqual([...dispatch.counts(), await page.evaluate(() => textboxFixture.submits)], [1, 0, 1]);
         await setup();
         descriptor = await detectQuestion(page);
