@@ -8,6 +8,7 @@ const { playGapsRound } = require('./lib/gaps-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
 const { diagnostic } = require('./lib/diagnostics');
+const { guardClassicEnter } = require('./lib/classic-enter');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -1481,6 +1482,12 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
  * @param {string} submitted - The answer that was submitted
  * @returns {Promise<'advanced'|'modal'|'timeout'|'aborted'>}
  */
+            const enterClassic = (question, answer, enter) => guardClassicEnter({
+                readQuestion: () => detectQuestion(page), readValue: answerBoxValue,
+                pressEnter: () => page.keyboard.press('Enter'), shouldStop: () => !TOGGLE,
+                question, answer, enter,
+            });
+
             async function waitContextLost(current, key, allowed) {
                 if (current?.kind === 'unsupported') return true;
                 if (current?.key !== key || !allowed) return false;
@@ -2112,9 +2119,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                     }
                     if (!TOGGLE) break;
 
-                    const beforeEnter = await detectQuestion(page);
-                    if (beforeEnter?.kind !== 'text' || beforeEnter.text !== question || await answerBoxValue() !== answer) break;
-                    if (ENTER) await page.keyboard.press('Enter');
+                    if (!await enterClassic(question, answer, ENTER)) break;
                     lastSubmitted = { question, answer };
                     // a real submission happened: any box-interference streak is over
                     boxTamperedRounds = 0;
@@ -2167,9 +2172,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false } = {
                         if (!TOGGLE) break;
                         await page.click(DIR.answer_box_css).catch(() => { });
                         if (!TOGGLE) break;
-                        const beforeRetryEnter = await detectQuestion(page);
-                        if (beforeRetryEnter?.kind !== 'text' || beforeRetryEnter.text !== question || await answerBoxValue() !== answer) break;
-                        await page.keyboard.press('Enter');
+                        if (!await enterClassic(question, answer, true)) break;
                         const retry = await waitForAdvance(question, ADVANCE_TIMEOUT, answer);
                         if (retry === 'timeout') {
                             console.error(`Question "${question}" did not advance after submitting "${answer}". Stopping.`);

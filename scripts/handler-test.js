@@ -956,17 +956,25 @@ async function testPracticeContexts(page, origin) {
 }
 
 async function testClassicFinalGuards() {
-    const source = require('node:fs').readFileSync(path.join(__dirname,'..','index.js'),'utf8');
-    for(const name of ['beforeEnter','beforeRetryEnter']) {
-        const line=source.split('\n').find(line=>line.includes(`if (${name}?.kind !== 'text'`));
-        assert.ok(line);
-        const expression=line.trim().slice(4,-8); // production condition, strip if ( and ) break;
-        const check = new (Object.getPrototypeOf(async function(){}).constructor)(name,'question','answer','answerBoxValue',`return (${expression});`);
-        for(const [current,value,stopped] of [[{kind:'text',text:'original'},'answer',false],[{kind:'text',text:'replacement'},'answer',true],[{kind:'text',text:'original'},'',true],[{kind:'unsupported'},'answer',true]]) {
-            assert.equal(await check(current,'original','answer',async()=>value),stopped,name);
+    const { guardClassicEnter } = require('../lib/classic-enter');
+    for(const enter of [false,true]) {
+        for(const variant of ['exact','question','box','unsupported','stop']) {
+            const order=[];let presses=0;
+            const result=await guardClassicEnter({
+                readQuestion:async()=>{order.push('question');return variant==='unsupported'?{kind:'unsupported'}:{kind:'text',text:variant==='question'?'replacement':'original'};},
+                readValue:async()=>{order.push('value');return variant==='box'?'':'answer';},
+                shouldStop:()=>variant==='stop',pressEnter:async()=>{order.push('Enter');presses++;},
+                question:'original',answer:'answer',enter,
+            });
+            assert.equal(result,variant==='exact');
+            assert.equal(presses,variant==='exact'&&enter?1:0,variant);
+            if(presses)assert.deepEqual(order,['question','value','Enter']);
         }
     }
-    check('classic Enter guards: production initial/retry expressions refuse changed text, changed box and unsupported context; exact original state remains allowed');
+    let presses=0;
+    await assert.rejects(guardClassicEnter({readQuestion:async()=>({kind:'text',text:'original'}),readValue:async()=>'answer',shouldStop:()=>false,pressEnter:async()=>{presses++;throw new Error('uncertain dispatch');},question:'original',answer:'answer',enter:true}),/uncertain dispatch/);
+    assert.equal(presses,1,'no retry after uncertain dispatch');
+    check('classic shared dispatch guard: question/box/context/stop negatives0Enter; exact auto1Enter after both reads; semi0Enter; uncertain dispatch1attempt');
 }
 
 async function testContextWaits(page, origin) {
