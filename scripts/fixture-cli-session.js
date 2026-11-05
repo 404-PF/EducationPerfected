@@ -14,8 +14,8 @@ async function bootFixtureCli(entry, prompt) {
     let child, browser, output = '';
     const cleanup = async () => {
         try {
-            if (browser) await browser.disconnect().catch(() => {});
             try { if (child) cleanupTestProcess(child); } catch {} // The detached group may outlive an exited child, or already be gone.
+            if (browser) await browser.close().catch(() => {});
         } finally { await new Promise(resolve => server.close(resolve)); }
     };
     try {

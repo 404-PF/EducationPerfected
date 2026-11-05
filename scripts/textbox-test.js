@@ -136,6 +136,34 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         assert.equal(uncertain.message, 'Lesson textboxes stopped: inspection or input result uncertain; no retry.');
         assert.ok(!JSON.stringify(uncertain).includes('PRIVATE'));
         assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
+        for (const selection of ['caret', 'range']) {
+            await setup(); descriptor = await detectQuestion(page);
+            await page.evaluate(selection => { textboxFixture.afterInput = () => {
+                const box = textboxFixture.base['box-b'][0].textBox;
+                box.setSelectionRange(0, selection === 'range' ? 1 : 0);
+            }; }, selection);
+            const result = await playTextboxRound(page, descriptor, { enter: true, timeout: 200 });
+            assert.equal(result.reason, 'unsafe-or-changed-state', selection);
+            assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits, textboxFixture.base['box-b'][0].textBox.value]), [1, 0, 'b']);
+        }
+        for (const transition of ['unsupported', 'modal']) {
+            await setup(); descriptor = await detectQuestion(page);
+            await page.evaluate(transition => { textboxFixture.afterInput = () => {
+                if (textboxFixture.inputs.length !== 9) return;
+                // Defer until after input post-check/final verification.
+                setTimeout(() => {
+                    if (transition === 'unsupported') textboxFixture.self.sectionData.activityGroup.isAutoMarked = false;
+                    else { textboxFixture.q.questionIndex++; const modal = document.createElement('div'); modal.setAttribute('uib-modal-window', 'modal-window'); document.body.append(modal); }
+                }, 50);
+            }; }, transition);
+            let timer;
+            try {
+                const result = await Promise.race([playTextboxRound(page, descriptor, { enter: false, timeout: 0 }), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Transition not reported')), 1500); })]);
+                assert.equal(result.status, transition === 'modal' ? 'modal' : 'stopped', transition);
+                if (transition === 'unsupported') { assert.equal(result.reason, 'unsupported'); assert.ok(result.message); }
+                assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [9, 0]);
+            } finally { clearTimeout(timer); }
+        }
         console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 22 initial refusals; 3 mid-input stops after1character/0Submit. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
