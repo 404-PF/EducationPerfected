@@ -217,6 +217,16 @@ Source: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/
 
 `scripts/gaps-fixture.js` and `/lesson-gaps` are invented, sanitized, source-derived fixtures, not captured live questions. Local tests cover DOM/metadata order differences, undisplayed gaps, trusted inputs, exact one-submit behavior, the real program loop, refusal and stale-state controls. Live compatibility, live grading and full-task completion remain unproved. The final state read and trusted input/click cannot be atomic against concurrent page or user input. No live answer submission is part of this implementation.
 
+## Ordinary lesson textbox source contract
+
+A source-derived handler recognizes a narrow ordinary `TEXT_BOX_COMPONENT` in explicitly auto-marked Smart Lessons. It requires initially empty `input.text-box-component` fields, one cached component per field, exact component/state/DOM identities, `Marked === 1`, and nonempty plain-text accepted options. The current cached options must equal the metadata options; variable-resolved answer differences are refused in this first contract. It types the first supplied accepted option, not a guessed answer or a model answer inferred from lesson text.
+
+Source checked 5 November 2026: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), `NewTextBoxComponent`, `TextBoxComponentState` and `ComponentIndex`. EP's input events update the cached answer; Enter can submit, so this handler never types Enter. It uses trusted character input, checking the same question, renderer, options, field focus and exact answer prefix before and after each character. Changed or uncertain state stops without clearing, overwriting or retrying. The final input/click cannot be atomic against concurrent page or user input.
+
+Semi-auto fills only. Automatic mode rechecks the exact filled set and associated unique Submit button before one click; it never clicks Next for that question. Missing controls, stored/prefilled answers, initial text, extra editable fields, mixed components, numeric boxes, long/rich answers, fill-in-the-gaps textbox variants, maths editors, assessments and manually marked questions are not covered by this contract. Other textbox variants remain in the support queue, rather than being treated as equivalent inputs.
+
+Invented sanitized source-derived fixtures cover DOM/metadata order differences, trusted typing, semi-auto, one Submit, changed-state refusals and the normal CLI/Alt+S workflow. No live ordinary lesson textbox detection, filling, grading or full-lesson result has been verified.
+
 ## Assigned vocabulary audio contract
 
 Assigned classic vocabulary Listening/Dictation can lack the Smart Lesson `sectionData.activityGroup.isAutoMarked` flag. The narrow additional allowance requires classic game mode 1, translation question type 0, explicit `isEPQuestion === false` and `isSpeakingMode === false`, translation mode 2 or 3, absent `sectionData`, vocabulary/translation activity/content types 1/1 and a positive safe-integer task ID. It does not set or infer `autoMarked = true`; explicit manual marking still wins.
@@ -226,6 +236,8 @@ Source: [EP public chunk 171](https://mfe-student-app.educationperfect.com/main/
 A stopped, content-free field diagnostic confirmed that narrow assigned Listening shape, including one usable accepted answer. This is **not** a new live submission or full-task completion proof. Synthetic tests cover Listening and Dictation positives, malformed/unknown/EP/speaking/assessment/manual refusals and marking/task changes during typing. The context and accepted answer are rechecked before initial and retry submissions; any change stops before Enter. Task IDs stay inside the process and are never logged by this check. Existing unassigned self-test support is unchanged.
 
 ## Known limitations
+
+- Ordinary lesson textboxes have the narrow source-derived contract above and synthetic fixture coverage only. No live textbox detection, filling or grading is proved; numeric, long/rich, gaps-textbox and manual/assessment variants remain unsupported.
 
 - Formula-rich single-choice handling requires an existing cached renderer with unique exact metadata-to-DOM associations. Mixed formula/plain option sets, missing renderer state and ambiguous associations stop unanswered. Variable-resolved choices use the current cached metadata only when original/displayed option identities, preview marking and complete rendered templates agree; raw and resolved state are rechecked before selection. This path has synthetic browser coverage, not live equation-choice completion proof.
 
