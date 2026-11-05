@@ -58,23 +58,8 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         assert.deepEqual(await page.evaluate(() => [gapsFixture.inputs.length, gapsFixture.submits]), [2, 0]);
         await setup();
         const uncertainPage = new Proxy(page, { get(target, key) {
-            if (key !== 'evaluateHandle') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
-            return async (...args) => {
-                const handle = await target.evaluateHandle(...args);
-                if (args[2] !== 'submit') return handle;
-                const getProperty = handle.getProperty.bind(handle);
-                handle.getProperty = async name => {
-                    const button = await getProperty(name);
-                    const asElement = button.asElement.bind(button);
-                    button.asElement = () => {
-                        const element = asElement();
-                        element.click = async () => { throw new Error('Uncertain click'); };
-                        return element;
-                    };
-                    return button;
-                };
-                return handle;
-            };
+            if (key === 'mouse') return { click: async () => { throw new Error('Uncertain click'); } };
+            const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
         } });
         const uncertain = factory();
         assert.equal((await uncertain(uncertainPage)).status, 'stopped');
@@ -91,23 +76,8 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
         await setup();
         const completePage = new Proxy(page, { get(target, key) {
-            if (key !== 'evaluateHandle') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
-            return async (...args) => {
-                const handle = await target.evaluateHandle(...args);
-                if (args[2] !== 'submit') return handle;
-                const getProperty = handle.getProperty.bind(handle);
-                handle.getProperty = async name => {
-                    const button = await getProperty(name);
-                    const asElement = button.asElement.bind(button);
-                    button.asElement = () => {
-                        const element = asElement(), click = element.click.bind(element);
-                        element.click = async () => { await click(); throw new Error('Reply lost after dispatch'); };
-                        return element;
-                    };
-                    return button;
-                };
-                return handle;
-            };
+            if (key === 'mouse') return { click: async (...args) => { await target.mouse.click(...args); throw new Error('Reply lost after dispatch'); } };
+            const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
         } });
         const afterDispatch = factory();
         assert.equal((await afterDispatch(completePage)).status, 'stopped');
@@ -173,8 +143,27 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
         assert.deepEqual(await page.evaluate(() => [gapsFixture.submits, window.coverClicks]), [0, 0]);
         await setup();
         const abortedFill = factory(async () => ({ status: 'aborted' }));
-        assert.equal((await abortedFill(page)).status, 'aborted');
+        assert.deepEqual(await abortedFill(page), { status: 'aborted', reason: 'fill-cancelled-input-may-be-partial' });
         assert.equal(await page.evaluate(() => gapsFixture.submits), 0);
+        await setup();
+        let recomputedClicks = 0, pointClicks = 0;
+        const guardedPage = new Proxy(page, { get(target, key) {
+            if (key === 'mouse') return { click: async (...args) => { pointClicks++; return target.mouse.click(...args); } };
+            if (key !== 'evaluateHandle') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
+            return async (...args) => {
+                const handle = await target.evaluateHandle(...args);
+                if (args[2] !== 'submit') return handle;
+                const getProperty = handle.getProperty.bind(handle);
+                handle.getProperty = async name => {
+                    const button = await getProperty(name), asElement = button.asElement.bind(button);
+                    button.asElement = () => { const element = asElement(); element.click = async () => { recomputedClicks++; throw new Error('Must dispatch verified point'); }; return element; };
+                    return button;
+                };
+                return handle;
+            };
+        } });
+        assert.equal((await factory()(guardedPage)).status, 'submitted-once');
+        assert.deepEqual([pointClicks, recomputedClicks, await page.evaluate(() => gapsFixture.submits)], [1, 0, 1]);
         console.log('Submit-once browser fixtures PASS: exact2inputs/1Submit/0Next/auto-advance1; no later-question input; repeat/refusal/prefill/cancel/mutation/uncertain-click permanent consumption.');
     } finally {
         try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); }

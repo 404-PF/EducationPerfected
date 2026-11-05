@@ -21,7 +21,9 @@ const { runGapsValidation } = require('../lib/gaps-validation-cli');
         } }, submit);
         await new Promise(resolve => setImmediate(resolve));
         input.write('quit\n');
-        await run;
+        let timer;
+        try { await Promise.race([run, new Promise((_, reject) => { timer = setTimeout(() => { input.end(); reject(new Error('Close retry test timed out')); }, 2000); })]); }
+        finally { clearTimeout(timer); }
         assert.equal(closes, 2);
         assert.equal(starts, 0);
         assert.match(text, /Validation control failed/);
