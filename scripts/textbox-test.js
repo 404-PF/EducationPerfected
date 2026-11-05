@@ -22,10 +22,11 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         let filled = false;
         assert.equal((await playTextboxRound(page, descriptor, { enter: false, timeout: 0, log: () => { filled = true; }, shouldStop: () => filled })).status, 'aborted');
         assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [9, 0]);
-        for (const mutation of ['manual', 'assessment', 'numeric', 'long', 'duplicate', 'disabled', 'prefill', 'answer', 'missing-state', 'initial', 'readonly', 'pattern', 'wrong-element', 'unmarked', 'unicode-control', 'mixed-definition', 'stale-value', 'variable-mismatch', 'raw-option-change']) {
+        for (const mutation of ['manual', 'assessment', 'numeric', 'long', 'duplicate', 'disabled', 'prefill', 'answer', 'missing-state', 'initial', 'readonly', 'pattern', 'wrong-element', 'unmarked', 'unicode-control', 'mixed-definition', 'stale-value', 'variable-mismatch', 'raw-option-change', 'editable-empty', 'editable-plain', 'editable-true']) {
             await setup();
             await page.evaluate(m => {
                 const f = textboxFixture, c = f.base['box-b'][0], s = c.componentState;
+                if (m.startsWith('editable-')) { const extra = document.createElement('div'); extra.textContent = 'Extra editable'; extra.setAttribute('contenteditable', m === 'editable-empty' ? '' : m === 'editable-plain' ? 'plaintext-only' : 'true'); f.group.append(extra); }
                 if (m === 'manual') f.self.sectionData.activityGroup.isAutoMarked = false;
                 if (m === 'assessment') f.self.model.gameMode = 4;
                 if (m === 'numeric') f.q.questionDef.Components[0].ComponentTypeCode = 'NUMBER_BOX_COMPONENT';
@@ -47,7 +48,11 @@ const { playTextboxRound } = require('../lib/textbox-handler');
                 if (m === 'raw-option-change') f.q.questionDef.Components.find(d => d.ComponentID === 'box-b').Options = ['raw-different'];
             }, mutation);
             const d = await detectQuestion(page);
-            assert.equal((await playTextboxRound(page, d, { enter: true, timeout: 200 })).status, 'stopped', mutation);
+            assert.equal(d.kind, mutation === 'prefill' ? 'textbox' : 'unsupported', mutation);
+            if (mutation === 'prefill') assert.equal(d.boxes[0].value, 'prefilled');
+            const refused = await playTextboxRound(page, d, { enter: true, timeout: 200 });
+            assert.equal(refused.status, 'stopped', mutation);
+            assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
         }
         for (const mutation of ['answer', 'question', 'focus']) {
@@ -58,7 +63,9 @@ const { playTextboxRound } = require('../lib/textbox-handler');
                 if (m === 'question') textboxFixture.q.questionIndex++;
                 if (m === 'focus') document.querySelectorAll('input.text-box-component')[1].focus();
             }; }, mutation);
-            assert.equal((await playTextboxRound(page, descriptor, { enter: true, timeout: 200 })).status, 'stopped');
+            const result = await playTextboxRound(page, descriptor, { enter: true, timeout: 200 });
+            assert.equal(result.status, 'stopped', mutation);
+            assert.equal(result.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [1, 0]);
         }
         await setup();
@@ -67,7 +74,7 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         await page.exposeFunction('cancelTextboxTest', () => { cancelled = true; });
         await page.evaluate(() => { textboxFixture.afterInput = () => { window.cancelTextboxTest(); }; });
         const cancellation = await playTextboxRound(page, descriptor, { enter: true, timeout: 200, shouldStop: () => cancelled });
-        assert.ok(['aborted', 'stopped'].includes(cancellation.status));
+        assert.equal(cancellation.status, 'aborted');
         assert.equal(await page.evaluate(() => textboxFixture.submits), 0);
         await setup();
         descriptor = await detectQuestion(page);
@@ -97,6 +104,26 @@ const { playTextboxRound } = require('../lib/textbox-handler');
         await page.evaluate(() => { textboxFixture.q.questionIndex++; });
         assert.equal((await playTextboxRound(page, descriptor, { enter: true, timeout: 200 })).status, 'stopped');
         assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 19 initial refusals; 3 mid-input stops after1character/0Submit. Not live proof.');
+        await setup();
+        descriptor = await detectQuestion(page);
+        let recomputedClicks = 0, pointClicks = 0;
+        const guardedPage = new Proxy(page, { get(target, key) {
+            if (key === 'mouse') return { click: async (...args) => { pointClicks++; return target.mouse.click(...args); } };
+            if (key !== 'evaluateHandle') { const value = target[key]; return typeof value === 'function' ? value.bind(target) : value; }
+            return async (...args) => {
+                const handle = await target.evaluateHandle(...args);
+                if (args[2] !== 'submit') return handle;
+                const getProperty = handle.getProperty.bind(handle);
+                handle.getProperty = async name => {
+                    const button = await getProperty(name), asElement = button.asElement.bind(button);
+                    button.asElement = () => { const element = asElement(); element.click = async () => { recomputedClicks++; throw new Error('Must dispatch verified point'); }; return element; };
+                    return button;
+                };
+                return handle;
+            };
+        } });
+        assert.equal((await playTextboxRound(guardedPage, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
+        assert.deepEqual([pointClicks, recomputedClicks, await page.evaluate(() => textboxFixture.submits)], [1, 0, 1]);
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 22 initial refusals; 3 mid-input stops after1character/0Submit. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });

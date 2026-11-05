@@ -30,7 +30,7 @@ function installTextboxFixture() {
         });
         input.addEventListener('keydown', e => { if (e.key === 'Enter') f.submits++; });
     }
-    const oldButton = document.querySelector('#sa-navigation-controls button');
+    const oldButton = [...document.querySelectorAll('#sa-navigation-controls button')].find(b => b.textContent.trim() === 'Submit');
     const submit = oldButton.cloneNode(true);
     oldButton.replaceWith(submit);
     submit.addEventListener('click', () => { f.submits++; q.questionIndex++; });
