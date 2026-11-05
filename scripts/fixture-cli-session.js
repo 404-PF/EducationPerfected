@@ -3,6 +3,8 @@ const path = require('node:path');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
 const { cleanupTestProcess } = require('./test-process-cleanup');
+// Unlike cli-test.js this focused fixture waits for EP_TEST_LOGIN_READY before login.
+// cli-test.js deliberately exercises earlier startup and external close/signal paths.
 async function bootFixtureCli(entry, prompt) {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -13,7 +15,7 @@ async function bootFixtureCli(entry, prompt) {
     const cleanup = async () => {
         try {
             if (browser) await browser.disconnect().catch(() => {});
-            if (child && child.exitCode === null) cleanupTestProcess(child);
+            try { if (child) cleanupTestProcess(child); } catch {} // The detached group may outlive an exited child, or already be gone.
         } finally { await new Promise(resolve => server.close(resolve)); }
     };
     try {
@@ -23,7 +25,7 @@ async function bootFixtureCli(entry, prompt) {
         const wait = async predicate => {
             const end = Date.now() + 20000;
             while (!predicate()) {
-                if (child.exitCode !== null || Date.now() > end) throw new Error('Fixture CLI checkpoint failed: ' + output);
+                if (child.exitCode !== null || child.signalCode !== null || Date.now() > end) throw new Error('Fixture CLI checkpoint failed: ' + output);
                 await new Promise(resolve => setTimeout(resolve, 20));
             }
         };
