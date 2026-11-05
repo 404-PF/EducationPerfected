@@ -192,6 +192,14 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
   blatant disparities between displayed answer and expected answer) where a question may not get correctly answered. 
 
 
+## Plain block single-choice source contract
+
+A narrow additional path handles single-choice options whose entire raw and resolved templates are a supported multiline `[block` wrapper with plain inner text and a standalone closing `]`. It does not remove arbitrary bracket sections. Each choice must already have a unique cached component/state/option/preview/DOM association, a renderer template equal to its resolved option, and rendered inner text equal to the supported plain body. All correct options must be displayed. Images, formulae, nested directives, mixed wrappers/plain options, editable fields and unknown block attributes stop unanswered.
+
+Source: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), checked 5 November 2026. `TemplateParser` opens a format block on its own line, renders inner paragraphs and closes on a line starting with `]`. This handler intentionally accepts only a standalone `]`, a narrower contract. `AdvancedRenderer.identifiedComponents` is a read-only getter returning `parser.identifiedComponents`; this path reads the existing own parser/index data instead of invoking that getter or creating a renderer. It preserves the existing exact raw/resolved template and marking signature checks before selection and at click time. The final check and trusted click are not atomic against page or user changes.
+
+Two user-run, read-only aggregate checks on a failing plain-text slide established that raw correct text was erased by multiline bracket stripping, and the cached index lookup encountered the inherited getter. They did not establish the exact private template grammar or complete cached association. This implementation uses invented source-derived fixtures, not captured account data. No live selection, submission, grading or whole-lesson completion has been verified for this new path; a different bracket shape remains unsupported. Existing plain choices and strict formula choices retain their separate contracts.
+
 ## Multi-select source contract
 
 The multi-select fixture (`scripts/multi-choice-fixture.js`, served at `/lesson-multi` by the local mock) is invented and sanitized, derived from EP's public renderer bundle, not captured from an actual account or live multi-select slide. Source retrieved 4 November 2026: [chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js).
