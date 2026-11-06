@@ -13,6 +13,7 @@
 const http = require('node:http');
 const { installMultiChoiceFixture } = require('./multi-choice-fixture');
 const { installGapsFixture } = require('./gaps-fixture');
+const { installDropdownFixture } = require('./dropdown-fixture');
 const { installTextboxFixture } = require('./textbox-fixture');
 
 const WORDS = [
@@ -386,6 +387,7 @@ function createServer() {
             return send(taskPage(start));
         }
         if (url.pathname === '/lesson') return send(lessonPage(false));
+        if (url.pathname === '/lesson-dropdown') return send(lessonPage(false).replace('</body></html>', `<script>(${installDropdownFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installTextboxFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-gaps') return send(lessonPage(false).replace('</body></html>', `<script>(${installGapsFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
