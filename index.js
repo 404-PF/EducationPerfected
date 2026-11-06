@@ -11,6 +11,7 @@ const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
 const { createFillTextboxesOnce } = require('./lib/textbox-fill-once');
 const { createSubmitGapsOnce } = require('./lib/gaps-submit-once');
+const { createSubmitDropdownOnce } = require('./lib/dropdown-once');
 const { createSelectMultiOnce } = require('./lib/multi-select-once');
 const { playMultiChoiceSelection } = require('./lib/multi-choice-handler');
 const { createSelectChoiceOnce } = require('./lib/choice-select-once');
@@ -362,8 +363,8 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, multiSelectOnly = false } = {}) {
-    if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly, multiSelectOnly].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || multiSelectOnly) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false } = {}) {
+    if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly, dropdownSubmitOnce, multiSelectOnly].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -2352,9 +2353,18 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     return result;
                 } finally { TOGGLE = false; }
             };
-            const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || multiSelectOnly;
+            const submitDropdownOnce = createSubmitDropdownOnce({ detectQuestion, playDropdownRound });
+            const runDropdownSubmitOnce = async () => {
+                TOGGLE = true;
+                try {
+                    const result = await submitDropdownOnce(page, { shouldStop: () => !TOGGLE });
+                    console.log('EP_DROPDOWN_ONCE ' + JSON.stringify(result));
+                    return result;
+                } finally { TOGGLE = false; }
+            };
+            const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly;
             const controls = createRunControls({
-                run: multiSelectOnly ? runMultiSelectOnly : textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
+                run: multiSelectOnly ? runMultiSelectOnly : dropdownSubmitOnce ? runDropdownSubmitOnce : textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
@@ -2365,7 +2375,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             // Expose API functions to the page (for hotkey event listeners to call).
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
-            await page.exposeFunction('refresh', refreshControl);
+            await page.exposeFunction('refresh', validationOnly ? () => 'Validation session: refresh is disabled.' : refreshControl);
             await page.exposeFunction('startAnswer', validationOnly ? () => 'Validation session: use the approved terminal one-shot command.' : toggleLoop);
             await page.exposeFunction('toggleMode', validationOnly ? () => 'Validation mode is fixed to one-shot only.' : toggleAuto);
             // Harness-only observability and idempotent stop, never inferred
