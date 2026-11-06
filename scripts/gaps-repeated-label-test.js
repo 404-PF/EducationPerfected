@@ -13,7 +13,20 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
     try {
         browser = await puppeteer.launch({headless:true, executablePath:process.env.HANDLER_EXECUTABLE_PATH || undefined});
         const page = await browser.newPage(), origin = 'http://127.0.0.1:' + server.address().port;
-        const setup = async () => { await page.goto(origin + '/lesson'); await page.evaluate(installGapsFixture, {repeated:true}); };
+        const setup = async () => {
+            await page.goto(origin + '/lesson'); await page.evaluate(installGapsFixture, {repeated:true});
+            await page.evaluate(() => {
+                document.addEventListener('click', e => {
+                    const button = e.target.closest('#sa-navigation-controls button');
+                    if (button && button.textContent.trim() !== 'Submit') gapsFixture.nexts++;
+                }, true);
+                const button = document.querySelector('#sa-navigation-controls button');
+                const clone = button.cloneNode(true); clone.textContent = 'Next Question';
+                button.parentElement.append(clone); clone.click(); clone.remove();
+            });
+            assert.equal(await page.evaluate(() => gapsFixture.nexts), 1);
+            await page.evaluate(() => { gapsFixture.nexts = 0; });
+        };
         const counters = () => page.evaluate(() => [gapsFixture.inputs, gapsFixture.submits, gapsFixture.nexts, gapsFixture.q.questionIndex]);
         const fill = () => createFillGapsOnce({detectQuestion,playGapsRound});
         const expected = [0,4,3,5].map(index => ({index,trusted:true}));
