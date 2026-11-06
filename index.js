@@ -2364,7 +2364,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             // Expose API functions to the page (for hotkey event listeners to call).
             // These bindings live on the browser context, not on the document, so they
             // survive navigation - but the keyup listener does not, and must be re-added.
-            await page.exposeFunction('refresh', refreshControl);
+            await page.exposeFunction('refresh', validationOnly ? () => 'Validation session: refresh is disabled.' : refreshControl);
             await page.exposeFunction('startAnswer', validationOnly ? () => 'Validation session: use the approved terminal one-shot command.' : toggleLoop);
             await page.exposeFunction('toggleMode', validationOnly ? () => 'Validation mode is fixed to one-shot only.' : toggleAuto);
             // Harness-only observability and idempotent stop, never inferred

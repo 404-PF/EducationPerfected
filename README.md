@@ -245,6 +245,8 @@ Invented sanitized source-derived fixtures cover DOM/metadata order differences,
 
 `node bin/validate-dropdown.js` opens an exclusive stopped session. Only after fresh supervised approval for one named initially blank auto-marked Smart Lesson dropdown question, `submit once` consumes the process attempt before inspection. It uses the existing guarded dropdown handler with submission disabled, binds the final exact-set and Submit checks to the pre-input objects, dispatches at most one trusted Submit click, and returns without any answer loop, Next or following-question input. Browser answering hotkeys and ordinary start/mode/refresh commands cannot run the answer loop. Refusal, cancellation, partial/uncertain input and success consume the attempt across page changes. Restarting the process is not approval to try again.
 
+Use a fresh source checkout or matching source ZIP that includes this helper, not an older downloaded copy. Supported commands are `submit once`, `stop`, `status` and `quit`. The fixed `EP_DROPDOWN_ONCE` result line reports `submitted-once`, `refused`, `aborted` or `stopped`; failures may include a fixed reason. Never retry after any result.
+
 Home/ArrowDown visits intermediate wrong selections, which EP may save or grade even without Submit. Stop cannot undo a delivered key or click. Checks and input are not atomic against page/user changes. `submitted-once` means dispatch returned, not acceptance, correctness, points or completion. An uncertain dispatch may already have submitted and is never retried. Synthetic Linux browser and real-program CLI proof only; no live dropdown proof. Keep the question visible and observe the result; do not navigate or select manually during the attempt.
 
 ## Assigned vocabulary audio contract

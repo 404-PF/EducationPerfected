@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),puppeteer=require('puppeteer');
 const {createServer}=require('./mock-ep'),{detectQuestion}=require('../lib/detect-question');
 const {playDropdownRound}=require('../lib/dropdown-handler'),{createSubmitDropdownOnce}=require('../lib/dropdown-once');
 (async()=>{const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
-try{browser=await puppeteer.launch({headless:true});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
+try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
 const setup=async()=>{await page.goto(origin+'/lesson-dropdown');await page.evaluate(()=>{const f=dropdownFixture;f.submitTrusted=[];document.addEventListener('click',e=>{if(e.target.closest('#sa-navigation-controls button')?.textContent.trim()==='Submit')f.submitTrusted.push(e.isTrusted);},true);const b=document.querySelector('#sa-navigation-controls button'),clone=b.cloneNode(true);clone.textContent='Next Question';b.parentElement.append(clone);clone.click();clone.remove();});assert.equal(await page.evaluate(()=>dropdownFixture.nexts),1);await page.evaluate(()=>{dropdownFixture.nexts=0;});};
 const factory=(play=playDropdownRound)=>createSubmitDropdownOnce({detectQuestion,playDropdownRound:play});
 await setup();const once=factory();assert.deepEqual(await once(page),{status:'submitted-once'});
@@ -30,6 +30,8 @@ await setup();const click=page.mouse.click.bind(page.mouse);page.mouse.click=asy
 await setup();const replaced=factory(async(p,d,o)=>{await p.evaluate(()=>{dropdownFixture.self.model._currentQuestion={...dropdownFixture.q};});return playDropdownRound(p,d,o);});assert.equal((await replaced(page)).status,'stopped');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[0,0]);assert.equal((await replaced(page)).reason,'attempt-consumed');
 // Negative control demonstrates the replacement would otherwise receive input.
 await setup();const unbound=factory(async(p,d,o)=>{await p.evaluate(()=>{dropdownFixture.self.model._currentQuestion={...dropdownFixture.q};});const {baseline,...without}=o;return playDropdownRound(p,d,without);});assert.equal((await unbound(page)).status,'stopped');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[15,0]);
+// Logging alone is not the verification checkpoint.
+await setup();const logOnly=factory(async(p,d,o)=>{o.log?.('Unrelated diagnostic.');return{status:'aborted'};});assert.equal((await logOnly(page)).status,'aborted');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[0,0]);assert.equal((await logOnly(page)).reason,'attempt-consumed');
 let release,calls=0;const wait=new Promise(r=>release=r),locked=createSubmitDropdownOnce({detectQuestion:async()=>{calls++;await wait;return null;},playDropdownRound});const first=locked(page);assert.equal((await locked(page)).reason,'attempt-consumed');release();await first;assert.equal(calls,1);
 console.log('Dropdown once browser PASS:15trustedkeys/10trustedchanges/exactDOMcacheat1trustedSubmit/0Next/advance1,6initialrefusals,4postkeystops,5postfillstops,cancel,uncertaindispatch,repeatnewpage,overlap. Synthetic Linux only.');
 }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exitCode=1;});
