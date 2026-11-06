@@ -2,7 +2,7 @@
 
 #### A JavaScript program that automatically answers Education Perfect language questions at **super** speeds.
 Works for word-to-word (translation) tasks and Dash mode, which have been run end-to-end against the live Education Perfect service. It also supports audio tasks (Listening and Dictation) and multiple-choice questions in auto-marked Smart Lessons: the live site was inspected to confirm the question markup and answer state. On 30 October 2026, the actual program also passed bounded live checks for Listening, Dictation and single-choice: one accepted submission per mode, then stopped. No full task or lesson was completed. Local fixtures ([scripts/handler-test.js](scripts/handler-test.js)) cover multi-round and refusal behavior; those are not full-task live proof.
-Multi-select choices additionally have source-derived synthetic coverage for explicit auto-marked cached renderers, not live multi-select proof. Other Smart Lesson question types are detected and reported, not guessed at. Short-answer lesson questions are handled too, but that shape hasn't been verified against the live site yet.
+Multi-select choices additionally have source-derived synthetic coverage for explicit auto-marked cached renderers, not live multi-select proof. Guarded ordinary dropdowns additionally have synthetic Linux coverage only, not live selection or acceptance proof. Unsupported Smart Lesson question types are detected and reported, not guessed at. Short-answer lesson questions are handled too, but that shape hasn't been verified against the live site yet.
 
 ![example image](result.png)
 

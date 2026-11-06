@@ -8,6 +8,7 @@ const setup=async()=>{await page.goto(origin+'/lesson');await page.evaluate(inst
  assert.equal(await page.evaluate(()=>dropdownFixture.nexts),1);await page.evaluate(()=>{dropdownFixture.nexts=0;});};
 await setup();let d=await detectQuestion(page);assert.equal(d.kind,'dropdown',JSON.stringify(d));
 const result=await playDropdownRound(page,d,{enter:true,timeout:300});assert.equal(result.status,'advanced');
+assert.deepEqual(await page.evaluate(()=>dropdownFixture.submittedSelections),[['Radius','Radius'],['Circumference','Circumference'],['Circumference','Circumference'],['2','2'],['Radius','Radius']]);
 const expectedKeys=Array.from({length:5},(_,i)=>['Home','ArrowDown','ArrowDown'].map(key=>({id:'dropdown-'+i,key,trusted:true}))).flat();
 assert.deepEqual(await page.evaluate(()=>dropdownFixture.keys),expectedKeys);
 assert.deepEqual(await page.evaluate(()=>[dropdownFixture.changes.length,dropdownFixture.changes.every(e=>e.trusted),dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.q.questionIndex]),[10,true,1,0,1]);
@@ -16,7 +17,7 @@ assert.equal((await playDropdownRound(page,d,{enter:false,timeout:0,log:()=>{fil
 assert.deepEqual(await page.evaluate(()=>[...dropdownFixture.group.querySelectorAll('select')].map(el=>[el.options[el.selectedIndex].textContent,dropdownFixture.base[el.id][0].componentState._selectedOption.Description])),[['Radius','Radius'],['Circumference','Circumference'],['Circumference','Circumference'],['2','2'],['Radius','Radius']]);
 assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.q.questionIndex]),[0,0,0]);
 if(process.env.EP_DROPDOWN_SCREENSHOT)await page.screenshot({path:process.env.EP_DROPDOWN_SCREENSHOT});
-for(const mutation of ['manual','assessment','mixed','unmarked','missing','duplicate','padded','unsafe','twoCorrect','noneCorrect','invalid','default','selectedMismatch','foreign','disabled','multiple','size','optgroup','extraInput','extraEditable','rawMismatch','lazyGetter','extraSelect','optionElement']){
+for(const mutation of ['manual','assessment','mixed','unmarked','missing','duplicate','padded','unsafe','twoCorrect','noneCorrect','invalid','default','selectedMismatch','foreign','disabled','multiple','size','optgroup','extraInput','extraEditable','rawMismatch','lazyGetter','extraSelect','optionElement','missingDefault','nullDefault','indexGetter','parserGetter']){
  await setup();await page.evaluate(m=>{const f=dropdownFixture,c=f.base['dropdown-0'][0],s=c.componentState,o=s.originalDropDownOptions[0];
  if(m==='manual')f.self.sectionData.activityGroup.isAutoMarked=false;
  if(m==='assessment')f.self.model.gameMode=2;
@@ -41,12 +42,21 @@ for(const mutation of ['manual','assessment','mixed','unmarked','missing','dupli
  if(m==='rawMismatch')f.q.questionDef.Components[0].Options=[];
  if(m==='lazyGetter'){delete s._shuffledOptions;Object.defineProperty(s,'shuffledOptions',{get(){throw new Error('must not invoke');}});}
  if(m==='extraSelect')f.group.append(c.dropDownList.cloneNode(true));
+ if(m==='missingDefault'){s._selectedOption=null;delete s.metadataInstance.DefaultSelection;delete f.q.questionDef.Components.find(d=>d.ComponentID==='dropdown-0').DefaultSelection;}
+ if(m==='nullDefault'){s._selectedOption=null;s.metadataInstance.DefaultSelection=null;f.q.questionDef.Components.find(d=>d.ComponentID==='dropdown-0').DefaultSelection=null;}
+ if(m==='indexGetter'){delete f.q.cachedRenderers[1].identifiedComponents;Object.defineProperty(f.q.cachedRenderers[1],'identifiedComponents',{get(){f.getterCalls=(f.getterCalls||0)+1;throw new Error('no getter');}});}
+ if(m==='parserGetter'){delete f.q.cachedRenderers[1].identifiedComponents;Object.defineProperty(f.q.cachedRenderers[1],'parser',{get(){f.getterCalls=(f.getterCalls||0)+1;throw new Error('no getter');}});}
  if(m==='optionElement')c.dropDownList.options[1].append(document.createElement('span'));
  },mutation);
+ assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  const bad=await detectQuestion(page);assert.equal(bad.kind,'unsupported',mutation);
+ assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  assert.equal((await playDropdownRound(page,bad,{enter:true,timeout:50})).status,'stopped',mutation);
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[0,0,0],mutation);
 }
+await setup();await page.evaluate(()=>{const r=dropdownFixture.q.cachedRenderers[1],index=r.identifiedComponents;delete r.identifiedComponents;r.parser={identifiedComponents:index};const prototype=Object.create(Object.getPrototypeOf(r));Object.defineProperty(prototype,'identifiedComponents',{configurable:true,get(){throw new Error('must not invoke inherited getter');}});Object.setPrototypeOf(r,prototype);});
+assert.equal((await detectQuestion(page)).kind,'dropdown');
+let parserFilled=false;assert.equal((await playDropdownRound(page,await detectQuestion(page),{enter:false,timeout:0,log:()=>{parserFilled=true;},shouldStop:()=>parserFilled})).status,'aborted');
 await setup();await page.evaluate(()=>{const c=dropdownFixture.base['dropdown-0'][0];c.dropDownList.selectedIndex=2;c.componentState._selectedOption=c.componentState._shuffledOptions[2];});
 assert.equal((await playDropdownRound(page,await detectQuestion(page),{enter:true,timeout:50})).status,'stopped');assert.equal(await page.evaluate(()=>dropdownFixture.keys.length),0);
 for(const mutation of ['answer','identity','order','element','focus','ineffective','advance','cached','optionIdentity','template']){
@@ -69,5 +79,5 @@ for(const mutation of ['answer','identity','order','element','focus','ineffectiv
 }
 await setup();let cancelled=false;await page.exposeFunction('cancelDropdownTest',()=>{cancelled=true;});await page.evaluate(()=>{dropdownFixture.afterChange=()=>window.cancelDropdownTest();});
 assert.equal((await playDropdownRound(page,await detectQuestion(page),{enter:true,timeout:50,shouldStop:()=>cancelled})).status,'aborted');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[2,0]);
-console.log('Dropdown source-derived browser fixtures PASS: five DOM-ordered controls, 15 trusted keys / 10 trusted changes / one Submit; exact fill-only0Submit; 25 initial refusals,10 post-key stops, event-driven cancellation. Synthetic Linux only; intermediate selections occur.');
+console.log('Dropdown source-derived browser fixtures PASS: five DOM-ordered controls, 15 trusted keys / 10 trusted changes / one Submit; exact fill-only0Submit; 29 initial refusals,10 post-key stops, event-driven cancellation. Synthetic Linux only; intermediate selections occur.');
 }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exitCode=1;});

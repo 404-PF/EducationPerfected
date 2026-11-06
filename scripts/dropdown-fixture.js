@@ -24,6 +24,6 @@ function installDropdownFixture(){
     }
     document.addEventListener('click',e=>{const b=e.target.closest('#sa-navigation-controls button');if(b&&b.textContent.trim()!=='Submit')f.nexts++;},true);
     const oldSubmit=[...document.querySelectorAll('#sa-navigation-controls button')].find(b=>b.textContent.trim()==='Submit');const submit=oldSubmit.cloneNode(true);oldSubmit.replaceWith(submit);
-    submit.addEventListener('click',()=>{f.submits++;q.questionIndex++;if(f.followingUnsupported){group.textContent='Following unsupported question';q.questionDef.Components=[{ComponentTypeCode:'NUMBER_BOX_COMPONENT'}];}});
+    submit.addEventListener('click',()=>{f.submittedSelections=[...group.querySelectorAll('select')].map(el=>[el.options[el.selectedIndex].textContent,base[el.id][0].componentState._selectedOption?.Description]);f.submits++;q.questionIndex++;if(f.followingUnsupported){group.textContent='Following unsupported question';q.questionDef.Components=[{ComponentTypeCode:'NUMBER_BOX_COMPONENT'}];}});
 }
 module.exports={installDropdownFixture};
