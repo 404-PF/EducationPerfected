@@ -2,7 +2,7 @@
 
 #### A JavaScript program that automatically answers Education Perfect language questions at **super** speeds.
 Works for word-to-word (translation) tasks and Dash mode, which have been run end-to-end against the live Education Perfect service. It also supports audio tasks (Listening and Dictation) and multiple-choice questions in auto-marked Smart Lessons: the live site was inspected to confirm the question markup and answer state. On 30 October 2026, the actual program also passed bounded live checks for Listening, Dictation and single-choice: one accepted submission per mode, then stopped. No full task or lesson was completed. Local fixtures ([scripts/handler-test.js](scripts/handler-test.js)) cover multi-round and refusal behavior; those are not full-task live proof.
-Multi-select choices additionally have source-derived synthetic coverage for explicit auto-marked cached renderers, not live multi-select proof. Other Smart Lesson question types are detected and reported, not guessed at. Short-answer lesson questions are handled too, but that shape hasn't been verified against the live site yet.
+Multi-select choices additionally have source-derived synthetic coverage for explicit auto-marked cached renderers, not live multi-select proof. Guarded ordinary dropdowns additionally have synthetic Linux coverage only, not live selection or acceptance proof. Unsupported Smart Lesson question types are detected and reported, not guessed at. Short-answer lesson questions are handled too, but that shape hasn't been verified against the live site yet.
 
 ![example image](result.png)
 
@@ -222,6 +222,14 @@ Live validation is limited to these user-run, separately approved attempts:
 - On 6 November 2026, using revision `6d5d3e544a40f01e076464dd9c2e5959fa1ad3bf`, the user ran the one-attempt fill-and-Submit validator on one practice question with repeated exact tile labels. The terminal reported `EP_SUBMIT_ONCE {"status":"submitted-once"}`; the page advanced to the next question, and the user confirmed the submitted question showed as correct. The terminal result proves dispatch, while correctness is user-reported; an exact points amount and a result screenshot were not verified.
 
 The second result supports filling, one automated Submit and acceptance for that one repeated-label question only. It does not prove full-lesson completion, every gaps question, cross-platform compatibility or support for the next question's dropdowns. Each approval was consumed by its attempt. The final state read and trusted input/click cannot be atomic against concurrent page or user input; an uncertain result must not be retried without fresh approval.
+
+## Ordinary lesson dropdown source contract
+
+A narrow source-derived path supports initially blank native `DROPDOWN_COMPONENT` selects in explicitly auto-marked Smart Lessons. Every select must have one cached component, exact current metadata/original/shuffled option identities and DOM order, one correct displayed plain-text option, and agreement between the native selection and cached selected option. Duplicate or padded descriptions, prefilled controls, mixed component definitions, editable fields, disabled/multiple/listbox controls, unknown defaults, assessments and manual marking are refused. Static diagrams and formula text outside the controls do not supply answers and are not inferred from.
+
+Source: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), checked 6 November 2026, `DropDownComponent` and `DropDownComponentState`. The reader uses existing `_shuffledOptions` only, never the state-creating `shuffledOptions` getter, setters or marking methods. EP maps native change events by trimmed description, which is why ambiguous or padded descriptions are excluded.
+
+The handler uses trusted Home/ArrowDown keys, checks native and cached selection after each key, and stops without retry on uncertainty or cancellation. **Intermediate wrong selections can occur and may be saved by EP, even without Submit.** Semi-auto selects the final exact set without Submit; auto rechecks and clicks the associated Submit once, never Next for the same question. No atomicity against concurrent page/user changes or cross-platform key behavior is claimed. Source-derived synthetic Linux browser and real-program CLI coverage only, not live dropdown selection, acceptance or full-lesson proof. The first live validation must be supervised because intermediate wrong selections may be saved, with fresh approval for one named question.
 
 ## Ordinary lesson textbox source contract
 

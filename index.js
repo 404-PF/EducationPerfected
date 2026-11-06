@@ -5,6 +5,7 @@ const { detectQuestion } = require('./lib/detect-question');
 const { audioAllowed, audioPolicyUnchanged } = require('./lib/audio-policy');
 const { playChoiceRound } = require('./lib/choice-handler');
 const { playGapsRound } = require('./lib/gaps-handler');
+const { playDropdownRound } = require('./lib/dropdown-handler');
 const { playTextboxRound } = require('./lib/textbox-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
@@ -1721,6 +1722,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                 { type: 'choice', play: playSelectionDescriptorRound },
                 { type: 'gaps', play: playSelectionDescriptorRound },
                 { type: 'textbox', play: playSelectionDescriptorRound },
+                { type: 'dropdown', play: playSelectionDescriptorRound },
                 { type: 'audio', play: handleTypedRound },
                 { type: 'typed', play: handleTypedRound },
             ];
@@ -1762,7 +1764,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         console.log('Selection slide changed during detection; re-reading it in a fresh pass.');
                         return true;
                     }
-                    const play = descriptor.kind === 'textbox' ? playTextboxRound : descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
+                    const play = descriptor.kind === 'dropdown' ? playDropdownRound : descriptor.kind === 'textbox' ? playTextboxRound : descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
                     const result = await play(page, again, {
                         enter: ENTER,
                         timeout: ADVANCE_TIMEOUT,
