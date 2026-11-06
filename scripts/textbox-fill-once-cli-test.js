@@ -1,0 +1,7 @@
+const {assertTextboxFillProof}=require('./textbox-fill-proof');
+const assert=require('node:assert/strict');
+const {bootFixtureCli}=require('./fixture-cli-session');
+(async()=>{const session=await bootFixtureCli('validate-textbox-fill.js','Commands: fill once');const {page,child,origin,wait}=session;
+try{await page.goto(origin+'/lesson-textbox');await page.evaluate(()=>window.startAnswer());child.stdin.write('start\nmode auto\nrefresh\n');await wait(()=>(session.output.match(/Use fill once/g)||[]).length>=3);assert.equal(await page.evaluate(()=>textboxFixture.inputs.length),0);
+child.stdin.write('fill once\n');await wait(()=>session.output.includes('EP_TEXTBOX_FILL_ONCE {"status":"filled-only"}'));await assertTextboxFillProof(page);await page.goto(origin+'/lesson-textbox');child.stdin.write('fill once\n');await wait(()=>session.output.includes('Attempt already consumed'));await page.evaluate(()=>window.startAnswer());assert.equal(await page.evaluate(()=>textboxFixture.inputs.length),0);child.stdin.write('quit\n');await wait(()=>child.exitCode!==null);assert.equal(child.exitCode,0);console.log('Textbox fill validation realCLI: stopped/disabledbrowserstart/normalcommandsrejected,9trustedchars0Submit0Next,repeatnewpagerefused,quitPASS. Synthetic only.');}
+finally{await session.cleanup();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -13,6 +13,7 @@
 const http = require('node:http');
 const { installMultiChoiceFixture } = require('./multi-choice-fixture');
 const { installGapsFixture } = require('./gaps-fixture');
+const { installTextboxFixture } = require('./textbox-fixture');
 
 const WORDS = [
     ['one', 'eins'],
@@ -75,6 +76,8 @@ const taskPage = (start) => {
     </main>
     <script>
         const rounds = ${JSON.stringify(round)};
+        const classicSelf = { model: { gameMode: 1, _currentQuestion: {} } };
+        window.angular = { element: () => ({ scope: () => ({ self: classicSelf }) }) };
         let index = 0;
         const question = document.getElementById('question-text');
         const box = document.getElementById('answer-text');
@@ -286,7 +289,7 @@ const audioPage = (mode = 2) => PAGE(`
         let index = 0;
         // live-captured shape: list audio tasks ship no sectionData; the
         // self-test list context comes from contentSource.selectedActivity
-        const SELF = { model: { _currentQuestion: null, contentSource: { selectedActivity: ${JSON.stringify(LIST_SELF_TEST_VALUE)} } } };
+        const SELF = { model: { gameMode: 1, _currentQuestion: null, contentSource: { selectedActivity: ${JSON.stringify(LIST_SELF_TEST_VALUE)} } } };
         window.angular = { element: () => ({ scope: () => ({ self: SELF }) }) };
 
         const speaker = document.querySelector('.voice-speaker');
@@ -349,7 +352,7 @@ const audioRejectPage = (selectedActivity, sectionDataSnippet) => PAGE(`
     </main>
     <script>
         window.__submissions = [];
-        const SELF = { model: { _currentQuestion: {
+        const SELF = { model: { gameMode: 1, _currentQuestion: {
             contentID: 173943,
             questionIndex: 0,
             validAnswers: [{ outputString: 'Ho la febbre' }],
@@ -383,6 +386,7 @@ function createServer() {
             return send(taskPage(start));
         }
         if (url.pathname === '/lesson') return send(lessonPage(false));
+        if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installTextboxFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-gaps') return send(lessonPage(false).replace('</body></html>', `<script>(${installGapsFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-async') return send(lessonAsyncPage);

@@ -192,6 +192,14 @@ _NOTE: If you close the terminal window that pops up when you run the script, th
   blatant disparities between displayed answer and expected answer) where a question may not get correctly answered. 
 
 
+## Plain block single-choice source contract
+
+A narrow additional path handles single-choice options whose entire raw and resolved templates are a supported multiline `[block` wrapper with plain inner text and a standalone closing `]`. It does not remove arbitrary bracket sections. Each choice must already have a unique cached component/state/option/preview/DOM association, a renderer template equal to its resolved option, and rendered inner text equal to the supported plain body. All correct options must be displayed. Images, formulae, nested directives, mixed wrappers/plain options, editable fields and unknown block attributes stop unanswered.
+
+Source: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), checked 5 November 2026. `TemplateParser` opens a format block on its own line, renders inner paragraphs and closes on a line starting with `]`. This handler intentionally accepts only a standalone `]`, a narrower contract. `AdvancedRenderer.identifiedComponents` is a read-only getter returning `parser.identifiedComponents`; this path reads the existing own parser/index data instead of invoking that getter or creating a renderer. It preserves the existing exact raw/resolved template and marking signature checks before selection and at click time. The final check and trusted click are not atomic against page or user changes.
+
+Two user-run, read-only aggregate checks on a failing plain-text slide established that raw correct text was erased by multiline bracket stripping, and the cached index lookup encountered the inherited getter. They did not establish the exact private template grammar or complete cached association. This implementation uses invented source-derived fixtures, not captured account data. No live selection, submission, grading or whole-lesson completion has been verified for this new path; a different bracket shape remains unsupported. Existing plain choices and strict formula choices retain their separate contracts.
+
 ## Multi-select source contract
 
 The multi-select fixture (`scripts/multi-choice-fixture.js`, served at `/lesson-multi` by the local mock) is invented and sanitized, derived from EP's public renderer bundle, not captured from an actual account or live multi-select slide. Source retrieved 4 November 2026: [chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js).
@@ -203,11 +211,27 @@ The multi-select fixture (`scripts/multi-choice-fixture.js`, served at `/lesson-
 
 ## Drag-and-drop fill-in-the-gaps contract
 
-A narrow handler supports one explicitly auto-marked Smart Lesson `FILL_IN_GAPS_COMPONENT` with `InputType === 2`, initially empty gaps and unique plain-text options. Textbox variants, prefilled/stored answers, duplicate or reused source labels, multiple correct displayed choices for a gap, missing cached state and mixed-component slides stop unanswered. This is not general matching or assessment support.
+A narrow handler supports one explicitly auto-marked Smart Lesson `FILL_IN_GAPS_COMPONENT` with `InputType === 2`, initially empty gaps and plain-text options. Repeated exact labels are supported only when each DOM-ordered gap has one distinct correct displayed label and enough separate source tiles exist. Tiles are assigned once in source DOM order across the whole gap list, including the filled prefix; each filled gap must retain that exact source index and the corresponding used-tile state. Padded look-alikes, insufficient copies, reused source indexes, multiple different correct displayed labels for a gap, textbox variants, prefilled/stored answers, missing cached state and mixed-component slides stop unanswered. Repeated-label support has synthetic browser and real-program CLI coverage, plus the one-question live validation described below. This is not general matching or assessment support.
 
 Source: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), retrieved 4 November 2026. The handler reads resolved cached gap IDs, correct options, displayed gaps, source items and inline renderer identities. EP's own keyboard accessibility path puts a source option into the next empty gap in DOM order. The handler uses trusted Enter events on those source elements, not internal EP selection/marking methods, generated renderers or guessed drag coordinates. It checks the full answer prefix and cached identities after every input, then the exact final set and associated Submit button before one click. An uncertain input stops without retry. Semi-auto fills only and leaves submission to the user. It never clicks Next on the same question key.
 
-`scripts/gaps-fixture.js` and `/lesson-gaps` are invented, sanitized, source-derived fixtures, not captured live questions. Local tests cover DOM/metadata order differences, undisplayed gaps, trusted inputs, exact one-submit behavior, the real program loop, refusal and stale-state controls. On 5 November 2026, the user reported `EP_FILL_ONCE {"status":"filled-only"}` from the separate one-attempt validation command on one approved practice question. The command verified filling on that question without Submit or Next. The user then clicked Submit once and reported that EP showed `Correct`. This verifies filling and acceptance for that one question, not automated submission. Automated submission, advancing, full-task completion and compatibility with other gaps questions remain unproved. The final state read and trusted input/click cannot be atomic against concurrent page or user input. No automated live answer submission was performed in this validation.
+`scripts/gaps-fixture.js` and `/lesson-gaps` are invented, sanitized, source-derived fixtures, not captured live questions. Local tests cover DOM/metadata order differences, undisplayed gaps, trusted inputs, exact one-submit behavior, the real program loop, refusal and stale-state controls.
+
+Live validation is limited to these user-run, separately approved attempts:
+- On 5 November 2026, the user reported `EP_FILL_ONCE {"status":"filled-only"}` on one practice question, then manually clicked Submit and reported `Correct`. This was fill-only automation with manual submission.
+- On 6 November 2026, using revision `6d5d3e544a40f01e076464dd9c2e5959fa1ad3bf`, the user ran the one-attempt fill-and-Submit validator on one practice question with repeated exact tile labels. The terminal reported `EP_SUBMIT_ONCE {"status":"submitted-once"}`; the page advanced to the next question, and the user confirmed the submitted question showed as correct. The terminal result proves dispatch, while correctness is user-reported; an exact points amount and a result screenshot were not verified.
+
+The second result supports filling, one automated Submit and acceptance for that one repeated-label question only. It does not prove full-lesson completion, every gaps question, cross-platform compatibility or support for the next question's dropdowns. Each approval was consumed by its attempt. The final state read and trusted input/click cannot be atomic against concurrent page or user input; an uncertain result must not be retried without fresh approval.
+
+## Ordinary lesson textbox source contract
+
+A source-derived handler recognizes a narrow ordinary `TEXT_BOX_COMPONENT` in explicitly auto-marked Smart Lessons. It requires initially empty `input.text-box-component` fields, one cached component per field, exact component/state/DOM identities, `Marked === 1`, and nonempty plain-text accepted options. The current cached options must equal the metadata options; variable-resolved answer differences are refused in this first contract. It types the first supplied accepted option, not a guessed answer or a model answer inferred from lesson text.
+
+Source checked 5 November 2026: [EP public chunk 606](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js), `NewTextBoxComponent`, `TextBoxComponentState` and `ComponentIndex`. EP's input events update the cached answer; Enter can submit, so this handler never types Enter. It uses trusted character input, checking the same question, renderer, options, field focus and exact answer prefix before and after each character. Changed or uncertain state stops without clearing, overwriting or retrying. The final input/click cannot be atomic against concurrent page or user input.
+
+Semi-auto fills only. Automatic mode rechecks the exact filled set and associated unique Submit button before one click; it never clicks Next for that question. Missing controls, stored/prefilled answers, initial text, extra editable fields, mixed components, numeric boxes, long/rich answers, fill-in-the-gaps textbox variants, maths editors, assessments and manually marked questions are not covered by this contract. Other textbox variants remain in the support queue, rather than being treated as equivalent inputs.
+
+Invented sanitized source-derived fixtures cover DOM/metadata order differences, trusted typing, semi-auto, one Submit, changed-state refusals and the normal CLI/Alt+S workflow. No live ordinary lesson textbox detection, filling, grading or full-lesson result has been verified.
 
 ## Assigned vocabulary audio contract
 
@@ -218,6 +242,8 @@ Source: [EP public chunk 171](https://mfe-student-app.educationperfect.com/main/
 A stopped, content-free field diagnostic confirmed that narrow assigned Listening shape, including one usable accepted answer. This is **not** a new live submission or full-task completion proof. Synthetic tests cover Listening and Dictation positives, malformed/unknown/EP/speaking/assessment/manual refusals and marking/task changes during typing. The context and accepted answer are rechecked before initial and retry submissions; any change stops before Enter. Task IDs stay inside the process and are never logged by this check. Existing unassigned self-test support is unchanged.
 
 ## Known limitations
+
+- Ordinary lesson textboxes have the narrow source-derived contract above and synthetic fixture coverage only. No live textbox detection, filling or grading is proved; numeric, long/rich, gaps-textbox and manual/assessment variants remain unsupported.
 
 - Formula-rich single-choice handling requires an existing cached renderer with unique exact metadata-to-DOM associations. Mixed formula/plain option sets, missing renderer state and ambiguous associations stop unanswered. Variable-resolved choices use the current cached metadata only when original/displayed option identities, preview marking and complete rendered templates agree; raw and resolved state are rechecked before selection. This path has synthetic browser coverage, not live equation-choice completion proof.
 
@@ -296,3 +322,22 @@ Open that approved question, then enter `fill once` in this validation terminal.
 Only `fill once`, `stop`, `status` and `quit` are supported. Browser answering hotkeys are disabled in this session. `stop` drains an in-flight action; it cannot undo a key already delivered. `quit` closes the owned browser. `EP_FILL_ONCE` reports a fixed, content-free result: `filled-only` confirms filling was verified, not marking, submission or advance.
 
 Use a fresh source ZIP containing this entrypoint and its matching handler files. The earlier Console diagnostics contain their own reader and do not prove an old installed CLI has been updated. This is a developer validation path, not full lesson completion or packaged-release proof.
+
+### One-question automated Submit validation
+
+`node bin/validate-gaps-submit.js` is a separate, stopped validation session. It requires approval for one fresh, initially empty supported practice gaps question, including filling, one automated Submit and any result or points EP records. Do not use the previously filled or submitted question. No live run of this command has been verified.
+
+After opening only the approved question, enter `submit once` exactly once. The session consumes the attempt before inspection, uses the guarded fill-only operation, then rechecks the same question, exact filled set and associated Submit control before one trusted click. It returns immediately after that click. It never clicks Next, retries, answers another question or enters the ordinary answer loop. EP may automatically display the next question, an explanation or a completion screen after Submit.
+
+Only `submit once`, `stop`, `status` and `quit` are supported; browser answering hotkeys are disabled. A refusal, cancellation, uncertain input or completed attempt cannot be retried in the same process, even on a fresh question. Do not start a new process as a retry without checking what changed and getting any needed approval. `EP_SUBMIT_ONCE` reports a fixed, content-free result: `submitted-once` means the one click returned, not that EP accepted or graded the answer. An uncertain click reports `stopped` and may still have taken effect. Stop cannot undo an already dispatched key or click; shutdown may wait for an in-flight browser call.
+
+Use a fresh matching source ZIP, not the ordinary launcher or the fill-only command. Synthetic browser and real-program fixtures cover at-most-one Submit, no Next, no further answering after automatic advancement, permanent attempt consumption, cancellation and stale-state refusals. These are not live automated-submission or full-lesson proof.
+
+
+### One-question textbox fill-only validation
+
+`node bin/validate-textbox-fill.js` opens its own stopped browser. Open the specifically approved, initially empty ordinary auto-marked lesson textbox question there. `fill once` calls only the existing guarded textbox handler with submission disabled, then stops after exact filling is verified or at the first refusal, cancellation or uncertainty. It never intentionally clicks Submit or Next or enters the answering loop. Filling may still save or grade in EP; there is no promise that input has no effect beyond a visible draft.
+
+Only `fill once`, `stop`, `status` and `quit` are supported; answering hotkeys are disabled. One attempt is consumed before inspection, including refusal or cancellation, and cannot be retried even on a different question. A new process is not permission to retry. `EP_TEXTBOX_FILL_ONCE` `filled-only` confirms the handler's exact fill checkpoint, not saving, marking, grading, points or advancement. An interrupted or uncertain fill may leave partial input. `stop` cannot undo a delivered key, and shutdown may wait for in-flight browser work. Final read/input checks are not atomic against concurrent page or user changes.
+
+The ordinary textbox contract and exclusions above remain unchanged. Synthetic Linux browser and real-program fixtures cover this validation path, not live textbox or Windows compatibility. Use a fresh matching source ZIP. Each live question needs separate approval before typing `fill once`.

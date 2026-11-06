@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node bin/launch.js",
     "smoke": "node scripts/smoke-test.js",
-    "test:handlers": "node scripts/handler-test.js && node scripts/choice-math-test.js && node scripts/choice-transition-test.js && node scripts/choice-multi-test.js && node scripts/audio-policy-test.js && node scripts/gaps-test.js && node scripts/gaps-completion-stop-test.js && node scripts/gaps-fill-once-unit-test.js && node scripts/gaps-fill-once-test.js",
+    "test:handlers": "node scripts/handler-test.js && node scripts/choice-math-test.js && node scripts/choice-block-test.js && node scripts/choice-block-color-test.js && node scripts/choice-transition-test.js && node scripts/choice-multi-test.js && node scripts/audio-policy-test.js && node scripts/gaps-test.js && node scripts/gaps-repeated-label-test.js && node scripts/gaps-repeated-cli-test.js && node scripts/gaps-completion-stop-test.js && node scripts/gaps-fill-once-unit-test.js && node scripts/gaps-fill-once-test.js && node scripts/textbox-test.js && node scripts/textbox-cli-test.js && node scripts/fixture-cli-session-unit-test.js && node scripts/choice-select-once-test.js && node scripts/choice-select-once-cli-test.js && node scripts/validation-cli-test.js && node scripts/gaps-submit-once-unit-test.js && node scripts/gaps-submit-once-test.js && node scripts/gaps-validation-cli-unit-test.js && node scripts/textbox-fill-once-test.js && node scripts/textbox-fill-once-cli-test.js",
     "cli": "node bin/cli.js",
     "release:check": "node scripts/release-gate.js",
     "test:release-gate": "node scripts/release-gate-test.js",
