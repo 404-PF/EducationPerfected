@@ -12,6 +12,8 @@ const { createFillGapsOnce } = require('./lib/gaps-fill-once');
 const { createFillTextboxesOnce } = require('./lib/textbox-fill-once');
 const { createSubmitGapsOnce } = require('./lib/gaps-submit-once');
 const { createSubmitDropdownOnce } = require('./lib/dropdown-once');
+const { createSelectMultiOnce } = require('./lib/multi-select-once');
+const { playMultiChoiceSelection } = require('./lib/multi-choice-handler');
 const { createSelectChoiceOnce } = require('./lib/choice-select-once');
 const { detectQuestionInPage } = require('./lib/detect-question');
 const { diagnostic } = require('./lib/diagnostics');
@@ -361,8 +363,8 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false } = {}) {
-    if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly, dropdownSubmitOnce].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false } = {}) {
+    if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly, dropdownSubmitOnce, multiSelectOnly].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
     // real run they are ignored, so a stray environment can never point the
@@ -2342,6 +2344,15 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     return result;
                 } finally { TOGGLE = false; }
             };
+            const selectMultiOnce = createSelectMultiOnce({ detectQuestion, playMultiChoiceSelection });
+            const runMultiSelectOnly = async () => {
+                TOGGLE = true;
+                try {
+                    const result = await selectMultiOnce(page, { shouldStop: () => !TOGGLE });
+                    console.log('EP_MULTI_SELECT_ONCE ' + JSON.stringify(result));
+                    return result;
+                } finally { TOGGLE = false; }
+            };
             const submitDropdownOnce = createSubmitDropdownOnce({ detectQuestion, playDropdownRound });
             const runDropdownSubmitOnce = async () => {
                 TOGGLE = true;
@@ -2351,9 +2362,9 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     return result;
                 } finally { TOGGLE = false; }
             };
-            const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce;
+            const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly;
             const controls = createRunControls({
-                run: dropdownSubmitOnce ? runDropdownSubmitOnce : textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
+                run: multiSelectOnly ? runMultiSelectOnly : dropdownSubmitOnce ? runDropdownSubmitOnce : textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
                 requestStop: () => { TOGGLE = false; },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,

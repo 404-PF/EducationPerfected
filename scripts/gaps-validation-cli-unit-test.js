@@ -48,7 +48,8 @@ const { guardVerifiedPointDispatch } = require('./verified-point-dispatch-fixtur
         {gapsFillOnly:true,legacySignals:true}, {choiceSelectOnly:true,legacySignals:true}
     ]) await assert.rejects(launchProgram(options),/exclusive nonlegacy/);
     for(const flag of ['gapsFillOnly','gapsSubmitOnce','choiceSelectOnly','legacySignals']) await assert.rejects(launchProgram({textboxFillOnly:true,[flag]:true}),/exclusive nonlegacy/);
-    for(const flag of ['gapsFillOnly','gapsSubmitOnce','choiceSelectOnly','textboxFillOnly','legacySignals']) await assert.rejects(launchProgram({dropdownSubmitOnce:true,[flag]:true}),/exclusive nonlegacy/);
+    for(const flag of ['gapsFillOnly','gapsSubmitOnce','choiceSelectOnly','textboxFillOnly','multiSelectOnly','legacySignals']) await assert.rejects(launchProgram({dropdownSubmitOnce:true,[flag]:true}),/exclusive nonlegacy/);
+    for(const flag of ['gapsFillOnly','gapsSubmitOnce','choiceSelectOnly','textboxFillOnly','dropdownSubmitOnce','legacySignals']) await assert.rejects(launchProgram({multiSelectOnly:true,[flag]:true}),/exclusive nonlegacy/);
     console.log('All mixed validation modes and legacy validation launches refuse before browser startup PASS');
     console.log('Shared validation CLI: rejected close clears cached promise, second quit succeeds, no answering starts, listeners removed in both modes PASS.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
