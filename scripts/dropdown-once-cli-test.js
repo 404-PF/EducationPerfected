@@ -1,12 +1,16 @@
 const assert=require('node:assert/strict'),{bootFixtureCli}=require('./fixture-cli-session');
+const {detectQuestion}=require('../lib/detect-question'),{playDropdownRound}=require('../lib/dropdown-handler');
 (async()=>{const session=await bootFixtureCli('validate-dropdown.js','Commands: submit once');const {page,child,origin,wait}=session;
 try{
- await page.goto(origin+'/lesson-dropdown');await page.evaluate(()=>{dropdownFixture.submitTrusted=[];document.addEventListener('click',e=>{if(e.target.closest('#sa-navigation-controls button')?.textContent.trim()==='Submit')dropdownFixture.submitTrusted.push(e.isTrusted);},true);});
+ await page.goto(origin+'/lesson-dropdown');await page.evaluate(()=>{dropdownFixture.submitTrusted=[];document.addEventListener('click',e=>{if(e.target.closest('#sa-navigation-controls button')?.textContent.trim()==='Submit')dropdownFixture.submitTrusted.push(e.isTrusted);},true);document.querySelector('#sa-navigation-controls button').addEventListener('click',()=>{const f=dropdownFixture;f.followingKeys=[];for(const select of f.group.querySelectorAll('select')){select.selectedIndex=0;f.base[select.id][0].componentState._selectedOption=null;select.addEventListener('keydown',e=>f.followingKeys.push(e.key));}});});
  assert.equal(await page.evaluate(()=>window.refresh()),'Validation session: refresh is disabled.');await page.evaluate(()=>window.startAnswer());await page.keyboard.down('Alt');await page.keyboard.press('s');await page.keyboard.up('Alt');child.stdin.write('start\nmode auto\nrefresh\n');await wait(()=>(session.output.match(/Use submit once/g)||[]).length>=3);assert.equal(await page.evaluate(()=>dropdownFixture.keys.length),0);
  child.stdin.write('submit once\n');await wait(()=>session.output.includes('EP_DROPDOWN_ONCE {"status":"submitted-once"}'));
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.keys.every(e=>e.trusted),dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.q.questionIndex,dropdownFixture.submitTrusted]),[15,true,1,0,1,[true]]);
  assert.deepEqual(await page.evaluate(()=>dropdownFixture.submittedSelections),['Radius','Circumference','Circumference','2','Radius'].map(a=>[a,a]));
- await new Promise(r=>setTimeout(r,150));assert.equal(await page.evaluate(()=>dropdownFixture.keys.length),15);
+ await new Promise(r=>setTimeout(r,150));assert.equal(await page.evaluate(()=>dropdownFixture.keys.length),15);assert.deepEqual(await page.evaluate(()=>dropdownFixture.followingKeys),[]);
+ const following=await detectQuestion(page);assert.equal(following.kind,'dropdown');assert.ok(following.dropdowns.every(d=>!d.filled));assert.equal(following.key.endsWith(':1'),true);
+ // Negative control: the blank following slide really would accept trusted input.
+ let verified=false;assert.equal((await playDropdownRound(page,following,{enter:false,timeout:0,log:()=>{verified=true;},shouldStop:()=>verified})).status,'aborted');assert.equal(await page.evaluate(()=>dropdownFixture.followingKeys.length),15);assert.equal(await page.evaluate(()=>dropdownFixture.submits),1);
  await page.goto(origin+'/lesson-dropdown');child.stdin.write('submit once\n');await wait(()=>session.output.includes('Attempt already consumed'));await page.evaluate(()=>window.startAnswer());assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[0,0]);
  child.stdin.write('status\nquit\n');await wait(()=>child.exitCode!==null);assert.equal(child.exitCode,0);
  console.log('Dropdown once realCLI PASS: stoppedboot/hotkey/browserstart/start/mode/refreshblocked,15trustedkeys/oneSubmit/exactcache/0Next/advance1,no following-question input,newpagerepeatrefused,quit. Synthetic only.');
