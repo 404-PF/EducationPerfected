@@ -74,6 +74,26 @@ async function testDiagnostics() {
    }
    assert.equal((await run(page)).reason,'attempt-consumed');
   }
+  async function slowSuccessfulRead() {
+   await setup();
+   const evaluate=page.evaluateHandle.bind(page);
+   let delayed=false;
+   page.evaluateHandle=async(fn,...args)=>{
+    if(!delayed&&args[1]===0&&await page.evaluate(()=>dropdownFixture.keys.length===2)) {
+     delayed=true;
+     await new Promise(resolve=>setTimeout(resolve,230));
+    }
+    return evaluate(fn,...args);
+   };
+   try {
+    const run=factory(),result=await run(page);
+    assert.equal(result.selectionDiagnostic.guard,'key-state-did-not-settle');
+    assert.equal(result.selectionDiagnostic.keyDispatchesReturned,2);
+    assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[2,0,0]);
+    assert.equal((await run(page)).reason,'attempt-consumed');
+   } finally {page.evaluateHandle=evaluate;}
+  }
+  await slowSuccessfulRead();
   await delayedKey('settle');
   await delayedKey('identity');
   await delayedKey('focus');
