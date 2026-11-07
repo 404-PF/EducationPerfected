@@ -231,7 +231,11 @@ The second result supports filling, one automated Submit and acceptance for that
 
 ## Dropdown refusal diagnostics
 
-The validator prints `Dropdown validator build: dropdown-diagnostics-v1` at startup. If that line is absent, download a fresh source ZIP and install dependencies again before using these diagnostics. A refusal still consumes the attempt. Do not run `submit once` again without fresh approval.
+The validator prints `Dropdown validator build: dropdown-diagnostics-v2` at startup. If that line is absent, download a fresh source ZIP and install dependencies again before using these diagnostics. A refusal still consumes the attempt. Do not run `submit once` again without fresh approval.
+
+The dropdown validator also offers `inspect`: a read-only diagnostic command available only while stopped. It does not start answering, consume the one-shot attempt, reset a consumed attempt, select an option or submit. Open the target question, type `inspect`, send the complete `EP_DROPDOWN_INSPECT` line privately, then `quit`. Do not use `submit once` merely to collect evidence. This inspection command is exclusive to the dropdown validation session, not normal answering modes.
+
+For `definition-type-id-or-marking`, diagnostics include only allowlisted typed scalar fields: raw definition type/id/Marked, cached component id/marked/render mode, cached metadata type/id/Marked, lesson mode and section auto-marking. Missing/null/string/number remain distinct. Safe identifier strings are bounded to eighty ASCII identifier characters; arbitrary strings are redacted to type/length. Definitions/options/answers are never serialized. This still refuses raw Marked values other than numeric1; no acceptance rule is loosened by the diagnostic.
 
 An initial `requires-supported-empty-dropdowns` refusal now includes bounded, read-only `diagnostics` in the same `EP_DROPDOWN_ONCE` line. It reports the first failed detector guard, each inspected frame's index/main-frame status, question-container presence, question-select state, question-option text/value/selection, counts of out-of-question selects (no text or values), and open shadow-host count. This can distinguish missing selectors, other frames, cached/DOM mismatch, raw metadata mismatch, and unsupported defaults. A supported-but-prefilled detector reports `filled` flags rather than treating blank appearance as proof. Only the main document remains eligible for answering; diagnostics never switch the answer target to a frame or shadow root.
 
