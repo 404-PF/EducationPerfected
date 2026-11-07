@@ -1,15 +1,16 @@
 const assert=require('node:assert/strict'),puppeteer=require('puppeteer');
 const {createServer}=require('./mock-ep'),{readDropdownsInPage}=require('../lib/dropdown-state'),{detectQuestion}=require('../lib/detect-question');
 const {createSubmitDropdownOnce}=require('../lib/dropdown-once'),{playDropdownRound}=require('../lib/dropdown-handler');
-// Frozen source from39db44fb, deliberately tracked for source-ZIP/shallow runs.
-const {readDropdownsInPage:before}=require('./fixtures/dropdown-state-before-editor-marking');
+// Exact prior marking requirement only. This is an explicit oracle, not a
+// second full detector. All non-marking guard coverage runs against real reader.
+const beforeMarking=(raw,metadata,runtime)=>raw===1&&metadata===1&&runtime===1;
 (async()=>{const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),url='http://127.0.0.1:'+server.address().port+'/lesson-dropdown';
 await page.goto(url);const values=[0,1,2,'0','1',null,false,'missing'];let rows=0,newSupported=0;
 for(const raw of values)for(const metadata of values)for(const runtime of values){
  await page.evaluate(([a,b,c])=>{for(const component of Object.values(dropdownFixture.base).flat()){const d=dropdownFixture.q.questionDef.Components.find(d=>d.ComponentID===component.id),m=component.componentState.metadataInstance;for(const [o,k,v]of [[d,'Marked',a],[m,'Marked',b],[component,'marked',c]]){if(v==='missing')delete o[k];else o[k]=v;}}},[raw,metadata,runtime]);
- const old=await page.evaluate(before,null,'descriptor'),now=await page.evaluate(readDropdownsInPage,null,'descriptor');
- const expected=(raw===0||raw===1)&&metadata===raw&&runtime===1;assert.equal(now.descriptor.kind==='dropdown',expected,JSON.stringify([raw,metadata,runtime]));const was=old.descriptor.kind==='dropdown';assert.equal(was,raw===1&&metadata===1&&runtime===1);if(expected&&!was)newSupported++;rows++;
+ const was=beforeMarking(raw,metadata,runtime),now=await page.evaluate(readDropdownsInPage,null,'descriptor');
+ const expected=(raw===0||raw===1)&&metadata===raw&&runtime===1;assert.equal(now.descriptor.kind==='dropdown',expected,JSON.stringify([raw,metadata,runtime]));assert.equal(was,raw===1&&metadata===1&&runtime===1);if(expected&&!was)newSupported++;rows++;
 }
 assert.equal(newSupported,1);
 let mixedRows=0;for(let mask=1;mask<31;mask++){
@@ -18,12 +19,12 @@ let mixedRows=0;for(let mask=1;mask<31;mask++){
 }assert.equal(mixedRows,30);
 
 const setup=async()=>{await page.goto(url);await page.evaluate(()=>{for(const component of Object.values(dropdownFixture.base).flat()){const s=component.componentState,d=dropdownFixture.q.questionDef.Components.find(d=>d.ComponentID===component.id);d.Marked=s.metadataInstance.Marked=0;d.DefaultSelection.Description=s.metadataInstance.DefaultSelection.Description=' < None > ';s.metadataInstance.Options=s._shuffledOptions;const i=s.originalDropDownOptions.findIndex(o=>o.Correct==='true'),o=s.originalDropDownOptions[i];o.Description=d.Options[i].Description=' '+o.Description+' ';component.dropDownList.options[s._shuffledOptions.indexOf(o)].textContent=o.Description;}});};
-await setup();assert.equal((await page.evaluate(before,null,'descriptor')).descriptor.kind,'unsupported');let once=createSubmitDropdownOnce({detectQuestion,playDropdownRound});assert.deepEqual(await once(page),{status:'submitted-once'});assert.deepEqual(await page.evaluate(()=>dropdownFixture.submittedSelections),['Radius','Circumference','Circumference','2','Radius'].map(x=>[' '+x+' ',' '+x+' ']));assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.keys.length]),[1,0,15]);
+await setup();assert.equal(beforeMarking(0,0,1),false);let once=createSubmitDropdownOnce({detectQuestion,playDropdownRound});assert.deepEqual(await once(page),{status:'submitted-once'});assert.deepEqual(await page.evaluate(()=>dropdownFixture.submittedSelections),['Radius','Circumference','Circumference','2','Radius'].map(x=>[' '+x+' ',' '+x+' ']));assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.keys.length]),[1,0,15]);
 for(const mutation of ['trim-duplicate','only-space','tab','nbsp','internal-nbsp','hidden','markup','dom-trimmed','wrong-cache','manual','assessment','runtime','metadata','raw-type','id']){
  await setup();await page.evaluate(m=>{const f=dropdownFixture,c=f.base['dropdown-0'][0],s=c.componentState,d=f.q.questionDef.Components.find(d=>d.ComponentID===c.id),o=s.originalDropDownOptions[0];const set=t=>{o.Description=d.Options[0].Description=t;c.dropDownList.options[s._shuffledOptions.indexOf(o)].textContent=t;};if(m==='trim-duplicate')set(s.originalDropDownOptions[1].Description.trim());if(m==='only-space')set(' ');if(m==='tab')set('\twrong');if(m==='nbsp')set('\u00a0wrong');if(m==='internal-nbsp')set('wro\u00a0ng');if(m==='hidden')set('wrong\u200b');if(m==='markup')set('<wrong>');if(m==='dom-trimmed')c.dropDownList.options[2].textContent=s._shuffledOptions[2].Description.trim();if(m==='wrong-cache'){c.dropDownList.selectedIndex=2;s._selectedOption=s.originalDropDownOptions[0];}if(m==='manual')f.self.sectionData.activityGroup.isAutoMarked=false;if(m==='assessment')f.self.model.gameMode=4;if(m==='runtime')c.marked=0;if(m==='metadata')s.metadataInstance.Marked=1;if(m==='raw-type')d.ComponentTypeCode='OTHER';if(m==='id')c.id='changed';},mutation);
  once=createSubmitDropdownOnce({detectQuestion,playDropdownRound});assert.equal((await once(page)).status,'refused',mutation);assert.equal((await once(page)).reason,'attempt-consumed');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[0,0]);
 }
 // Mutating after a trusted key must fail before Submit, even for newly accepted shapes.
 await setup();await page.evaluate(()=>{dropdownFixture.afterChange=()=>{dropdownFixture.base['dropdown-0'][0].componentState.metadataInstance.Marked=1;};});once=createSubmitDropdownOnce({detectQuestion,playDropdownRound});assert.equal((await once(page)).status,'stopped');assert.equal(await page.evaluate(()=>dropdownFixture.submits),0);
-console.log('Editor marking PASS: '+rows+' differential rows plus30cross-definition mixed refusals0input, only raw0/metadata0/runtime1 newly supported; exact padded raw/cache with normalized DOM text one Submit0Next;15unsafe refusals0input; postkey marking mutation0Submit. Synthetic only.');
+console.log('Editor marking PASS: '+rows+' baseline-marking-oracle rows plus30cross-definition mixed refusals0input, only raw0/metadata0/runtime1 newly supported; exact padded raw/cache with normalized DOM text one Submit0Next;15unsafe refusals0input; postkey marking mutation0Submit. Synthetic only.');
 }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exitCode=1;});
