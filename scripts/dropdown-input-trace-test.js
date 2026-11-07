@@ -55,7 +55,10 @@ async function testTrace() {
         assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[2,0,0]);
         assert.equal((await run(page)).reason,'attempt-consumed');
         await setup();
+        const originalVersion=browser.version.bind(browser);
+        browser.version=async()=>{throw new Error('synthetic version unavailable');};
         const success=await factory()(page);
+        browser.version=originalVersion;
         assert.deepEqual(success,{status:'submitted-once'});
         assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[15,1,0]);
         // Cap retention and prove close removes all four observer listeners.
