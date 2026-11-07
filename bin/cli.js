@@ -5,12 +5,18 @@ const { diagnostic } = require('../lib/diagnostics');
 
 async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram } = {}) {
     output.write('Opening EducationPerfected. Finish sign-in in the browser.\n');
-    const controls = await launch();
-    const terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
+    let terminal = null, pendingApproval = null, quitPromise = null;
+    const requestDropdownSubmitApproval = approval => new Promise(resolve => {
+        if (!terminal || pendingApproval || quitPromise) { resolve(false); return; }
+        pendingApproval = { approval, resolve };
+        output.write(`Dropdown Submit approval required for ${approval.key} (${approval.dropdownCount} dropdown). Confirm this is the named question visible in the browser. Type yes to submit this question once; anything else stops without Submit.\n`);
+    });
+    const controls = await launch({ dropdownSubmitApprover: requestDropdownSubmitApproval });
+    terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
     output.write('Commands: start, stop, status, mode auto, mode semi, refresh, quit\n');
     const print = () => output.write(JSON.stringify(controls.status()) + '\n');
-    let quitPromise = null;
     const quit = () => {
+        if (pendingApproval) { pendingApproval.resolve(false); pendingApproval = null; }
         if (!quitPromise) quitPromise = controls.close().then(() => terminal.close()).catch(error => { quitPromise = null; throw error; });
         return quitPromise;
     };
@@ -23,6 +29,15 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
     try {
         for await (const line of terminal) {
             const command = line.trim();
+            if (pendingApproval) {
+                const request = pendingApproval;
+                pendingApproval = null;
+                const approved = command === 'yes';
+                request.resolve(approved);
+                output.write(approved ? `Dropdown Submit approved for ${request.approval.key} only.\n` : 'Dropdown Submit not approved; stopping without Submit.\n');
+                if (command === 'quit' || command === 'exit') { await quit(); print(); break; }
+                continue;
+            }
             try {
                 if (command === 'start') controls.start();
                 else if (command === 'stop') await controls.stop();

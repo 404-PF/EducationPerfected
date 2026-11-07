@@ -5,11 +5,11 @@ const { createServer } = require('./mock-ep');
 const { cleanupTestProcess } = require('./test-process-cleanup');
 // Unlike cli-test.js this focused fixture waits for EP_TEST_LOGIN_READY before login.
 // cli-test.js deliberately exercises earlier startup and external close/signal paths.
-async function bootFixtureCli(entry, prompt) {
+async function bootFixtureCli(entry, prompt, extraEnv = {}) {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const origin = 'http://127.0.0.1:' + server.address().port;
-    const env = { ...process.env, EP_TEST_BOOT: '1', EP_LOGIN_URL: origin + '/app/login', EP_LOGIN_HOST: '127.0.0.1' };
+    const env = { ...process.env, ...extraEnv, EP_TEST_BOOT: '1', EP_LOGIN_URL: origin + '/app/login', EP_LOGIN_HOST: '127.0.0.1' };
     delete env.EP_EMAIL; delete env.EP_PASSWORD;
     let child, browser, output = '';
     const cleanup = async () => {

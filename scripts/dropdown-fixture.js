@@ -1,14 +1,14 @@
 // Invented source-derived fixture, not captured student DOM.
-function installDropdownFixture(){
+function installDropdownFixture(count=5){
     const old=document.querySelector('.multi-choice-component');
     const self=window.angular.element(old).scope().self,q=self.model._currentQuestion;self.model.gameMode=3;
     const group=document.createElement('div');group.className='synthetic-dropdown-container';old.replaceWith(group);
     q.questionDef.Components=[];const base={};q.cachedRenderers={1:{identifiedComponents:{baseComponents:base}}};
     const f=window.dropdownFixture={self,q,group,base,keys:[],changes:[],submits:0,nexts:0};
     const angular=window.angular;window.angular={...angular,element:el=>el===group?{scope:()=>({self})}:angular.element(el)};
-    document.querySelector('#question-container-group').textContent='Synthetic dropdown formula: choose five answers.';
+    document.querySelector('#question-container-group').textContent=count===1?'Synthetic dropdown formula: choose one answer.':'Synthetic dropdown formula: choose five answers.';
     const diagram=document.createElement('img');diagram.alt='Synthetic static circle diagram';diagram.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="40" fill="lightblue"/></svg>');group.append(diagram,document.createElement('br'));
-    for(const [i,answer]of ['Radius','Circumference','Circumference','2','Radius'].entries()){
+    for(const [i,answer]of ['Radius','Circumference','Circumference','2','Radius'].slice(0,count).entries()){
         const id='dropdown-'+i,options=[{Description:'wrong',Correct:'false',Validity:'true',SortOrder:0},{Description:answer,Correct:'true',Validity:'true',SortOrder:1}];
         const def={ComponentTypeCode:'DROPDOWN_COMPONENT',ComponentID:id,Marked:1,Options:JSON.parse(JSON.stringify(options)),DefaultSelection:{Description:'',Correct:'false',Validity:'true',SortOrder:0}};
         q.questionDef.Components.unshift(def);const metadata=JSON.parse(JSON.stringify(def)),original=metadata.Options.concat();
