@@ -18,6 +18,32 @@ for(const mutation of ['answer','identity','advance','ineffective']){
  await setup();await page.evaluate(m=>{const f=dropdownFixture;f.afterChange=()=>{const c=f.base['dropdown-0'][0];if(m==='answer')c.componentState.metadataInstance.Options[1].Correct='false';if(m==='identity')f.q.cachedRenderers[1]={...f.q.cachedRenderers[1]};if(m==='advance')f.q.questionIndex++;if(m==='ineffective')c.componentState._selectedOption=null;};},mutation);
  const run=factory();assert.equal((await run(page)).status,'stopped',mutation);assert.equal((await run(page)).reason,'attempt-consumed');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[2,0,0]);
 }
+// Same-read diagnostics distinguish zero-visible-change stops without another key or poll.
+for(const [mutation,phase,guard,keys] of [
+ ['focus','focus','focus-mismatch',0],
+ ['home','after-home','selected-index-mismatch',1],
+ ['arrow','after-arrow','selected-index-mismatch',2],
+ ['cache','after-arrow','cached-selection-identity',2],
+ ['identity','after-arrow','baseline-changed',2]
+]){
+ await setup();await page.evaluate(m=>{
+  const f=dropdownFixture,c=f.base['dropdown-0'][0],el=c.dropDownList;
+  if(m==='focus'){el.addEventListener('focus',()=>f.base['dropdown-1'][0].dropDownList.focus());return;}
+  f.beforeKey=e=>{
+   if(m==='arrow'&&e.key==='ArrowDown')e.preventDefault();
+   if(m==='home'&&e.key==='Home'){e.preventDefault();el.selectedIndex=1;c.componentState._selectedOption=c.componentState._shuffledOptions[1];}
+  };
+  f.afterChange=()=>{
+   if(m==='cache')c.componentState._selectedOption=null;
+   if(m==='identity')f.q.cachedRenderers[1]={...f.q.cachedRenderers[1]};
+  };
+ },mutation);
+ const run=factory(),result=await run(page);
+ assert.equal(result.reason,'selection-not-verified-may-be-partial',mutation);
+ assert.deepEqual(result.selectionDiagnostic,{phase,dropdownIndex:0,keyDispatchesReturned:keys,guard},mutation);
+ assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[keys,0,0],mutation);
+ assert.equal((await run(page)).reason,'attempt-consumed');
+}
 // The final reader is bound to the baseline before any input, not a new snapshot.
 for(const mutation of ['renderer','answer','button','covered','cancel']){
  await setup();let cancelled=false;const run=factory(async(...args)=>{const result=await playDropdownRound(...args);await page.evaluate(m=>{const f=dropdownFixture;if(m==='renderer')f.q.cachedRenderers[1]={...f.q.cachedRenderers[1]};if(m==='answer')f.base['dropdown-0'][0].componentState.metadataInstance.Options[1].Correct='false';if(m==='button')document.querySelector('#sa-navigation-controls button').disabled=true;if(m==='covered'){const cover=document.createElement('div');Object.assign(cover.style,{position:'fixed',inset:'0',zIndex:'999999',background:'white'});document.body.append(cover);}},mutation);if(mutation==='cancel')cancelled=true;return result;});
@@ -27,7 +53,7 @@ await setup();let cancelled=false;await page.exposeFunction('cancelOnceTest',()=
 await setup();const early=factory();assert.equal((await early(page,{shouldStop:()=>true})).status,'aborted');assert.equal((await early(page)).reason,'attempt-consumed');assert.equal(await page.evaluate(()=>dropdownFixture.keys.length),0);
 // Simulate uncertain mouse dispatch after it landed. No retry even on a new page.
 await setup();const click=page.mouse.click.bind(page.mouse);page.mouse.click=async(...args)=>{await click(...args);throw Error('uncertain dispatch');};const uncertain=factory();assert.equal((await uncertain(page)).status,'stopped');assert.equal(await page.evaluate(()=>dropdownFixture.submits),1);page.mouse.click=click;await setup();assert.equal((await uncertain(page)).reason,'attempt-consumed');assert.equal(await page.evaluate(()=>dropdownFixture.keys.length),0);
-await setup();const replaced=factory(async(p,d,o)=>{await p.evaluate(()=>{dropdownFixture.self.model._currentQuestion={...dropdownFixture.q};});return playDropdownRound(p,d,o);});assert.equal((await replaced(page)).status,'stopped');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[0,0]);assert.equal((await replaced(page)).reason,'attempt-consumed');
+await setup();const replaced=factory(async(p,d,o)=>{await p.evaluate(()=>{dropdownFixture.self.model._currentQuestion={...dropdownFixture.q};});return playDropdownRound(p,d,o);});const replacementResult=await replaced(page);assert.equal(replacementResult.status,'stopped');assert.deepEqual(replacementResult.selectionDiagnostic,{phase:'baseline',dropdownIndex:null,keyDispatchesReturned:0,guard:'baseline-changed'});assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[0,0]);assert.equal((await replaced(page)).reason,'attempt-consumed');
 // Negative control demonstrates the replacement would otherwise receive input.
 await setup();const unbound=factory(async(p,d,o)=>{await p.evaluate(()=>{dropdownFixture.self.model._currentQuestion={...dropdownFixture.q};});const {baseline,...without}=o;return playDropdownRound(p,d,without);});assert.equal((await unbound(page)).status,'stopped');assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[15,0]);
 // Logging alone is not the verification checkpoint.
