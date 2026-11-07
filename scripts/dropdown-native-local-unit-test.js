@@ -1,6 +1,11 @@
 const assert=require('node:assert/strict');
 const {EventEmitter}=require('node:events');
-const {runLocal}=require('./dropdown-native-local');
+const {runLocal,localVariant}=require('./dropdown-native-local');
+assert.equal(localVariant([]),'legacy');
+assert.equal(localVariant(['--f4-popup']),'f4-popup');
+assert.equal(localVariant(['--variant=f4-popup']),'f4-popup');
+assert.equal(localVariant(['--variant','f4-popup']),'f4-popup');
+assert.throws(()=>localVariant(['--variant=other']),/Unknown local dropdown variant/);
 async function testShutdown() {
     const signals=new EventEmitter();
     let release,closed=0,pageReads=0;
