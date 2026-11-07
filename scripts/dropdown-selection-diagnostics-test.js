@@ -38,13 +38,48 @@ async function testDiagnostics() {
    },mutation);
    const run=factory(), result=await run(page);
    assert.equal(result.reason,'selection-not-verified-may-be-partial',mutation);
-   assert.deepEqual(result.selectionDiagnostic,{phase,dropdownIndex:0,keyDispatchesReturned:keys,guard},mutation);
+   const {nativeState,...diagnostic}=result.selectionDiagnostic;
+   assert.deepEqual(diagnostic,{phase,dropdownIndex:0,keyDispatchesReturned:keys,guard},mutation);
+   if(mutation==='arrow')assert.deepEqual(nativeState,{actual:[0,0,0,0,0],expected:[1,0,0,0,0],focusedDropdownIndex:0});
+   if(mutation==='focus')assert.equal(nativeState.focusedDropdownIndex,1);
+   if(mutation==='home')assert.deepEqual(nativeState.actual,[1,0,0,0,0]);
    assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[keys,0,0],mutation);
    assert.equal((await run(page)).reason,'attempt-consumed');
   }
+  async function delayedKey(mutation) {
+   await setup();
+   await page.evaluate(m=>{
+    const f=dropdownFixture;
+    let delayed=false;
+    f.beforeKey=e=>{
+     if(e.key!=='ArrowDown'||delayed)return;
+     delayed=true;e.preventDefault();
+     const select=e.target,component=f.base[select.id][0];
+     setTimeout(()=>{
+      if(m==='identity'){f.q.cachedRenderers[1]={...f.q.cachedRenderers[1]};return;}
+      if(m==='focus'){f.base['dropdown-1'][0].dropDownList.focus();return;}
+      select.selectedIndex=1;
+      component.componentState._selectedOption=component.componentState._shuffledOptions[1];
+     },60);
+    };
+   },mutation);
+   const run=factory(),result=await run(page);
+   if(mutation==='settle') {
+    assert.equal(result.status,'submitted-once');
+    assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[15,1,0]);
+   } else {
+    assert.equal(result.selectionDiagnostic.guard,mutation==='identity'?'baseline-changed':'focus-mismatch');
+    assert.equal(result.selectionDiagnostic.keyDispatchesReturned,2);
+    assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[2,0,0]);
+   }
+   assert.equal((await run(page)).reason,'attempt-consumed');
+  }
+  await delayedKey('settle');
+  await delayedKey('identity');
+  await delayedKey('focus');
   await scenario('focus','focus','focus-mismatch',0);
   await scenario('home','after-home','selected-index-mismatch',1);
-  await scenario('arrow','after-arrow','selected-index-mismatch',2);
+  await scenario('arrow','after-arrow','key-state-did-not-settle',2);
   await scenario('cache','after-arrow','cached-selection-identity',2);
   await scenario('identity','after-arrow','baseline-changed',2);
   await scenario('hidden','after-arrow','no-visible-selects',2);
