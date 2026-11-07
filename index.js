@@ -363,7 +363,9 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false } = {}) {
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownInputMode = 'legacy' } = {}) {
+    if (dropdownInputMode !== 'legacy' && dropdownInputMode !== 'f4-popup') throw new Error('Unsupported dropdown input mode.');
+    if (dropdownInputMode !== 'legacy' && !dropdownSubmitOnce) throw new Error('Dropdown input mode requires dropdown validation.');
     if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly, dropdownSubmitOnce, multiSelectOnly].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
@@ -2353,7 +2355,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     return result;
                 } finally { TOGGLE = false; }
             };
-            const submitDropdownOnce = createSubmitDropdownOnce({ detectQuestion, playDropdownRound });
+            const submitDropdownOnce = createSubmitDropdownOnce({ detectQuestion, playDropdownRound, inputMode: dropdownInputMode });
             const runDropdownSubmitOnce = async () => {
                 TOGGLE = true;
                 try {
