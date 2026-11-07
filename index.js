@@ -2370,6 +2370,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                 refresh: refreshWords,
                 close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
             });
+            if (dropdownSubmitOnce) controls.inspectDropdowns = () => require('./lib/dropdown-diagnostics').collectDropdownDiagnostics(page,{definitionsOnly:true});
             browser.on('disconnected', () => controls.browserClosed());
 
             // Expose API functions to the page (for hotkey event listeners to call).
