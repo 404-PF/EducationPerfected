@@ -92,13 +92,14 @@ await page.goto(origin+'/lesson-dropdown?count=1&variant=variables');
 {const vd=await detectQuestion(page);assert.equal(vd.kind,'dropdown',JSON.stringify(vd));assert.equal(vd.dropdowns.length,1);assert.equal(vd.dropdowns[0].answer,'42 right');
 const vr=await playDropdownRound(page,vd,{enter:true,timeout:300});assert.equal(vr.status,'advanced');
 assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submittedSelections,dropdownFixture.submits,dropdownFixture.nexts]),[[['42 right','42 right']],1,0]);}
-const variableRefusal=async(mutate,guard)=>{
+const variableRefusal=async(mutate,guard,extra)=>{
  await page.goto(origin+'/lesson-dropdown?count=1&variant=variables');
  await page.evaluate(mutate);
  const bad=await detectQuestion(page);assert.equal(bad.kind,'unsupported');
  assert.deepEqual(bad.diagnostic,{kind:'dropdown-refusal',guard,domSelectCount:1});
  assert.equal((await playDropdownRound(page,bad,{enter:true,timeout:50})).status,'stopped');
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[0,0,0]);
+ if(extra)await extra();
 };
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts[0].text='tampered';},'raw-original-options');
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts.push({text:'extra'});},'raw-original-options');
@@ -109,5 +110,14 @@ await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.correctInjectors.length=1;},'option-injector-shape');
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts[0].temporaryVariable={expression:'n'};},'option-injector-shape');
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts[1]={temporaryVariable:{}};},'option-injector-shape');
-console.log('Dropdown source-derived browser fixtures PASS: five DOM-ordered controls, 15 trusted keys / 10 trusted changes / one Submit; exact fill-only0Submit; 29 initial refusals,10 post-key stops, event-driven cancellation; variable-template slide fills+submits, nine injector/ref raw refusals0input. Synthetic Linux only; intermediate selections occur.');
+await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts=[{text:'{n} wrong'}];},'option-injector-shape');
+await variableRefusal(()=>{const d=dropdownFixture.q.questionDef.Components.find(d=>d.ComponentID==='dropdown-0');Object.defineProperty(d.Options[0],'SortOrder',{value:7,enumerable:false});},'raw-original-options');
+await variableRefusal(()=>{const d=dropdownFixture.q.questionDef.Components.find(d=>d.ComponentID==='dropdown-0');window.__validityReads=0;Object.defineProperty(d.Options[0],'Validity',{get(){window.__validityReads++;return 'true';}});},'raw-original-options',async()=>{assert.equal(await page.evaluate(()=>window.__validityReads),0);});
+// In-place sorted display metadata keeps def/original/injector alignment.
+await page.goto(origin+'/lesson-dropdown?count=1&variant=variables');
+await page.evaluate(()=>{const c=dropdownFixture.base['dropdown-0'][0],s=c.componentState;s.metadataInstance.Options=s._shuffledOptions;[s._shuffledOptions[1],s._shuffledOptions[2]]=[s._shuffledOptions[2],s._shuffledOptions[1]];[...c.dropDownList.options].forEach((o,i)=>o.textContent=s._shuffledOptions[i].Description);});
+{const rd=await detectQuestion(page);assert.equal(rd.kind,'dropdown');assert.equal(rd.dropdowns[0].answer,'42 right');
+assert.equal((await playDropdownRound(page,rd,{enter:true,timeout:300})).status,'advanced');
+assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submittedSelections,dropdownFixture.submits]),[[['42 right','42 right']],1]);}
+console.log('Dropdown source-derived browser fixtures PASS: five DOM-ordered controls, 15 trusted keys / 10 trusted changes / one Submit; exact fill-only0Submit; 29 initial refusals,10 post-key stops, event-driven cancellation; variable-template slide fills+submits, twelve injector/ref raw refusals0input, reordered variable metadata submits. Synthetic Linux only; intermediate selections occur.');
 }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exitCode=1;});
