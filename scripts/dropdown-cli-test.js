@@ -16,14 +16,14 @@ async function installSubmitCompletion(page) {
     });
 }
 
-async function bootDropdownCli(count, extraEnv = {}) {
+async function bootDropdownCli(count, extraEnv = {}, variant = '') {
     const session = await bootFixtureCli('cli.js', 'Commands: start', extraEnv);
-    await session.page.goto(session.origin + '/lesson-dropdown?count=' + count);
+    await session.page.goto(session.origin + '/lesson-dropdown?count=' + count + (variant ? '&variant=' + variant : ''));
     return session;
 }
 
-async function assertMultiDropdownSuccess(count, extraEnv = {}) {
-    const session = await bootDropdownCli(count, extraEnv);
+async function assertMultiDropdownSuccess(count, extraEnv = {}, variant = '') {
+    const session = await bootDropdownCli(count, extraEnv, variant);
     const { child, page, wait } = session;
     try {
         await installPopupEmulation(page);
@@ -77,19 +77,19 @@ async function assertMidSequenceFailure() {
     }
 }
 
-async function assertDetectionRefusal() {
-    const session = await bootDropdownCli(3);
+async function assertCliRefusal(count, variant, mutate, diagnosticLine, forbiddenText) {
+    const session = await bootDropdownCli(count, {}, variant);
     const { child, page, wait } = session;
     try {
-        await page.evaluate(() => { dropdownFixture.base['dropdown-0'][0].marked = 0; });
+        await page.evaluate(mutate);
         child.stdin.write('mode auto\n');
         await wait(() => session.output.includes('"mode":"auto"'));
         const offset = session.output.length;
         child.stdin.write('start\n');
         await wait(() => session.output.slice(offset).includes('Lesson dropdowns: unsafe, unsupported or changed renderer state'));
         const refusalOutput = session.output.slice(offset);
-        assert.equal(refusalOutput.split('\n').includes('Unsupported question diagnostic {"kind":"dropdown-refusal","guard":"component-marked","domSelectCount":3}'), true);
-        assert.equal(refusalOutput.includes('Radius'), false);
+        assert.equal(refusalOutput.split('\n').includes(diagnosticLine), true);
+        assert.equal(refusalOutput.includes(forbiddenText), false);
         assert.deepEqual(await page.evaluate(() => [dropdownFixture.keys.length, dropdownFixture.submits, dropdownFixture.nexts]), [0, 0, 0]);
         child.stdin.write('quit\n');
         await wait(() => child.exitCode !== null);
@@ -99,11 +99,21 @@ async function assertDetectionRefusal() {
     }
 }
 
+async function assertDetectionRefusal() {
+    await assertCliRefusal(3, '', () => { dropdownFixture.base['dropdown-0'][0].marked = 0; }, 'Unsupported question diagnostic {"kind":"dropdown-refusal","guard":"component-marked","domSelectCount":3}', 'Radius');
+}
+
+async function assertVariableTemplateRefusal() {
+    await assertCliRefusal(1, 'variables', () => { dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts[0].text = 'tampered'; }, 'Unsupported question diagnostic {"kind":"dropdown-refusal","guard":"raw-original-options","domSelectCount":1}', '42 right');
+}
+
 (async () => {
     await assertMultiDropdownSuccess(2);
     await assertMultiDropdownSuccess(3);
     await assertMultiDropdownSuccess(5, { EP_DROPDOWN_INPUT: 'legacy' });
+    await assertMultiDropdownSuccess(1, {}, 'variables');
     await assertMidSequenceFailure();
     await assertDetectionRefusal();
-    console.log('Dropdown normal CLI PASS: F4 popup handles two, three and five dropdowns in order, ignores EP_DROPDOWN_INPUT=legacy, asks once before one Submit, stops a mid-sequence failure without Submit, and prints the sanitized mid-sequence and detection refusal diagnostics. Synthetic Linux only.');
+    await assertVariableTemplateRefusal();
+    console.log('Dropdown normal CLI PASS: F4 popup handles two, three and five dropdowns in order plus a variable-template slide, ignores EP_DROPDOWN_INPUT=legacy, asks once before one Submit, stops a mid-sequence failure without Submit, and prints the sanitized mid-sequence, detection and injector refusal diagnostics. Synthetic Linux only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
