@@ -46,11 +46,11 @@ function expectedDiagnostic(componentTypes, controls) {
     const { child, page, origin, wait } = session;
     try {
         await page.goto(origin + '/lesson');
-        await installUnsupportedSlide(page, 'NUMBER_BOX_COMPONENT');
+        await installUnsupportedSlide(page, 'FILE_UPLOADER_COMPONENT');
         let descriptor = await detectQuestion(page);
         assert.equal(descriptor.kind, 'unsupported');
         assert.equal(descriptor.reason, 'lesson slide with an unsupported question type (not text, choice, or audio)');
-        assert.deepEqual(descriptor.diagnostic, expectedDiagnostic(['NUMBER_BOX_COMPONENT'], 'input'));
+        assert.deepEqual(descriptor.diagnostic, expectedDiagnostic(['FILE_UPLOADER_COMPONENT'], 'input'));
 
         await page.goto(origin + '/lesson');
         await installUnsupportedSlide(page, 'LONG_ANSWER_COMPONENT', 'textarea');
@@ -65,11 +65,11 @@ function expectedDiagnostic(componentTypes, controls) {
         assert.equal(JSON.stringify(descriptor.diagnostic).includes('Private unsupported question content'), false);
 
         await page.goto(origin + '/lesson');
-        await installUnsupportedSlide(page, 'NUMBER_BOX_COMPONENT');
+        await installUnsupportedSlide(page, 'FILE_UPLOADER_COMPONENT');
         const offset = session.output.length;
         child.stdin.write('start\n');
         await wait(() => session.output.slice(offset).includes('lesson slide with an unsupported question type (not text, choice, or audio)'));
-        const diagnosticLine = 'Unsupported question diagnostic ' + JSON.stringify(expectedDiagnostic(['NUMBER_BOX_COMPONENT'], 'input'));
+        const diagnosticLine = 'Unsupported question diagnostic ' + JSON.stringify(expectedDiagnostic(['FILE_UPLOADER_COMPONENT'], 'input'));
         assert.equal(session.output.slice(offset).includes(diagnosticLine), true);
         assert.deepEqual(await page.evaluate(() => [window.unsupportedInputEvents, window.unsupportedSubmits]), [0, 0]);
         child.stdin.write('quit\n');
@@ -78,5 +78,5 @@ function expectedDiagnostic(componentTypes, controls) {
     } finally {
         await session.cleanup();
     }
-    console.log('Unsupported question diagnostic PASS: number-box and long-answer component types are named, unlisted types and question content stay redacted, and the real CLI stops with zero input or Submit. Synthetic only.');
+    console.log('Unsupported question diagnostic PASS: file-uploader and long-answer component types are named, unlisted types and question content stay redacted, and the real CLI stops with zero input or Submit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

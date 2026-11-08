@@ -19,7 +19,7 @@ async function assertBoundary(page, route, prepare) {
     await page.goto(route, { waitUntil: 'domcontentloaded' });
     if (prepare) await page.evaluate(prepare);
     await page.evaluate(() => {
-        const fixture = window.dropdownFixture || window.textboxFixture || window.gapsFixture || window.multiFixture;
+        const fixture = window.dropdownFixture || window.textboxFixture || window.numberBoxFixture || window.gapsFixture || window.multiFixture;
         const self = fixture?.self || window.angular.element().scope().self;
         self.model.gameMode = 2;
     });
@@ -96,7 +96,7 @@ async function assertBoundary(page, route, prepare) {
 
         // Mode-only fallbacks cover every supported question shape when the
         // assessment shell is absent or has not mounted yet.
-        for (const route of ['/lesson', '/lesson-dropdown', '/lesson-textbox', '/lesson-gaps', '/lesson-multi', '/audio', '/task/play']) {
+        for (const route of ['/lesson', '/lesson-dropdown', '/lesson-textbox', '/lesson-number-box', '/lesson-gaps', '/lesson-multi', '/audio', '/task/play']) {
             await assertBoundary(page, `${origin}${route}`);
         }
         await assertBoundary(page, `${origin}/lesson`, () => {
@@ -109,7 +109,7 @@ async function assertBoundary(page, route, prepare) {
         if (browser) await browser.close();
         await new Promise(resolve => server.close(resolve));
     }
-    console.log('Assessment boundary PASS: source shell stops before answer reads and pins contradiction cases; gameMode 2 refuses choice, dropdown, textbox, gaps, multi-select, audio, classic text and typed lesson with zero clicks/input/keys/submits.');
+    console.log('Assessment boundary PASS: source shell stops before answer reads and pins contradiction cases; gameMode 2 refuses choice, dropdown, textbox, number-box, gaps, multi-select, audio, classic text and typed lesson with zero clicks/input/keys/submits.');
 })().catch(error => {
     console.error(error);
     process.exitCode = 1;

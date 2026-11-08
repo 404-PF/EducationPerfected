@@ -14,7 +14,7 @@ const http = require('node:http');
 const { installMultiChoiceFixture } = require('./multi-choice-fixture');
 const { installGapsFixture } = require('./gaps-fixture');
 const { installDropdownFixture } = require('./dropdown-fixture');
-const { installTextboxFixture } = require('./textbox-fixture');
+const { installInputBoxFixture, inputBoxFixtures } = require('./textbox-fixture');
 
 const WORDS = [
     ['one', 'eins'],
@@ -420,7 +420,8 @@ function createServer() {
             const count = Number.parseInt(url.searchParams.get('count') || '5', 10) || 5;
             return send(lessonPage(false).replace('</body></html>', `<script>(${installDropdownFixture.toString()})(${count});</script></body></html>`));
         }
-        if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installTextboxFixture.toString()})();</script></body></html>`));
+        if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures.textbox)});</script></body></html>`));
+        if (url.pathname === '/lesson-number-box') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures.numberbox)});</script></body></html>`));
         if (url.pathname === '/lesson-gaps') return send(lessonPage(false).replace('</body></html>', `<script>(${installGapsFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-async') return send(lessonAsyncPage);

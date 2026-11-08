@@ -6,7 +6,7 @@ const { audioAllowed, audioPolicyUnchanged } = require('./lib/audio-policy');
 const { playChoiceRound } = require('./lib/choice-handler');
 const { playGapsRound } = require('./lib/gaps-handler');
 const { playDropdownRound } = require('./lib/dropdown-handler');
-const { playTextboxRound } = require('./lib/textbox-handler');
+const { playTextboxRound, playNumberBoxRound } = require('./lib/textbox-handler');
 const { createRunControls } = require('./lib/run-controls');
 const { createFillGapsOnce } = require('./lib/gaps-fill-once');
 const { createFillTextboxesOnce } = require('./lib/textbox-fill-once');
@@ -363,7 +363,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover } = {}) {
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover, numberBoxSubmitApprover } = {}) {
     // F4 popup is the only normal-run dropdown input path. The older
     // Home/ArrowDown mechanism remains only in explicit synthetic regression
     // fixtures and the local EP-free diagnostic; there is no env rollback.
@@ -778,6 +778,14 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
             let runReason = 'stopped';
+            const submitApprovalCancellers = new Set();
+            const onSubmitApprovalCancel = cancel => {
+                submitApprovalCancellers.add(cancel);
+                return () => submitApprovalCancellers.delete(cancel);
+            };
+            const cancelSubmitApprovals = () => {
+                for (const cancel of [...submitApprovalCancellers]) cancel();
+            };
 
             // How long to wait for EP to move on to the next question after a submission.
             // EP round-trips (large class, slow backend, transient lag) can legitimately
@@ -1729,6 +1737,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                 { type: 'choice', play: playSelectionDescriptorRound },
                 { type: 'gaps', play: playSelectionDescriptorRound },
                 { type: 'textbox', play: playSelectionDescriptorRound },
+                { type: 'numberbox', play: playSelectionDescriptorRound },
                 { type: 'dropdown', play: playSelectionDescriptorRound },
                 { type: 'audio', play: handleTypedRound },
                 { type: 'typed', play: handleTypedRound },
@@ -1772,7 +1781,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         console.log('Selection slide changed during detection; re-reading it in a fresh pass.');
                         return true;
                     }
-                    const play = descriptor.kind === 'dropdown' ? playDropdownRound : descriptor.kind === 'textbox' ? playTextboxRound : descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
+                    const play = descriptor.kind === 'dropdown' ? playDropdownRound : descriptor.kind === 'numberbox' ? playNumberBoxRound : descriptor.kind === 'textbox' ? playTextboxRound : descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
                     const result = await play(page, again, {
                         enter: ENTER,
                         timeout: ADVANCE_TIMEOUT,
@@ -1781,7 +1790,10 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         ...(again.kind === 'dropdown' ? {
                             inputMode: dropdownInputMode,
                             requireSubmitApproval: ENTER,
-                            approveSubmit: async request => typeof dropdownSubmitApprover === 'function' ? await dropdownSubmitApprover(request) : false,
+                            approveSubmit: async request => typeof dropdownSubmitApprover === 'function' ? await dropdownSubmitApprover(request, onSubmitApprovalCancel) : false,
+                        } : again.kind === 'numberbox' ? {
+                            requireSubmitApproval: ENTER,
+                            approveSubmit: async request => typeof numberBoxSubmitApprover === 'function' ? await numberBoxSubmitApprover(request, onSubmitApprovalCancel) : false,
                         } : {}),
                     });
                     if (result.status === 'advanced') return TOGGLE;
@@ -1802,7 +1814,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         // rejection (EP shows info/completion modals too), and the
                         // wrong-answer modal for choice questions has never been
                         // observed live. Stop and report rather than guess which it is.
-                        const roundLabel = descriptor.kind === 'textbox' ? 'textbox' : 'selection';
+                        const roundLabel = descriptor.kind === 'textbox' ? 'textbox' : descriptor.kind === 'numberbox' ? 'number-box' : 'selection';
                         console.error(`A modal appeared during the ${roundLabel} round; stopping so it can be checked. The submission may or may not have been accepted.`);
                         await alert(`A modal interrupted the ${roundLabel} round; stopping the run.`);
                         return false;
@@ -2379,7 +2391,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly;
             const controls = createRunControls({
                 run: multiSelectOnly ? runMultiSelectOnly : dropdownSubmitOnce ? runDropdownSubmitOnce : textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
-                requestStop: () => { TOGGLE = false; },
+                requestStop: () => { TOGGLE = false; cancelSubmitApprovals(); },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
                 close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
