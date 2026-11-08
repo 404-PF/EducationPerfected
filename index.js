@@ -1743,6 +1743,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             async function handleNonTextRound(descriptor) {
                 if (!TOGGLE) return false;
                 if (descriptor.kind === 'unsupported') {
+                    if (descriptor.diagnostic) console.error('Unsupported question diagnostic ' + JSON.stringify(descriptor.diagnostic));
                     console.error(descriptor.reason);
                     await alert(descriptor.reason);
                     return false;
