@@ -107,5 +107,7 @@ await variableRefusal(()=>{const d=dropdownFixture.q.questionDef.Components.find
 await variableRefusal(()=>{delete dropdownFixture.base['dropdown-0'][0].componentState.descInjectors;},'option-injector-shape');
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.correctInjectors[1].parts=[{}];},'option-injector-shape');
 await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.correctInjectors.length=1;},'option-injector-shape');
-console.log('Dropdown source-derived browser fixtures PASS: five DOM-ordered controls, 15 trusted keys / 10 trusted changes / one Submit; exact fill-only0Submit; 29 initial refusals,10 post-key stops, event-driven cancellation; variable-template slide fills+submits, seven injector/ref raw refusals0input. Synthetic Linux only; intermediate selections occur.');
+await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts[0].temporaryVariable={expression:'n'};},'option-injector-shape');
+await variableRefusal(()=>{dropdownFixture.base['dropdown-0'][0].componentState.descInjectors[0].parts[1]={temporaryVariable:{}};},'option-injector-shape');
+console.log('Dropdown source-derived browser fixtures PASS: five DOM-ordered controls, 15 trusted keys / 10 trusted changes / one Submit; exact fill-only0Submit; 29 initial refusals,10 post-key stops, event-driven cancellation; variable-template slide fills+submits, nine injector/ref raw refusals0input. Synthetic Linux only; intermediate selections occur.');
 }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exitCode=1;});
