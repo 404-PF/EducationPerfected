@@ -12,21 +12,24 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         browser = await puppeteer.launch({ headless: true, executablePath: process.env.HANDLER_EXECUTABLE_PATH || undefined });
         const page = await browser.newPage(), origin = 'http://127.0.0.1:' + server.address().port;
         const setup = () => page.goto(origin + '/lesson-textbox');
+        const unmarkAll = fixtureName => page.evaluate(name => {
+            const f = window[name];
+            for (const def of f.q.questionDef.Components) def.Marked = 0;
+            for (const entry of Object.values(f.base)) entry[0].componentState.metadataInstance.Marked = 0;
+        }, fixtureName);
+        const fillTextboxRound = async () => {
+            const d = await detectQuestion(page);
+            assert.equal(d.kind, 'textbox');
+            assert.equal((await playTextboxRound(page, d, { enter: true, timeout: 1000 })).status, 'advanced');
+            assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.inputs.every(e => e.trusted), textboxFixture.submits]), [9, true, 1]);
+            return d;
+        };
         await setup();
-        let descriptor = await detectQuestion(page);
-        assert.equal(descriptor.kind, 'textbox');
+        let descriptor = await fillTextboxRound();
         assert.deepEqual(descriptor.boxes.map(b => b.answer), ['beta', 'alpha']);
-        assert.equal((await playTextboxRound(page, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
-        assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.inputs.every(e => e.trusted), textboxFixture.submits]), [9, true, 1]);
         await setup();
-        await page.evaluate(() => {
-            for (const def of textboxFixture.q.questionDef.Components) def.Marked = 0;
-            for (const entry of Object.values(textboxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
-        });
-        descriptor = await detectQuestion(page);
-        assert.equal(descriptor.kind, 'textbox');
-        assert.equal((await playTextboxRound(page, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
-        assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.inputs.every(e => e.trusted), textboxFixture.submits]), [9, true, 1]);
+        await unmarkAll('textboxFixture');
+        await fillTextboxRound();
         await setup();
         descriptor = await detectQuestion(page);
         let filled = false;
@@ -193,36 +196,26 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         assert.deepEqual(await page.evaluate(() => numberBoxFixture.inputs.map(e => e.id)), ['box-c', 'box-c', 'box-a', 'box-a', 'box-d', 'box-d', 'box-b', 'box-b', 'box-b', 'box-b', 'box-b']);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 0]);
 
+        const approvedNumberRound = async () => {
+            numberDescriptor = await detectQuestion(page);
+            assert.equal(numberDescriptor.kind, 'numberbox');
+            approvals = [];
+            result = await playNumberBoxRound(page, numberDescriptor, {
+                enter: true,
+                timeout: 1000,
+                requireSubmitApproval: true,
+                approveSubmit: async request => { approvals.push(request); return true; },
+            });
+            assert.equal(result.status, 'advanced');
+            assert.equal(approvals.length, 1);
+            assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 1]);
+        };
         await page.goto(origin + '/lesson-number-box');
-        numberDescriptor = await detectQuestion(page);
-        approvals = [];
-        result = await playNumberBoxRound(page, numberDescriptor, {
-            enter: true,
-            timeout: 1000,
-            requireSubmitApproval: true,
-            approveSubmit: async request => { approvals.push(request); return true; },
-        });
-        assert.equal(result.status, 'advanced');
-        assert.equal(approvals.length, 1);
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 1]);
+        await approvedNumberRound();
 
         await page.goto(origin + '/lesson-number-box');
-        await page.evaluate(() => {
-            for (const def of numberBoxFixture.q.questionDef.Components) def.Marked = 0;
-            for (const entry of Object.values(numberBoxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
-        });
-        numberDescriptor = await detectQuestion(page);
-        assert.equal(numberDescriptor.kind, 'numberbox');
-        approvals = [];
-        result = await playNumberBoxRound(page, numberDescriptor, {
-            enter: true,
-            timeout: 1000,
-            requireSubmitApproval: true,
-            approveSubmit: async request => { approvals.push(request); return true; },
-        });
-        assert.equal(result.status, 'advanced');
-        assert.equal(approvals.length, 1);
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 1]);
+        await unmarkAll('numberBoxFixture');
+        await approvedNumberRound();
 
         await page.goto(origin + '/lesson-number-box');
         numberDescriptor = await detectQuestion(page);

@@ -17,11 +17,12 @@ async function bootNumberBoxCli() {
     return session;
 }
 
-async function run(approval, succeed) {
+async function run(approval, succeed, prepare) {
     let session;
     try {
         session = await bootNumberBoxCli();
         const { child, page, wait } = session;
+        if (prepare) await page.evaluate(prepare);
         child.stdin.write('mode auto\n');
         await wait(() => session.output.includes('"mode":"auto"'));
         const offset = session.output.length;
@@ -49,9 +50,15 @@ async function run(approval, succeed) {
     }
 }
 
+const unmarkAllBoxes = () => {
+    for (const def of numberBoxFixture.q.questionDef.Components) def.Marked = 0;
+    for (const entry of Object.values(numberBoxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
+};
+
 (async () => {
     await run('yes', true);
     await run('no', false);
+    await run('yes', true, unmarkAllBoxes);
 
     let session;
     try {
@@ -108,29 +115,6 @@ async function run(approval, succeed) {
         assert.equal(output.includes('"guard":"submit-controls"'), true);
         assert.equal(output.includes('30') || output.includes('94.2'), false);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [11, 0, 0]);
-        child.stdin.write('quit\n');
-        await wait(() => child.exitCode !== null);
-        assert.equal(child.exitCode, 0);
-    } finally {
-        await session?.cleanup();
-    }
-    session = undefined;
-    try {
-        session = await bootNumberBoxCli();
-        const { child, page, wait } = session;
-        await page.evaluate(() => {
-            for (const def of numberBoxFixture.q.questionDef.Components) def.Marked = 0;
-            for (const entry of Object.values(numberBoxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
-        });
-        child.stdin.write('mode auto\n');
-        await wait(() => session.output.includes('"mode":"auto"'));
-        const offset = session.output.length;
-        child.stdin.write('start\n');
-        await wait(() => session.output.slice(offset).includes('Number-box Submit approval required for numberbox:'));
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits, numberBoxFixture.nexts]), [11, true, 0, 0]);
-        child.stdin.write('yes\n');
-        await wait(() => session.output.slice(offset).includes('Lesson completed.'));
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.submits, numberBoxFixture.nexts]), [1, 0]);
         child.stdin.write('quit\n');
         await wait(() => child.exitCode !== null);
         assert.equal(child.exitCode, 0);
