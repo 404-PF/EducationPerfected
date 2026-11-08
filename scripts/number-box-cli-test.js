@@ -17,11 +17,12 @@ async function bootNumberBoxCli() {
     return session;
 }
 
-async function run(approval, succeed) {
+async function run(approval, succeed, prepare) {
     let session;
     try {
         session = await bootNumberBoxCli();
         const { child, page, wait } = session;
+        if (prepare) await page.evaluate(prepare);
         child.stdin.write('mode auto\n');
         await wait(() => session.output.includes('"mode":"auto"'));
         const offset = session.output.length;
@@ -49,9 +50,36 @@ async function run(approval, succeed) {
     }
 }
 
+const unmarkAllBoxes = () => {
+    for (const def of numberBoxFixture.q.questionDef.Components) def.Marked = 0;
+    for (const entry of Object.values(numberBoxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
+};
+
+async function expectRefusal(prepare, guard, expectedInputs) {
+    let session;
+    try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
+        await page.evaluate(prepare);
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
+        const output = String(session.output.slice(offset));
+        assert.equal(output.includes(`"guard":"${guard}"`), true);
+        assert.equal(output.includes('30') || output.includes('94.2'), false);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [expectedInputs, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session?.cleanup();
+    }
+}
+
 (async () => {
     await run('yes', true);
     await run('no', false);
+    await run('yes', true, unmarkAllBoxes);
 
     let session;
     try {
@@ -73,71 +101,15 @@ async function run(approval, succeed) {
     } finally {
         await session?.cleanup();
     }
-    session = undefined;
-    try {
-        session = await bootNumberBoxCli();
-        const { child, page, wait } = session;
-        await page.evaluate(() => { numberBoxFixture.self.sectionData.activityGroup.isAutoMarked = false; });
-        const offset = session.output.length;
-        child.stdin.write('start\n');
-        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
-        const output = String(session.output.slice(offset));
-        assert.equal(output.includes('"guard":"model-or-auto-mark"'), true);
-        assert.equal(output.includes('30') || output.includes('94.2'), false);
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [0, 0, 0]);
-        child.stdin.write('quit\n');
-        await wait(() => child.exitCode !== null);
-        assert.equal(child.exitCode, 0);
-    } finally {
-        await session?.cleanup();
-    }
-    session = undefined;
-    try {
-        session = await bootNumberBoxCli();
-        const { child, page, wait } = session;
-        await page.evaluate(() => { numberBoxFixture.afterInput = () => {
+    await expectRefusal(() => { numberBoxFixture.self.sectionData.activityGroup.isAutoMarked = false; }, 'model-or-auto-mark', 0);
+    await expectRefusal(() => {
+        numberBoxFixture.afterInput = () => {
             if (numberBoxFixture.inputs.length === 11) {
                 const button = document.querySelector('#sa-navigation-controls button');
                 button.parentElement.append(button.cloneNode(true));
             }
-        }; });
-        const offset = session.output.length;
-        child.stdin.write('start\n');
-        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
-        const output = String(session.output.slice(offset));
-        assert.equal(output.includes('"guard":"submit-controls"'), true);
-        assert.equal(output.includes('30') || output.includes('94.2'), false);
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [11, 0, 0]);
-        child.stdin.write('quit\n');
-        await wait(() => child.exitCode !== null);
-        assert.equal(child.exitCode, 0);
-    } finally {
-        await session?.cleanup();
-    }
-    session = undefined;
-    try {
-        session = await bootNumberBoxCli();
-        const { child, page, wait } = session;
-        await page.evaluate(() => {
-            const d = numberBoxFixture.q.questionDef.Components.find(def => def.ComponentID === 'box-d');
-            d.Marked = 0;
-            numberBoxFixture.base['box-d'][0].marked = 0;
-            numberBoxFixture.base['box-d'][0].componentState.metadataInstance.Marked = 0;
-        });
-        const offset = session.output.length;
-        child.stdin.write('start\n');
-        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
-        const output = String(session.output.slice(offset));
-        assert.equal(output.includes('"guard":"component-marked"'), true);
-        assert.equal(output.includes('"unmarkedDefCount":1'), true);
-        assert.equal(output.includes('"unmarkedRuntimeMarkedZeroCount":1'), true);
-        assert.equal(output.includes('30') || output.includes('94.2') || output.includes('box-d'), false);
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [0, 0, 0]);
-        child.stdin.write('quit\n');
-        await wait(() => child.exitCode !== null);
-        assert.equal(child.exitCode, 0);
-    } finally {
-        await session?.cleanup();
-    }
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit and component-marked refusal diagnostics, proven completion, no Next, clean quit. Synthetic only.');
+        };
+    }, 'submit-controls', 11);
+    await expectRefusal(() => { numberBoxFixture.base['box-c'][0].marked = 0; }, 'state-shape', 0);
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit and runtime-marked refusal diagnostics, authored-unmarked slide completes, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
