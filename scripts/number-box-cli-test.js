@@ -73,5 +73,46 @@ async function run(approval, succeed) {
     } finally {
         await session?.cleanup();
     }
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, proven completion, no Next, clean quit. Synthetic only.');
+    session = undefined;
+    try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
+        await page.evaluate(() => { numberBoxFixture.self.sectionData.activityGroup.isAutoMarked = false; });
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
+        const output = String(session.output.slice(offset));
+        assert.equal(output.includes('"guard":"model-or-auto-mark"'), true);
+        assert.equal(output.includes('30') || output.includes('94.2'), false);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [0, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session?.cleanup();
+    }
+    session = undefined;
+    try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
+        await page.evaluate(() => { numberBoxFixture.afterInput = () => {
+            if (numberBoxFixture.inputs.length === 11) {
+                const button = document.querySelector('#sa-navigation-controls button');
+                button.parentElement.append(button.cloneNode(true));
+            }
+        }; });
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
+        const output = String(session.output.slice(offset));
+        assert.equal(output.includes('"guard":"submit-controls"'), true);
+        assert.equal(output.includes('30') || output.includes('94.2'), false);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [11, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session?.cleanup();
+    }
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection and Submit refusal diagnostics, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
