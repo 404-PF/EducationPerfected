@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),puppeteer=require('puppeteer');
 const {createServer}=require('./mock-ep');const {installDropdownFixture}=require('./dropdown-fixture');
 const {detectQuestion}=require('../lib/detect-question');const {playDropdownRound}=require('../lib/dropdown-handler');
+const {readDropdownsInPage}=require('../lib/dropdown-state');
 (async()=>{const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
 const setup=async()=>{await page.goto(origin+'/lesson');await page.evaluate(installDropdownFixture);
@@ -57,6 +58,9 @@ for(const mutation of ['manual','assessment','mixed','unmarked','missing','dupli
  assert.equal((await playDropdownRound(page,bad,{enter:true,timeout:50})).status,'stopped',mutation);
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[0,0,0],mutation);
 }
+// The reportGuard read must surface the guard on the assessment refusal too.
+await setup();await page.evaluate(()=>{dropdownFixture.self.model.gameMode=2;});
+{const r=await page.evaluate(readDropdownsInPage,null,undefined,true);assert.equal(r.guard,'assessment-mode');assert.equal(r.descriptor.assessment,true);assert.equal(r.descriptor.diagnostic,undefined);}
 await setup();await page.evaluate(()=>{const r=dropdownFixture.q.cachedRenderers[1],index=r.identifiedComponents;delete r.identifiedComponents;r.parser={identifiedComponents:index};const prototype=Object.create(Object.getPrototypeOf(r));Object.defineProperty(prototype,'identifiedComponents',{configurable:true,get(){throw new Error('must not invoke inherited getter');}});Object.setPrototypeOf(r,prototype);});
 assert.equal((await detectQuestion(page)).kind,'dropdown');
 let parserFilled=false;assert.equal((await playDropdownRound(page,await detectQuestion(page),{enter:false,timeout:0,log:()=>{parserFilled=true;},shouldStop:()=>parserFilled})).status,'aborted');
