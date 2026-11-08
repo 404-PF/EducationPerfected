@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),puppeteer=require('puppeteer');
 const {createServer}=require('./mock-ep');const {installDropdownFixture}=require('./dropdown-fixture');
 const {detectQuestion}=require('../lib/detect-question');const {playDropdownRound}=require('../lib/dropdown-handler');
+const {readDropdownsInPage}=require('../lib/dropdown-state');
 (async()=>{const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
 const setup=async()=>{await page.goto(origin+'/lesson');await page.evaluate(installDropdownFixture);
@@ -17,6 +18,7 @@ assert.equal((await playDropdownRound(page,d,{enter:false,timeout:0,log:()=>{fil
 assert.deepEqual(await page.evaluate(()=>[...dropdownFixture.group.querySelectorAll('select')].map(el=>[el.options[el.selectedIndex].textContent,dropdownFixture.base[el.id][0].componentState._selectedOption.Description])),[['Radius','Radius'],['Circumference','Circumference'],['Circumference','Circumference'],['2','2'],['Radius','Radius']]);
 assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.q.questionIndex]),[0,0,0]);
 if(process.env.EP_DROPDOWN_SCREENSHOT)await page.screenshot({path:process.env.EP_DROPDOWN_SCREENSHOT});
+const expectedDropdownGuards={manual:'not-explicit-auto-marked',mixed:'definitions-select-count',unmarked:'component-marked',missing:'raw-original-options',duplicate:'raw-original-options',padded:'raw-original-options',unsafe:'source-option-text-or-flags',twoCorrect:'raw-original-options',noneCorrect:'raw-original-options',invalid:'source-option-text-or-flags',default:'raw-default',selectedMismatch:'cached-blank-identity',foreign:'visual-element',disabled:'select-control-or-model',multiple:'select-control-or-model',size:'select-control-or-model',optgroup:'dom-option-contract',extraInput:'mixed-editable-inputs',extraEditable:'mixed-editable-inputs',rawMismatch:'raw-original-options',lazyGetter:'shuffled-array',extraSelect:'definitions-select-count',optionElement:'dom-option-contract',missingDefault:'default-none-contract',nullDefault:'default-none-contract',indexGetter:'missing-renderer-map',parserGetter:'missing-renderer-map'};
 for(const mutation of ['manual','assessment','mixed','unmarked','missing','duplicate','padded','unsafe','twoCorrect','noneCorrect','invalid','default','selectedMismatch','foreign','disabled','multiple','size','optgroup','extraInput','extraEditable','rawMismatch','lazyGetter','extraSelect','optionElement','missingDefault','nullDefault','indexGetter','parserGetter']){
  await setup();await page.evaluate(m=>{const f=dropdownFixture,c=f.base['dropdown-0'][0],s=c.componentState,o=s.originalDropDownOptions[0];
  if(m==='manual')f.self.sectionData.activityGroup.isAutoMarked=false;
@@ -50,10 +52,15 @@ for(const mutation of ['manual','assessment','mixed','unmarked','missing','dupli
  },mutation);
  assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  const bad=await detectQuestion(page);assert.equal(bad.kind,'unsupported',mutation);
+ if(mutation==='assessment')assert.equal(bad.diagnostic,undefined,mutation);
+ else assert.deepEqual(bad.diagnostic,{kind:'dropdown-refusal',guard:expectedDropdownGuards[mutation],domSelectCount:mutation==='extraSelect'?6:5},mutation);
  assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  assert.equal((await playDropdownRound(page,bad,{enter:true,timeout:50})).status,'stopped',mutation);
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[0,0,0],mutation);
 }
+// The reportGuard read must surface the guard on the assessment refusal too.
+await setup();await page.evaluate(()=>{dropdownFixture.self.model.gameMode=2;});
+{const r=await page.evaluate(readDropdownsInPage,null,undefined,true);assert.equal(r.guard,'assessment-mode');assert.equal(r.descriptor.assessment,true);assert.equal(r.descriptor.diagnostic,undefined);}
 await setup();await page.evaluate(()=>{const r=dropdownFixture.q.cachedRenderers[1],index=r.identifiedComponents;delete r.identifiedComponents;r.parser={identifiedComponents:index};const prototype=Object.create(Object.getPrototypeOf(r));Object.defineProperty(prototype,'identifiedComponents',{configurable:true,get(){throw new Error('must not invoke inherited getter');}});Object.setPrototypeOf(r,prototype);});
 assert.equal((await detectQuestion(page)).kind,'dropdown');
 let parserFilled=false;assert.equal((await playDropdownRound(page,await detectQuestion(page),{enter:false,timeout:0,log:()=>{parserFilled=true;},shouldStop:()=>parserFilled})).status,'aborted');
