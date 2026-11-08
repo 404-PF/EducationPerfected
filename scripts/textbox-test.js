@@ -252,7 +252,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         });
         await page.waitForFunction(() => numberBoxFixture.inputs.length === 11);
         assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('input.number-box-component')].map(input => input.value)), ['30', '30', '30', '94.20']);
-        while (!semiFilled) await new Promise(resolve => setTimeout(resolve, 25));
+        await new Promise(resolve => { const poll = () => semiFilled ? resolve() : setTimeout(poll, 25); poll(); });
         await page.evaluate(() => document.querySelector('#sa-navigation-controls button').click());
         submittedAt = Date.now();
         result = await semiResultPromise;
