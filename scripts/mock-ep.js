@@ -416,7 +416,10 @@ function createServer() {
             return send(taskPage(start));
         }
         if (url.pathname === '/lesson') return send(lessonPage(false));
-        if (url.pathname === '/lesson-dropdown') return send(lessonPage(false).replace('</body></html>', `<script>(${installDropdownFixture.toString()})();</script></body></html>`));
+        if (url.pathname === '/lesson-dropdown') {
+            const count = Number.parseInt(url.searchParams.get('count') || '5', 10) || 5;
+            return send(lessonPage(false).replace('</body></html>', `<script>(${installDropdownFixture.toString()})(${count});</script></body></html>`));
+        }
         if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installTextboxFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-gaps') return send(lessonPage(false).replace('</body></html>', `<script>(${installGapsFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
