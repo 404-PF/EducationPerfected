@@ -1824,6 +1824,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         const { phase, dropdownIndex, keyDispatchesReturned, guard } = result.selectionDiagnostic;
                         console.error('Dropdown refusal diagnostic ' + JSON.stringify({ phase, dropdownIndex, keyDispatchesReturned, guard, dropdownCount: again.dropdowns.length }));
                     }
+                    if ((again.kind === 'textbox' || again.kind === 'numberbox') && result.diagnostic) console.error('Unsupported question diagnostic ' + JSON.stringify(result.diagnostic));
                     console.error(result.message);
                     await alert(result.message);
                     return false;
