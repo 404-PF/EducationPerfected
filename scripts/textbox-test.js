@@ -361,7 +361,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                 if (mutation === 'mixed-type') assert.deepEqual([d.diagnostic.componentTypes.filter(t => t === 'UNLISTED_COMPONENT').length, d.diagnostic.componentIdsValid], [1, true], mutation);
                 if (mutation === 'duplicate-ids') assert.deepEqual([d.diagnostic.componentCount, d.diagnostic.uniqueComponentIds], [4, 3], mutation);
                 if (mutation === 'unmarked-definition') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount], [3, 1], mutation);
-                if (mutation === 'invalid-marked') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount, d.diagnostic.invalidMarkedDefCount], [3, 0, 1], mutation);
+                if (mutation === 'invalid-marked') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount, d.diagnostic.invalidMarkedDefCount, d.diagnostic.invalidMetadataMarkedZeroCount, d.diagnostic.invalidMetadataMarkedOneCount], [3, 0, 1, 0, 1], mutation);
                 if (mutation === 'mismatched-marked') assert.deepEqual([d.diagnostic.metadataMarked, d.diagnostic.metadataMarkedValid, d.diagnostic.definitionMarkedMatches], [0, true, false], mutation);
             } else assert.equal(d.diagnostic, undefined, mutation);
             const refused = await playNumberBoxRound(page, d, {
