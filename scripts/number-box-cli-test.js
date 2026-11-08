@@ -111,5 +111,6 @@ async function expectRefusal(prepare, guard, expectedInputs) {
         };
     }, 'submit-controls', 11);
     await expectRefusal(() => { numberBoxFixture.base['box-c'][0].marked = 0; }, 'state-shape', 0);
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit and runtime-marked refusal diagnostics, authored-unmarked slide completes, proven completion, no Next, clean quit. Synthetic only.');
+    await expectRefusal(() => { const c = numberBoxFixture.base['box-c'][0]; c.visualElement = c.textBox; }, 'state-shape', 0);
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit, runtime-marked and visual-element refusal diagnostics, authored-unmarked slide completes, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
