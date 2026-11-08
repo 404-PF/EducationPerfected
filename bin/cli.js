@@ -6,12 +6,14 @@ const { diagnostic } = require('../lib/diagnostics');
 async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram } = {}) {
     output.write('Opening EducationPerfected. Finish sign-in in the browser.\n');
     let terminal = null, pendingApproval = null, quitPromise = null;
-    const requestDropdownSubmitApproval = approval => new Promise(resolve => {
+    const requestSubmitApproval = (approval, label, detail) => new Promise(resolve => {
         if (!terminal || pendingApproval || quitPromise) { resolve(false); return; }
-        pendingApproval = { approval, resolve };
-        output.write(`Dropdown Submit approval required for ${approval.key} (${approval.dropdownCount} dropdown). Confirm this is the named question visible in the browser. Type yes to submit this question once; anything else stops without Submit.\n`);
+        pendingApproval = { approval, resolve, label };
+        output.write(`${label} approval required for ${approval.key} (${detail}). Confirm this is the named question visible in the browser. Type yes to submit this question once; anything else stops without Submit.\n`);
     });
-    const controls = await launch({ dropdownSubmitApprover: requestDropdownSubmitApproval });
+    const requestDropdownSubmitApproval = approval => requestSubmitApproval(approval, 'Dropdown Submit', `${approval.dropdownCount} dropdown`);
+    const requestNumberBoxSubmitApproval = approval => requestSubmitApproval(approval, 'Number-box Submit', `${approval.boxCount} boxes`);
+    const controls = await launch({ dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
     terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
     output.write('Commands: start, stop, status, mode auto, mode semi, refresh, quit\n');
     const print = () => output.write(JSON.stringify(controls.status()) + '\n');
@@ -34,7 +36,7 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
                 pendingApproval = null;
                 const approved = command === 'yes';
                 request.resolve(approved);
-                output.write(approved ? `Dropdown Submit approved for ${request.approval.key} only.\n` : 'Dropdown Submit not approved; stopping without Submit.\n');
+                output.write(approved ? `${request.label} approved for ${request.approval.key} only.\n` : `${request.label} not approved; stopping without Submit.\n`);
                 if (command === 'quit' || command === 'exit') { await quit(); print(); break; }
                 continue;
             }
