@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
 const { bootFixtureCli } = require('./fixture-cli-session');
 
-async function bootNumberBoxCli() {
+async function bootNumberBoxCli(path = '/lesson-number-box') {
     const session = await bootFixtureCli('cli.js', 'Commands: start');
-    await session.page.goto(session.origin + '/lesson-number-box');
+    await session.page.goto(session.origin + path);
     await session.page.evaluate(() => {
         document.querySelector('#sa-navigation-controls button').addEventListener('click', () => {
             numberBoxFixture.group.remove();
@@ -17,10 +17,11 @@ async function bootNumberBoxCli() {
     return session;
 }
 
-async function run(approval, succeed, prepare) {
+async function run(approval, succeed, options = {}) {
+    const { prepare, path, prompt = '(4 boxes).', expectedInputs = 11 } = options;
     let session;
     try {
-        session = await bootNumberBoxCli();
+        session = await bootNumberBoxCli(path);
         const { child, page, wait } = session;
         if (prepare) await page.evaluate(prepare);
         child.stdin.write('mode auto\n');
@@ -30,8 +31,8 @@ async function run(approval, succeed, prepare) {
         await wait(() => session.output.slice(offset).includes('Number-box Submit approval required for numberbox:'));
         const promptOutput = session.output.slice(offset);
         assert.equal(promptOutput.split('Number-box Submit approval required for numberbox:').length - 1, 1);
-        assert.equal(promptOutput.includes('(4 boxes).'), true);
-        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits, numberBoxFixture.nexts]), [11, true, 0, 0]);
+        assert.equal(promptOutput.includes(prompt), true);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits, numberBoxFixture.nexts]), [expectedInputs, true, 0, 0]);
         child.stdin.write(approval + '\n');
         if (succeed) {
             await wait(() => session.output.slice(offset).includes('Lesson completed.'));
@@ -55,10 +56,11 @@ const unmarkAllBoxes = () => {
     for (const entry of Object.values(numberBoxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
 };
 
-async function expectRefusal(prepare, guard, expectedInputs) {
+async function expectRefusal(prepare, guard, expectedInputs, options = {}) {
+    const { path, forbidden = ['30', '94.2'] } = options;
     let session;
     try {
-        session = await bootNumberBoxCli();
+        session = await bootNumberBoxCli(path);
         const { child, page, wait } = session;
         await page.evaluate(prepare);
         const offset = session.output.length;
@@ -66,7 +68,7 @@ async function expectRefusal(prepare, guard, expectedInputs) {
         await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
         const output = String(session.output.slice(offset));
         assert.equal(output.includes(`"guard":"${guard}"`), true);
-        assert.equal(output.includes('30') || output.includes('94.2'), false);
+        assert.equal(forbidden.some(text => output.includes(text)), false);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [expectedInputs, 0, 0]);
         child.stdin.write('quit\n');
         await wait(() => child.exitCode !== null);
@@ -79,7 +81,8 @@ async function expectRefusal(prepare, guard, expectedInputs) {
 (async () => {
     await run('yes', true);
     await run('no', false);
-    await run('yes', true, unmarkAllBoxes);
+    await run('yes', true, { prepare: unmarkAllBoxes });
+    await run('yes', true, { path: '/lesson-number-box-variables', prompt: '(1 boxes).', expectedInputs: 2 });
 
     let session;
     try {
@@ -112,5 +115,6 @@ async function expectRefusal(prepare, guard, expectedInputs) {
     }, 'submit-controls', 11);
     await expectRefusal(() => { numberBoxFixture.base['box-c'][0].marked = 0; }, 'state-shape', 0);
     await expectRefusal(() => { const c = numberBoxFixture.base['box-c'][0]; c.visualElement = c.textBox; }, 'state-shape', 0);
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit, runtime-marked and visual-element refusal diagnostics, authored-unmarked slide completes, proven completion, no Next, clean quit. Synthetic only.');
+    await expectRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector[0].parts[0].text = 'tampered'; }, 'state-shape', 0, { path: '/lesson-number-box-variables', forbidden: ['42'] });
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit, runtime-marked, visual-element and injector refusal diagnostics, authored-unmarked slide completes, variable-template slide completes with one approval and one Submit, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

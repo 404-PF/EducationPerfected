@@ -423,6 +423,8 @@ function createServer() {
         }
         if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures.textbox)});</script></body></html>`));
         if (url.pathname === '/lesson-number-box') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures.numberbox)});</script></body></html>`));
+        if (url.pathname === '/lesson-textbox-variables') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures['textbox-variables'])});</script></body></html>`));
+        if (url.pathname === '/lesson-number-box-variables') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures['numberbox-variables'])});</script></body></html>`));
         if (url.pathname === '/lesson-gaps') return send(lessonPage(false).replace('</body></html>', `<script>(${installGapsFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-multi') return send(lessonPage(false).replace('</body></html>', `<script>(${installMultiChoiceFixture.toString()})();</script></body></html>`));
         if (url.pathname === '/lesson-async') return send(lessonAsyncPage);
