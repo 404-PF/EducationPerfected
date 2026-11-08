@@ -1,31 +1,86 @@
 const assert = require('node:assert/strict');
 const { bootFixtureCli } = require('./fixture-cli-session');
+const { expectedPopupChanges, expectedPopupKeys, installPopupEmulation } = require('./dropdown-popup-test-helpers');
 
-async function assertF4OnlyBoot(label, extraEnv) {
+async function installSubmitCompletion(page) {
+    await page.evaluate(() => {
+        const submit = document.querySelector('#sa-navigation-controls button');
+        submit.addEventListener('click', () => {
+            dropdownFixture.group.remove();
+            document.querySelector('#question-container-group').remove();
+            dropdownFixture.self.model._currentQuestion = null;
+            const exit = document.querySelector('button.exit-button');
+            exit.hidden = false;
+            exit.style.display = '';
+        });
+    });
+}
+
+async function bootDropdownCli(count, extraEnv = {}) {
     const session = await bootFixtureCli('cli.js', 'Commands: start', extraEnv);
-    const { child, page, origin, wait } = session;
+    await session.page.goto(session.origin + '/lesson-dropdown?count=' + count);
+    return session;
+}
+
+async function assertMultiDropdownSuccess(count, extraEnv = {}) {
+    const session = await bootDropdownCli(count, extraEnv);
+    const { child, page, wait } = session;
     try {
-        await page.goto(origin + '/lesson-dropdown');
-        child.stdin.write('mode semi\n');
-        await wait(() => session.output.includes('"mode":"semi"'));
+        await installPopupEmulation(page);
+        await installSubmitCompletion(page);
+        child.stdin.write('mode auto\n');
+        await wait(() => session.output.includes('"mode":"auto"'));
         const offset = session.output.length;
-        await page.keyboard.down('Alt');
-        await page.keyboard.press('s');
-        await page.keyboard.up('Alt');
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Dropdown Submit approval required for dropdown:'));
+        const promptOutput = session.output.slice(offset);
+        assert.equal(promptOutput.split('Dropdown Submit approval required for dropdown:').length - 1, 1, count);
+        assert.equal(promptOutput.includes('(' + count + ' dropdown).'), true, count);
+        assert.deepEqual(await page.evaluate(() => dropdownFixture.keys), expectedPopupKeys(count), count);
+        assert.deepEqual(await page.evaluate(() => dropdownFixture.changes), expectedPopupChanges(count), count);
+        assert.deepEqual(await page.evaluate(() => [dropdownFixture.submits, dropdownFixture.nexts]), [0, 0], count);
+        child.stdin.write('yes\n');
+        await wait(() => session.output.slice(offset).includes('Lesson completed.'));
+        assert.equal(session.output.slice(offset).split('Selected exact lesson dropdown answers.').length - 1, 1, count);
+        assert.deepEqual(await page.evaluate(() => [dropdownFixture.submits, dropdownFixture.nexts]), [1, 0], count);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0, count);
+    } finally {
+        await session.cleanup();
+    }
+}
+
+async function assertMidSequenceFailure() {
+    const session = await bootDropdownCli(3);
+    const { child, page, wait } = session;
+    try {
+        await installPopupEmulation(page, { closeOnArrowAt: 1 });
+        child.stdin.write('mode auto\n');
+        await wait(() => session.output.includes('"mode":"auto"'));
+        const offset = session.output.length;
+        child.stdin.write('start\n');
         await wait(() => session.output.slice(offset).includes('Lesson dropdowns stopped: changed or unsupported state; no retry.'));
-        assert.equal(session.output.slice(offset).includes('Selected exact lesson dropdown answers.'), false, label);
-        assert.equal(session.output.slice(offset).includes('Dropdown Submit approval required'), false, label);
-        assert.deepEqual(await page.evaluate(() => [dropdownFixture.keys.length, dropdownFixture.changes.length, dropdownFixture.submits, dropdownFixture.nexts]), [0, 0, 0, 0], label);
+        const refusalOutput = session.output.slice(offset);
+        const refusalLines = new Set(refusalOutput.split('\n'));
+        assert.equal(refusalLines.has('Dropdown refusal diagnostic {"phase":"after-popup-arrow","dropdownIndex":1,"keyDispatchesReturned":6,"guard":"popup-closed-before-commit","dropdownCount":3}'), true);
+        assert.equal(refusalOutput.includes('Dropdown Submit approval required'), false);
+        assert.equal(refusalOutput.includes('Selected exact lesson dropdown answers.'), false);
+        assert.deepEqual(await page.evaluate(() => dropdownFixture.keys), expectedPopupKeys(3, true));
+        assert.deepEqual(await page.evaluate(() => dropdownFixture.changes), expectedPopupChanges(1));
+        assert.deepEqual(await page.evaluate(() => [dropdownFixture.submits, dropdownFixture.nexts]), [0, 0]);
         child.stdin.write('status\nquit\n');
         await wait(() => child.exitCode !== null);
-        assert.equal(child.exitCode, 0, label);
+        assert.equal(child.exitCode, 0);
     } finally {
         await session.cleanup();
     }
 }
 
 (async () => {
-    await assertF4OnlyBoot('default', {});
-    await assertF4OnlyBoot('legacy-env-ignored', { EP_DROPDOWN_INPUT: 'legacy' });
-    console.log('Dropdown normal CLI boundary PASS: F4-only single-dropdown guard refuses the five-dropdown fixture before input, and EP_DROPDOWN_INPUT=legacy no longer restores Home/ArrowDown. Synthetic Linux only.');
+    await assertMultiDropdownSuccess(2);
+    await assertMultiDropdownSuccess(3);
+    await assertMultiDropdownSuccess(5, { EP_DROPDOWN_INPUT: 'legacy' });
+    await assertMidSequenceFailure();
+    console.log('Dropdown normal CLI PASS: F4 popup handles two, three and five dropdowns in order, ignores EP_DROPDOWN_INPUT=legacy, asks once before one Submit, stops a mid-sequence failure without Submit, and prints the sanitized refusal diagnostic. Synthetic Linux only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

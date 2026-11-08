@@ -1779,7 +1779,6 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         log: msg => console.log(msg),
                         ...(again.kind === 'dropdown' ? {
                             inputMode: dropdownInputMode,
-                            singleDropdownOnly: true,
                             requireSubmitApproval: ENTER,
                             approveSubmit: async request => typeof dropdownSubmitApprover === 'function' ? await dropdownSubmitApprover(request) : false,
                         } : {}),
@@ -1808,6 +1807,10 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         return false;
                     }
                     // 'stopped'
+                    if (again.kind === 'dropdown' && result.selectionDiagnostic) {
+                        const { phase, dropdownIndex, keyDispatchesReturned, guard } = result.selectionDiagnostic;
+                        console.error('Dropdown refusal diagnostic ' + JSON.stringify({ phase, dropdownIndex, keyDispatchesReturned, guard, dropdownCount: again.dropdowns.length }));
+                    }
                     console.error(result.message);
                     await alert(result.message);
                     return false;
