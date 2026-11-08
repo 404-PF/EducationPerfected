@@ -275,6 +275,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             'unwrapped-element': 'state-shape',
             'wrapper-tag': 'state-shape',
             'extra-wrapper-child': 'state-shape',
+            'wrapper-text-node': 'state-shape',
             unmarked: 'state-shape',
             'mixed-definition': 'component-count',
             'private-definition': 'component-count',
@@ -287,7 +288,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             'runtime-unmarked': 'state-shape',
             'stale-value': 'stored-value',
         };
-        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'private-error', 'circular-options', 'bigint-options', 'private-marked', 'private-mode', 'private-game-mode', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unwrapped-element', 'wrapper-tag', 'extra-wrapper-child', 'unmarked', 'mixed-definition', 'private-definition', 'many-definitions', 'mixed-type', 'duplicate-ids', 'unmarked-definition', 'invalid-marked', 'mismatched-marked', 'runtime-unmarked', 'stale-value', 'prefill']) {
+        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'private-error', 'circular-options', 'bigint-options', 'private-marked', 'private-mode', 'private-game-mode', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unwrapped-element', 'wrapper-tag', 'extra-wrapper-child', 'wrapper-text-node', 'unmarked', 'mixed-definition', 'private-definition', 'many-definitions', 'mixed-type', 'duplicate-ids', 'unmarked-definition', 'invalid-marked', 'mismatched-marked', 'runtime-unmarked', 'stale-value', 'prefill']) {
             await page.goto(origin + '/lesson-number-box');
             await page.evaluate(m => {
                 const f = numberBoxFixture, c = f.base['box-c'][0], s = c.componentState;
@@ -337,6 +338,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                 if (m === 'unwrapped-element') c.visualElement = c.textBox;
                 if (m === 'wrapper-tag') { const div = document.createElement('div'); c.visualElement.replaceWith(div); div.appendChild(c.textBox); c.visualElement = div; }
                 if (m === 'extra-wrapper-child') c.visualElement.appendChild(document.createElement('span'));
+                if (m === 'wrapper-text-node') c.visualElement.appendChild(document.createTextNode('x'));
                 if (m === 'unmarked') s.metadataInstance.Marked = 2;
                 if (m === 'mixed-definition') f.q.questionDef.Components.push({ ComponentTypeCode: 'TEXT_BOX_COMPONENT' });
                 if (m === 'mixed-type') f.q.questionDef.Components.find(d => d.ComponentID === 'box-d').ComponentTypeCode = 'PRIVATE_TYPE_WITH_ANSWER';
