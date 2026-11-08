@@ -53,6 +53,34 @@ const dashboardPage = PAGE(`
         <a href="/task">Task</a>
     </main>`);
 
+// Source-shaped Assessment shell. The controls and mode are enough for the
+// boundary; the readable classic answer state and event counters exist only to
+// prove the real CLI stops before answer extraction or input.
+const assessmentPage = PAGE(`
+    <main>
+        <table><tr>
+            <td id="question-text">assessment prompt</td>
+            <td><input id="answer-text" autocomplete="off"></td>
+        </tr></table>
+        <game-assessment-action-bar><button type="button">Save progress</button></game-assessment-action-bar>
+        <game-assessment-side-bar><button type="button">Assessment navigation</button></game-assessment-side-bar>
+        <game-assessment-navigation-controls><button type="button">Submit assessment</button></game-assessment-navigation-controls>
+    </main>
+    <script>
+        window.assessmentCounts = { clicks: 0, inputs: 0, keys: 0, submits: 0, answerReads: 0 };
+        document.addEventListener('click', () => window.assessmentCounts.clicks++, true);
+        document.addEventListener('input', () => window.assessmentCounts.inputs++, true);
+        document.addEventListener('keydown', () => window.assessmentCounts.keys++, true);
+        document.addEventListener('submit', () => window.assessmentCounts.submits++, true);
+        const question = {};
+        Object.defineProperty(question, 'validAnswers', {
+            configurable: true,
+            get() { window.assessmentCounts.answerReads++; return [{ outputString: 'must not be read' }]; },
+        });
+        const SELF = { model: { gameMode: 2, _currentQuestion: question } };
+        window.angular = { element: () => ({ scope: () => ({ self: SELF }) }) };
+    </script>`);
+
 // Word lists: one div per word, each with a span inside (matching what the
 // smoke test reads with $$eval and what index.js reads with innerText).
 const starterPage = PAGE(`
@@ -381,6 +409,7 @@ function createServer() {
         // index.js lands on /app/login and expects the form to be on the expected host.
         if (url.pathname === '/app/login' || url.pathname === '/login') return send(loginPage);
         if (url.pathname === '/learning/dashboard') return send(dashboardPage);
+        if (url.pathname === '/lesson-assessment') return send(assessmentPage);
         if (url.pathname === '/task') return send(starterPage);
         if (url.pathname === '/task/play') {
             const start = Number.parseInt(url.searchParams.get('start') || '0', 10);
