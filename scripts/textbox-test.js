@@ -235,18 +235,26 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
 
         await page.goto(origin + '/lesson-number-box');
         numberDescriptor = await detectQuestion(page);
-        let stopChecks = 0;
-        const semiDeadline = Date.now() + 2000;
+        let stopChecks = 0, submittedAt = 0, semiFilled = false;
         const semiResultPromise = playNumberBoxRound(page, numberDescriptor, {
             enter: false,
             timeout: 0,
             requireSubmitApproval: true,
             approveSubmit: async () => { throw new Error('semi-auto must not ask'); },
-            shouldStop: () => { stopChecks++; return Date.now() >= semiDeadline; },
+            // The user Submit must wait for the round's fill-complete log:
+            // clicking earlier lands inside the round's post-fill state
+            // checks, whose baseline-changed guard correctly refuses the
+            // already-advanced question. The deadline runs from the click,
+            // not the round start, so a slow trusted fill cannot consume
+            // the advance-detection budget.
+            log: () => { semiFilled = true; },
+            shouldStop: () => { stopChecks++; return submittedAt > 0 && Date.now() - submittedAt >= 2000; },
         });
         await page.waitForFunction(() => numberBoxFixture.inputs.length === 11);
         assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('input.number-box-component')].map(input => input.value)), ['30', '30', '30', '94.20']);
+        await new Promise(resolve => { const poll = () => semiFilled ? resolve() : setTimeout(poll, 25); poll(); });
         await page.evaluate(() => document.querySelector('#sa-navigation-controls button').click());
+        submittedAt = Date.now();
         result = await semiResultPromise;
         assert.equal(result.status, 'advanced');
         assert.equal(stopChecks > 0, true);
