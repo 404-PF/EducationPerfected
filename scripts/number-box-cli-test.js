@@ -114,5 +114,30 @@ async function run(approval, succeed) {
     } finally {
         await session?.cleanup();
     }
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection and Submit refusal diagnostics, proven completion, no Next, clean quit. Synthetic only.');
+    session = undefined;
+    try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
+        await page.evaluate(() => {
+            const d = numberBoxFixture.q.questionDef.Components.find(def => def.ComponentID === 'box-d');
+            d.Marked = 0;
+            numberBoxFixture.base['box-d'][0].marked = 0;
+            numberBoxFixture.base['box-d'][0].componentState.metadataInstance.Marked = 0;
+        });
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
+        const output = String(session.output.slice(offset));
+        assert.equal(output.includes('"guard":"component-marked"'), true);
+        assert.equal(output.includes('"unmarkedDefCount":1'), true);
+        assert.equal(output.includes('"unmarkedRuntimeMarkedZeroCount":1'), true);
+        assert.equal(output.includes('30') || output.includes('94.2') || output.includes('box-d'), false);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [0, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session?.cleanup();
+    }
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, detection, Submit and component-marked refusal diagnostics, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
