@@ -1,5 +1,9 @@
 // Invented source-derived fixture, not captured student DOM.
-function installDropdownFixture(count=5){
+// variant 'variables' models EP's BasicVariableInjector flow: raw def.Options
+// keep {expression} templates while metadata/original/shuffled/DOM carry the
+// resolved values, with one desc/correct injector per option (chunk606).
+function installDropdownFixture(count=5,variant){
+    const injectorFrom=template=>({parts:template.split(/({[^}]+})/g).map(part=>part.startsWith('{')&&part.endsWith('}')?{temporaryVariable:{expression:part.slice(1,-1)}}:{text:part})});
     const old=document.querySelector('.multi-choice-component');
     const self=window.angular.element(old).scope().self,q=self.model._currentQuestion;self.model.gameMode=3;
     const group=document.createElement('div');group.className='synthetic-dropdown-container';old.replaceWith(group);
@@ -9,11 +13,14 @@ function installDropdownFixture(count=5){
     document.querySelector('#question-container-group').textContent=count===1?'Synthetic dropdown formula: choose one answer.':'Synthetic dropdown formula: choose five answers.';
     const diagram=document.createElement('img');diagram.alt='Synthetic static circle diagram';diagram.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="40" fill="lightblue"/></svg>');group.append(diagram,document.createElement('br'));
     for(const [i,answer]of ['Radius','Circumference','Circumference','2','Radius'].slice(0,count).entries()){
-        const id='dropdown-'+i,options=[{Description:'wrong',Correct:'false',Validity:'true',SortOrder:0},{Description:answer,Correct:'true',Validity:'true',SortOrder:1}];
+        const id='dropdown-'+i,variable=variant==='variables',resolve=s=>variable?s.split('{n}').join('42'):s;
+        const options=variable?[{Description:'{n} wrong',Correct:'false',Validity:'true',SortOrder:0},{Description:'{n} right',Correct:'true',Validity:'true',SortOrder:1}]:[{Description:'wrong',Correct:'false',Validity:'true',SortOrder:0},{Description:answer,Correct:'true',Validity:'true',SortOrder:1}];
         const def={ComponentTypeCode:'DROPDOWN_COMPONENT',ComponentID:id,Marked:1,Options:JSON.parse(JSON.stringify(options)),DefaultSelection:{Description:'',Correct:'false',Validity:'true',SortOrder:0}};
-        q.questionDef.Components.unshift(def);const metadata=JSON.parse(JSON.stringify(def)),original=metadata.Options.concat();
+        q.questionDef.Components.unshift(def);const metadata=JSON.parse(JSON.stringify(def));
+        for(const option of metadata.Options){option.Description=resolve(option.Description);option.Correct=resolve(option.Correct);}
+        const original=metadata.Options.concat();
         const blank={Description:'',Correct:'false',Validity:'true',SortOrder:0};const shuffled=[blank,...metadata.Options];
-        const state={metadataInstance:metadata,originalDropDownOptions:original,_shuffledOptions:shuffled,_selectedOption:metadata.DefaultSelection};
+        const state={metadataInstance:metadata,originalDropDownOptions:original,descInjectors:options.map(o=>injectorFrom(o.Description)),correctInjectors:options.map(o=>injectorFrom(o.Correct)),_shuffledOptions:shuffled,_selectedOption:metadata.DefaultSelection};
         const select=document.createElement('select');select.id=id;
         for(const option of shuffled){const o=document.createElement('option');o.textContent=option.Description;select.append(o);}select.selectedIndex=0;
         group.append(document.createTextNode(i<2?' Step '+(i+1)+': ':' Formula: '),select);
