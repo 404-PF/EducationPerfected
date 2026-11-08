@@ -363,9 +363,11 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownInputMode: requestedDropdownInputMode, dropdownSubmitApprover } = {}) {
-    const dropdownInputMode = requestedDropdownInputMode ?? process.env.EP_DROPDOWN_INPUT ?? 'legacy';
-    if (dropdownInputMode !== 'legacy' && dropdownInputMode !== 'f4-popup') throw new Error('EP_DROPDOWN_INPUT must be legacy or f4-popup.');
+async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover } = {}) {
+    // F4 popup is the only normal-run dropdown input path. The older
+    // Home/ArrowDown mechanism remains only in explicit synthetic regression
+    // fixtures and the local EP-free diagnostic; there is no env rollback.
+    const dropdownInputMode = 'f4-popup';
     if ([gapsFillOnly, choiceSelectOnly, gapsSubmitOnce, textboxFillOnly, dropdownSubmitOnce, multiSelectOnly].filter(Boolean).length > 1 || ((gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly) && legacySignals)) throw new Error('Validation requires an exclusive nonlegacy session.');
     // EP_TEST_BOOT=1 is the test harness boot (scripts/handler-test.js). The
     // EP_LOGIN_URL / EP_LOGIN_HOST overrides are honored ONLY under it: on a
@@ -1777,7 +1779,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         log: msg => console.log(msg),
                         ...(again.kind === 'dropdown' ? {
                             inputMode: dropdownInputMode,
-                            singleDropdownOnly: dropdownInputMode === 'f4-popup',
+                            singleDropdownOnly: true,
                             requireSubmitApproval: ENTER,
                             approveSubmit: async request => typeof dropdownSubmitApprover === 'function' ? await dropdownSubmitApprover(request) : false,
                         } : {}),
