@@ -19,6 +19,15 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         assert.equal((await playTextboxRound(page, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
         assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.inputs.every(e => e.trusted), textboxFixture.submits]), [9, true, 1]);
         await setup();
+        await page.evaluate(() => {
+            for (const def of textboxFixture.q.questionDef.Components) def.Marked = 0;
+            for (const entry of Object.values(textboxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
+        });
+        descriptor = await detectQuestion(page);
+        assert.equal(descriptor.kind, 'textbox');
+        assert.equal((await playTextboxRound(page, descriptor, { enter: true, timeout: 1000 })).status, 'advanced');
+        assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.inputs.every(e => e.trusted), textboxFixture.submits]), [9, true, 1]);
+        await setup();
         descriptor = await detectQuestion(page);
         let filled = false;
         assert.equal((await playTextboxRound(page, descriptor, { enter: false, timeout: 0, log: () => { filled = true; }, shouldStop: () => filled })).status, 'aborted');
@@ -198,6 +207,24 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 1]);
 
         await page.goto(origin + '/lesson-number-box');
+        await page.evaluate(() => {
+            for (const def of numberBoxFixture.q.questionDef.Components) def.Marked = 0;
+            for (const entry of Object.values(numberBoxFixture.base)) entry[0].componentState.metadataInstance.Marked = 0;
+        });
+        numberDescriptor = await detectQuestion(page);
+        assert.equal(numberDescriptor.kind, 'numberbox');
+        approvals = [];
+        result = await playNumberBoxRound(page, numberDescriptor, {
+            enter: true,
+            timeout: 1000,
+            requireSubmitApproval: true,
+            approveSubmit: async request => { approvals.push(request); return true; },
+        });
+        assert.equal(result.status, 'advanced');
+        assert.equal(approvals.length, 1);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 1]);
+
+        await page.goto(origin + '/lesson-number-box');
         numberDescriptor = await detectQuestion(page);
         let numberFilled = false;
         result = await playNumberBoxRound(page, numberDescriptor, {
@@ -256,11 +283,12 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             'many-definitions': 'component-count',
             'mixed-type': 'component-types',
             'duplicate-ids': 'component-ids',
-            'unmarked-definition': 'component-marked',
+            'unmarked-definition': 'mixed-definition-marking',
             'invalid-marked': 'component-marked',
+            'mismatched-marked': 'state-shape',
             'stale-value': 'stored-value',
         };
-        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'private-error', 'circular-options', 'bigint-options', 'private-marked', 'private-mode', 'private-game-mode', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unmarked', 'mixed-definition', 'private-definition', 'many-definitions', 'mixed-type', 'duplicate-ids', 'unmarked-definition', 'invalid-marked', 'stale-value', 'prefill']) {
+        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'private-error', 'circular-options', 'bigint-options', 'private-marked', 'private-mode', 'private-game-mode', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unmarked', 'mixed-definition', 'private-definition', 'many-definitions', 'mixed-type', 'duplicate-ids', 'unmarked-definition', 'invalid-marked', 'mismatched-marked', 'stale-value', 'prefill']) {
             await page.goto(origin + '/lesson-number-box');
             await page.evaluate(m => {
                 const f = numberBoxFixture, c = f.base['box-c'][0], s = c.componentState;
@@ -318,6 +346,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                     f.base['box-d'][0].componentState.metadataInstance.Marked = 0;
                 }
                 if (m === 'invalid-marked') f.q.questionDef.Components.find(d => d.ComponentID === 'box-d').Marked = 'MARKED_PRIVATE_SENTINEL';
+                if (m === 'mismatched-marked') s.metadataInstance.Marked = 0;
                 if (m === 'private-definition') f.q.questionDef.Components.push({ ComponentTypeCode: 'PRIVATE_TYPE_WITH_ANSWER', ComponentID: 'private-id', Marked: 1 });
                 if (m === 'many-definitions') for (let i = 0; i < 30; i++) f.q.questionDef.Components.push({ ComponentTypeCode: 'PRIVATE_TYPE_WITH_ANSWER', ComponentID: 'private-id-' + i, Marked: 1 });
                 if (m === 'stale-value') c.textBox.value = '31';
@@ -338,8 +367,9 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                 if (mutation === 'unrounded-sf') assert.deepEqual([d.diagnostic.roundingType, d.diagnostic.acceptableErrorType], ['SF', 'ABS'], mutation);
                 if (mutation === 'mixed-type') assert.deepEqual([d.diagnostic.componentTypes.filter(t => t === 'UNLISTED_COMPONENT').length, d.diagnostic.componentIdsValid], [1, true], mutation);
                 if (mutation === 'duplicate-ids') assert.deepEqual([d.diagnostic.componentCount, d.diagnostic.uniqueComponentIds], [4, 3], mutation);
-                if (mutation === 'unmarked-definition') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount, d.diagnostic.invalidMarkedDefCount, d.diagnostic.unmarkedAssociatedCount, d.diagnostic.unmarkedWithOptionsCount, d.diagnostic.unmarkedRuntimeMarkedZeroCount, d.diagnostic.unmarkedRuntimeMarkedOneCount, d.diagnostic.unmarkedMetadataMarkedZeroCount, d.diagnostic.unmarkedMetadataMarkedOneCount, d.diagnostic.unmarkedWithMetadataOptionsCount, d.diagnostic.unmarkedReadOnlyCount, d.diagnostic.unmarkedDisabledCount, d.diagnostic.unmarkedVisibleBoxCount], [3, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1], mutation);
-                if (mutation === 'invalid-marked') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount, d.diagnostic.invalidMarkedDefCount, d.diagnostic.unmarkedAssociatedCount, d.diagnostic.unmarkedRuntimeMarkedOneCount], [3, 0, 1, 1, 1], mutation);
+                if (mutation === 'unmarked-definition') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount], [3, 1], mutation);
+                if (mutation === 'invalid-marked') assert.deepEqual([d.diagnostic.markedDefCount, d.diagnostic.unmarkedDefCount, d.diagnostic.invalidMarkedDefCount], [3, 0, 1], mutation);
+                if (mutation === 'mismatched-marked') assert.deepEqual([d.diagnostic.metadataMarked, d.diagnostic.metadataMarkedValid, d.diagnostic.definitionMarkedMatches], [0, true, false], mutation);
             } else assert.equal(d.diagnostic, undefined, mutation);
             const refused = await playNumberBoxRound(page, d, {
                 enter: true,
@@ -351,6 +381,6 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits]), [0, 0], mutation);
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, 28 sanitized guard diagnostics and30refusals. Not live proof.');
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 29 sanitized guard diagnostics and31refusals. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
