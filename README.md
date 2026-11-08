@@ -280,6 +280,8 @@ Source checked 8 November 2026: [EP public chunk 606](https://mfe-student-app.ed
 
 Semi-auto fills only. Textbox automatic mode rechecks the exact filled set and associated unique Submit button before one click; number-box automatic mode adds the typed-`yes` terminal approval above. Neither path clicks Next for that question. Missing controls, stored/prefilled answers, initial text, extra editable fields, mixed components, long/rich answers, fill-in-the-gaps textbox variants, maths editors, assessments and manually marked questions are not covered by this contract. Other input variants remain in the support queue, rather than being treated as equivalent inputs.
 
+When a text or number box slide fails those guards, the CLI prints a sanitized refusal diagnostic with the guard name plus model, DOM, component and metadata booleans/counts. It does not include answers, component IDs, question text or other private lesson content.
+
 Invented sanitized source-derived fixtures cover DOM/metadata order differences, trusted typing, semi-auto, one Submit, changed-state refusals and the normal CLI/Alt+S workflow. No live ordinary lesson textbox or number-box detection, filling, grading or full-lesson result has been verified.
 
 ## One-question dropdown Submit validation

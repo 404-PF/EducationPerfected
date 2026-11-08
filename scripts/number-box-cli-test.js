@@ -73,5 +73,23 @@ async function run(approval, succeed) {
     } finally {
         await session?.cleanup();
     }
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, proven completion, no Next, clean quit. Synthetic only.');
+    session = undefined;
+    try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
+        await page.evaluate(() => { numberBoxFixture.self.sectionData.activityGroup.isAutoMarked = false; });
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Unsupported question diagnostic '));
+        const output = session.output.slice(offset);
+        assert.equal(output.includes('"guard":"model-or-auto-mark"'), true);
+        assert.equal(output.includes('30') || output.includes('94.2'), false);
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits, numberBoxFixture.nexts]), [0, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session?.cleanup();
+    }
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, sanitized refusal diagnostic, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

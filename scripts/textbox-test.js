@@ -224,6 +224,24 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         assert.equal(stopChecks > 0, true);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.submits, numberBoxFixture.nexts]), [1, 0]);
 
+        const expectedRefusalGuards = {
+            manual: 'model-or-auto-mark',
+            duplicate: 'component-association',
+            nonnumeric: 'numeric-metadata',
+            rounding: 'numeric-metadata',
+            error: 'numeric-metadata',
+            'unrounded-sf': 'answer-acceptance',
+            'plus-sf': 'numeric-metadata',
+            'negative-percent': 'numeric-metadata',
+            'raw-option': 'state-shape',
+            'missing-state': 'state-shape',
+            initial: 'state-shape',
+            readonly: 'box-shape',
+            'wrong-element': 'state-shape',
+            unmarked: 'state-shape',
+            'mixed-definition': 'component-shape',
+            'stale-value': 'stored-value',
+        };
         for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unmarked', 'mixed-definition', 'stale-value', 'prefill']) {
             await page.goto(origin + '/lesson-number-box');
             await page.evaluate(m => {
@@ -231,7 +249,12 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                 if (m === 'manual') f.self.sectionData.activityGroup.isAutoMarked = false;
                 if (m === 'assessment') f.self.model.gameMode = 2;
                 if (m === 'duplicate') f.base['box-c'].push(c);
-                if (m === 'nonnumeric') s.answerOptions = ['pi'];
+                if (m === 'nonnumeric') {
+                    const d = f.q.questionDef.Components.find(def => def.ComponentID === 'box-c');
+                    d.Options = ['pi'];
+                    s.metadataInstance.Options = ['pi'];
+                    s.answerOptions = ['pi'];
+                }
                 if (m === 'rounding') s.metadataInstance.RoundingTypeCode = 'BAD';
                 if (m === 'error') s.metadataInstance.AcceptableErrorValue = -1;
                 if (m === 'unrounded-sf') {
@@ -267,6 +290,10 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             }, mutation);
             const d = await detectQuestion(page);
             assert.equal(d.kind, mutation === 'prefill' ? 'numberbox' : 'unsupported', mutation);
+            if (expectedRefusalGuards[mutation]) {
+                assert.equal(d.diagnostic?.guard, expectedRefusalGuards[mutation], mutation);
+                assert.equal(['30', '94.2', '3.142', '+30', '-30', 'pi'].some(answer => JSON.stringify(d.diagnostic).includes(answer)), false, mutation);
+            } else assert.equal(d.diagnostic, undefined, mutation);
             const refused = await playNumberBoxRound(page, d, {
                 enter: true,
                 timeout: 200,
@@ -277,6 +304,6 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits]), [0, 0], mutation);
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit and18refusals. Not live proof.');
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, 16 sanitized guard diagnostics and18refusals. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
