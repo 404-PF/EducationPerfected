@@ -77,10 +77,33 @@ async function assertMidSequenceFailure() {
     }
 }
 
+async function assertDetectionRefusal() {
+    const session = await bootDropdownCli(3);
+    const { child, page, wait } = session;
+    try {
+        await page.evaluate(() => { dropdownFixture.base['dropdown-0'][0].marked = 0; });
+        child.stdin.write('mode auto\n');
+        await wait(() => session.output.includes('"mode":"auto"'));
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Lesson dropdowns: unsafe, unsupported or changed renderer state'));
+        const refusalOutput = session.output.slice(offset);
+        assert.equal(refusalOutput.split('\n').includes('Unsupported question diagnostic {"kind":"dropdown-refusal","guard":"component-marked","domSelectCount":3}'), true);
+        assert.equal(refusalOutput.includes('Radius'), false);
+        assert.deepEqual(await page.evaluate(() => [dropdownFixture.keys.length, dropdownFixture.submits, dropdownFixture.nexts]), [0, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session.cleanup();
+    }
+}
+
 (async () => {
     await assertMultiDropdownSuccess(2);
     await assertMultiDropdownSuccess(3);
     await assertMultiDropdownSuccess(5, { EP_DROPDOWN_INPUT: 'legacy' });
     await assertMidSequenceFailure();
-    console.log('Dropdown normal CLI PASS: F4 popup handles two, three and five dropdowns in order, ignores EP_DROPDOWN_INPUT=legacy, asks once before one Submit, stops a mid-sequence failure without Submit, and prints the sanitized refusal diagnostic. Synthetic Linux only.');
+    await assertDetectionRefusal();
+    console.log('Dropdown normal CLI PASS: F4 popup handles two, three and five dropdowns in order, ignores EP_DROPDOWN_INPUT=legacy, asks once before one Submit, stops a mid-sequence failure without Submit, and prints the sanitized mid-sequence and detection refusal diagnostics. Synthetic Linux only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
