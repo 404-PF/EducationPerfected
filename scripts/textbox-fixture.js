@@ -80,7 +80,7 @@ const inputBoxFixtures = {
             { id: 'box-c', answer: '30' },
             { id: 'box-a', answer: '30' },
             { id: 'box-d', answer: '30' },
-            { id: 'box-b', answer: '94.20', definition: { RoundingTypeCode: 'DP', RoundingAmount: 2 } },
+            { id: 'box-b', answer: '94.2', definition: { RoundingTypeCode: 'DP', RoundingAmount: 2 } },
         ],
     },
 };

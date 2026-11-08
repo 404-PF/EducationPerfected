@@ -778,6 +778,14 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
             let runReason = 'stopped';
+            const submitApprovalCancellers = new Set();
+            const onSubmitApprovalCancel = cancel => {
+                submitApprovalCancellers.add(cancel);
+                return () => submitApprovalCancellers.delete(cancel);
+            };
+            const cancelSubmitApprovals = () => {
+                for (const cancel of [...submitApprovalCancellers]) cancel();
+            };
 
             // How long to wait for EP to move on to the next question after a submission.
             // EP round-trips (large class, slow backend, transient lag) can legitimately
@@ -1782,10 +1790,10 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         ...(again.kind === 'dropdown' ? {
                             inputMode: dropdownInputMode,
                             requireSubmitApproval: ENTER,
-                            approveSubmit: async request => typeof dropdownSubmitApprover === 'function' ? await dropdownSubmitApprover(request) : false,
+                            approveSubmit: async request => typeof dropdownSubmitApprover === 'function' ? await dropdownSubmitApprover(request, onSubmitApprovalCancel) : false,
                         } : again.kind === 'numberbox' ? {
                             requireSubmitApproval: ENTER,
-                            approveSubmit: async request => typeof numberBoxSubmitApprover === 'function' ? await numberBoxSubmitApprover(request) : false,
+                            approveSubmit: async request => typeof numberBoxSubmitApprover === 'function' ? await numberBoxSubmitApprover(request, onSubmitApprovalCancel) : false,
                         } : {}),
                     });
                     if (result.status === 'advanced') return TOGGLE;
@@ -2383,7 +2391,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             const validationOnly = gapsFillOnly || choiceSelectOnly || gapsSubmitOnce || textboxFillOnly || dropdownSubmitOnce || multiSelectOnly;
             const controls = createRunControls({
                 run: multiSelectOnly ? runMultiSelectOnly : dropdownSubmitOnce ? runDropdownSubmitOnce : textboxFillOnly ? runTextboxFillOnly : choiceSelectOnly ? runSelectOnly : (gapsFillOnly || gapsSubmitOnce) ? runFillOnly : startLoop,
-                requestStop: () => { TOGGLE = false; },
+                requestStop: () => { TOGGLE = false; cancelSubmitApprovals(); },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
                 close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),

@@ -6,13 +6,28 @@ const { diagnostic } = require('../lib/diagnostics');
 async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram } = {}) {
     output.write('Opening EducationPerfected. Finish sign-in in the browser.\n');
     let terminal = null, pendingApproval = null, quitPromise = null;
-    const requestSubmitApproval = (approval, label, detail) => new Promise(resolve => {
+    const requestSubmitApproval = (approval, label, detail, onCancel) => new Promise(resolve => {
         if (!terminal || pendingApproval || quitPromise) { resolve(false); return; }
-        pendingApproval = { approval, resolve, label };
+        const request = { approval, resolve: null, label };
+        let unregisterCancel = null;
+        const finish = approved => {
+            unregisterCancel?.();
+            unregisterCancel = null;
+            if (pendingApproval === request) pendingApproval = null;
+            resolve(approved);
+        };
+        request.resolve = finish;
+        pendingApproval = request;
+        const cancel = () => {
+            if (pendingApproval !== request) return;
+            output.write(`${label} approval cancelled; stopping without Submit.\n`);
+            finish(false);
+        };
+        unregisterCancel = typeof onCancel === 'function' ? onCancel(cancel) : null;
         output.write(`${label} approval required for ${approval.key} (${detail}). Confirm this is the named question visible in the browser. Type yes to submit this question once; anything else stops without Submit.\n`);
     });
-    const requestDropdownSubmitApproval = approval => requestSubmitApproval(approval, 'Dropdown Submit', `${approval.dropdownCount} dropdown`);
-    const requestNumberBoxSubmitApproval = approval => requestSubmitApproval(approval, 'Number-box Submit', `${approval.boxCount} boxes`);
+    const requestDropdownSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Dropdown Submit', `${approval.dropdownCount} dropdown`, onCancel);
+    const requestNumberBoxSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Number-box Submit', `${approval.boxCount} boxes`, onCancel);
     const controls = await launch({ dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
     terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
     output.write('Commands: start, stop, status, mode auto, mode semi, refresh, quit\n');

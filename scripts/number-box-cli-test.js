@@ -52,5 +52,25 @@ async function run(approval, succeed) {
 (async () => {
     await run('yes', true);
     await run('no', false);
-    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, proven completion, no Next, clean quit. Synthetic only.');
+
+    let session;
+    try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
+        child.stdin.write('mode auto\n');
+        await wait(() => session.output.includes('"mode":"auto"'));
+        const offset = session.output.length;
+        child.stdin.write('start\n');
+        await wait(() => session.output.slice(offset).includes('Number-box Submit approval required for numberbox:'));
+        const stopped = await page.evaluate(() => window.epTestStop());
+        assert.equal(stopped.state, 'stopped');
+        await wait(() => session.output.slice(offset).includes('Number-box Submit approval cancelled; stopping without Submit.'));
+        assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits, numberBoxFixture.nexts]), [11, true, 0, 0]);
+        child.stdin.write('quit\n');
+        await wait(() => child.exitCode !== null);
+        assert.equal(child.exitCode, 0);
+    } finally {
+        await session?.cleanup();
+    }
+    console.log('Number-box normal CLI PASS: DOM-order four boxes, 11 trusted characters, one typed-yes approval before one trusted Submit, non-yes denial stops without Submit, browser stop cancels pending approval without Submit, proven completion, no Next, clean quit. Synthetic only.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
