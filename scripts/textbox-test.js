@@ -57,6 +57,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
         }
+        const expectedActionGuards = { answer: 'state-shape', question: 'baseline-changed' };
         for (const mutation of ['answer', 'question', 'focus']) {
             await setup();
             descriptor = await detectQuestion(page);
@@ -68,7 +69,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             const result = await playTextboxRound(page, descriptor, { enter: true, timeout: 200 });
             assert.equal(result.status, 'stopped', mutation);
             assert.equal(result.reason, 'unsafe-or-changed-state', mutation);
-            assert.equal(result.diagnostic?.guard, mutation === 'focus' ? undefined : mutation === 'answer' ? 'state-shape' : 'baseline-changed', mutation);
+            assert.equal(result.diagnostic?.guard, expectedActionGuards[mutation], mutation);
             assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [1, 0]);
         }
         await setup();
