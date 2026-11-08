@@ -65,6 +65,7 @@ async function run(approval, succeed) {
         const stopped = await page.evaluate(() => window.epTestStop());
         assert.equal(stopped.state, 'stopped');
         await wait(() => session.output.slice(offset).includes('Number-box Submit approval cancelled; stopping without Submit.'));
+        assert.equal(session.output.slice(offset).includes('Lesson number boxes stopped: changed or unsupported state'), false);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits, numberBoxFixture.nexts]), [11, true, 0, 0]);
         child.stdin.write('quit\n');
         await wait(() => child.exitCode !== null);

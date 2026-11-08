@@ -208,12 +208,13 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         await page.goto(origin + '/lesson-number-box');
         numberDescriptor = await detectQuestion(page);
         let stopChecks = 0;
+        const semiDeadline = Date.now() + 2000;
         const semiResultPromise = playNumberBoxRound(page, numberDescriptor, {
             enter: false,
-            timeout: 1000,
+            timeout: 0,
             requireSubmitApproval: true,
             approveSubmit: async () => { throw new Error('semi-auto must not ask'); },
-            shouldStop: () => { stopChecks++; return false; },
+            shouldStop: () => { stopChecks++; return Date.now() >= semiDeadline; },
         });
         await page.waitForFunction(() => numberBoxFixture.inputs.length === 11);
         assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('input.number-box-component')].map(input => input.value)), ['30', '30', '30', '94.20']);
@@ -223,7 +224,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         assert.equal(stopChecks > 0, true);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.submits, numberBoxFixture.nexts]), [1, 0]);
 
-        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'unrounded-sf', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unmarked', 'mixed-definition', 'stale-value', 'prefill']) {
+        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unmarked', 'mixed-definition', 'stale-value', 'prefill']) {
             await page.goto(origin + '/lesson-number-box');
             await page.evaluate(m => {
                 const f = numberBoxFixture, c = f.base['box-c'][0], s = c.componentState;
@@ -241,6 +242,18 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                         record.RoundingAmount = 2;
                     }
                     s.answerOptions = ['3.142'];
+                }
+                if (m === 'plus-sf' || m === 'negative-percent') {
+                    const d = f.q.questionDef.Components.find(def => def.ComponentID === 'box-c');
+                    const answer = m === 'plus-sf' ? '+30' : '-30';
+                    for (const record of [d, s.metadataInstance]) {
+                        record.Options = [answer];
+                        record.RoundingTypeCode = m === 'plus-sf' ? 'SF' : 'NONE';
+                        record.RoundingAmount = m === 'plus-sf' ? 2 : 0;
+                        record.AcceptableErrorTypeCode = m === 'plus-sf' ? 'ABS' : '%';
+                        record.AcceptableErrorValue = m === 'plus-sf' ? 0 : 10;
+                    }
+                    s.answerOptions = [answer];
                 }
                 if (m === 'raw-option') f.q.questionDef.Components.find(d => d.ComponentID === 'box-c').Options = ['31'];
                 if (m === 'missing-state') delete c.componentState;
@@ -264,6 +277,6 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits]), [0, 0], mutation);
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit and16refusals. Not live proof.');
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit and18refusals. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
