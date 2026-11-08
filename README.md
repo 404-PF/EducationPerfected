@@ -298,6 +298,20 @@ Source: [EP public chunk 171](https://mfe-student-app.educationperfect.com/main/
 
 A stopped, content-free field diagnostic confirmed that narrow assigned Listening shape, including one usable accepted answer. This is **not** a new live submission or full-task completion proof. Synthetic tests cover Listening and Dictation positives, malformed/unknown/EP/speaking/assessment/manual refusals and marking/task changes during typing. The context and accepted answer are rechecked before initial and retry submissions; any change stops before Enter. Task IDs stay inside the process and are never logged by this check. Existing unassigned self-test support is unchanged.
 
+## Assessment source boundary
+
+Assessments remain unsupported, and this program has never been run against a live Assessment attempt. The first safe slice is an explicit stop boundary from EP's public student source, not a guessed implementation.
+
+Source map from [`mfe-hashed-assets-171-69df426caed962f89980.js`](https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-171-69df426caed962f89980.js), checked 8 November 2026:
+
+- `GameMode` is `CLASSIC = 1`, `ASSESSMENT = 2`, `SMART_LESSON = 3`.
+- The student template mounts `game-assessment-action-bar`, `game-assessment-side-bar` and `game-assessment-navigation-controls` only when `game.model.gameMode == 2`.
+- `AssessmentGameController.startAutoSaveTimer()` stores the current answer every 10 seconds. Question navigation also submits/stores the current answer.
+- `submitAnswer` marks and stores the current question state. `submitAssessment` marks the whole attempt submitting, submits the current answer and then completes the attempt.
+- Assessment lockdown settings can enable focus/fullscreen tracking and persist focus or navigation events.
+
+The CLI treats the source-shaped Assessment controls as a content-free boundary: it stops before reading question answer state. If those controls are absent or have not mounted, the per-question `gameMode === 2` guards still refuse every supported question shape. Detection returns `assessment: true` with a refusal explaining the graded whole-attempt, autosave and focus-tracking risk. Synthetic tests prove zero clicks, text input, key presses and Submits across choice, dropdown, textbox, drag-and-drop gaps and multi-select fixtures. None of this is live-verified, and a live Assessment remains out of scope.
+
 ## Known limitations
 
 - Ordinary lesson textboxes have the narrow source-derived contract above and synthetic fixture coverage only. No live textbox detection, filling or grading is proved; numeric, long/rich, gaps-textbox and manual/assessment variants remain unsupported.
