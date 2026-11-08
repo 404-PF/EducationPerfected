@@ -18,9 +18,10 @@ async function bootNumberBoxCli() {
 }
 
 async function run(approval, succeed) {
-    const session = await bootNumberBoxCli();
-    const { child, page, wait } = session;
+    let session;
     try {
+        session = await bootNumberBoxCli();
+        const { child, page, wait } = session;
         child.stdin.write('mode auto\n');
         await wait(() => session.output.includes('"mode":"auto"'));
         const offset = session.output.length;
@@ -44,7 +45,7 @@ async function run(approval, succeed) {
         await wait(() => child.exitCode !== null);
         assert.equal(child.exitCode, 0);
     } finally {
-        await session.cleanup();
+        await session?.cleanup();
     }
 }
 

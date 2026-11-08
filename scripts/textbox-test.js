@@ -175,6 +175,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         assert.equal(approvals.length, 1);
         assert.equal(approvals[0].key, numberDescriptor.key);
         assert.equal(approvals[0].boxCount, 4);
+        assert.deepEqual(await page.evaluate(() => numberBoxFixture.inputs.map(e => e.id)), ['box-c', 'box-c', 'box-a', 'box-a', 'box-d', 'box-d', 'box-b', 'box-b', 'box-b', 'box-b', 'box-b']);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [11, true, 0]);
 
         await page.goto(origin + '/lesson-number-box');
@@ -233,6 +234,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                 approveSubmit: async () => { throw new Error('refusal must not ask'); },
             });
             assert.equal(refused.status, 'stopped', mutation);
+            assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits]), [0, 0], mutation);
         }
         console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 23 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, one approval gate, 1Submit, fill-only0Submit and15refusals. Not live proof.');
