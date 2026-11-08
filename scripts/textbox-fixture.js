@@ -31,10 +31,17 @@ function installInputBoxFixture(config) {
         q.questionDef.Components.unshift(def); // Metadata order deliberately differs from DOM.
         const input = document.createElement('input');
         input.className = config.inputClass;
-        group.append(input);
+        // EP chunk606: number boxes wrap the input in a script-position span
+        // that becomes the component's visualElement; text boxes do not.
+        let visual = input;
+        if (config.wrapsInput) {
+            visual = document.createElement('span');
+            visual.appendChild(input);
+        }
+        group.append(visual);
         const metadataInstance = JSON.parse(JSON.stringify(def));
         const state = { metadataInstance, answerOptions: [item.answer], variableOptions: [{ Code: 'synthetic-case', Value: 'true' }], injectedInitialText: '', userAnswer: '', isUserAnswerSet: false };
-        const component = { id: item.id, componentState: state, visualElement: input, textBox: input, renderingParameters: { mode: 1 }, marked: 1 };
+        const component = { id: item.id, componentState: state, visualElement: visual, textBox: input, renderingParameters: { mode: 1 }, marked: 1 };
         base[item.id] = [component];
         input.addEventListener('input', e => {
             f.inputs.push({ id: item.id, trusted: e.isTrusted });
@@ -65,6 +72,7 @@ const inputBoxFixtures = {
         fixtureName: 'numberBoxFixture',
         componentType: 'NUMBER_BOX_COMPONENT',
         inputClass: 'number-box-component',
+        wrapsInput: true,
         definition: {
             RoundingTypeCode: 'NONE',
             RoundingAmount: 0,
