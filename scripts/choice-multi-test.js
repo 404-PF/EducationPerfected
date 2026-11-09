@@ -152,17 +152,22 @@ async function setup(page, origin) {
             assert.equal(await page.evaluate(()=>multiFixture.submits),0,mutation);
         }
                 // Mixed-question detection refuses before any click, not only mid-round.
-        for (const mix of ['co-component', 'foreign-editable']) {
+        for (const mix of ['co-component', 'foreign-editable', 'missing-container']) {
             await setup(page,origin);
             await page.evaluate(m => {
                 if (m === 'co-component') multiFixture.q.questionDef.Components.push({ ComponentTypeCode: 'TEXT_BOX_COMPONENT', ComponentID: 'invented-text-box', Marked: 1 });
                 if (m === 'foreign-editable') document.querySelector('#ep-question-container').append(document.createElement('textarea'));
+                if (m === 'missing-container') { document.body.append(document.querySelector('.multi-choice-component')); document.querySelector('#ep-question-container').remove(); document.body.append(document.createElement('textarea')); }
             }, mix);
             const bad = await detectQuestion(page);
             assert.equal(bad.kind, 'unsupported', mix);
             assert.match(bad.reason, /other answer-bearing|editable controls outside/, mix + bad.reason);
             assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],mix);
         }
-        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,2 mixed-question detection refusals passed. Source-derived synthetic only.');
+        // An unlisted/display-type co-component must not false-refuse.
+        await setup(page,origin);
+        await page.evaluate(() => { multiFixture.q.questionDef.Components.push({ ComponentTypeCode: 'DEPTH_COMPONENT', ComponentID: 'invented-depth', Marked: 1 }); });
+        assert.equal((await detectQuestion(page)).kind, 'choice', 'unlisted/display codes must not false-refuse');
+        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,3 mixed-question detection refusals passed. Source-derived synthetic only.');
     } finally { if(browser)await browser.close();await new Promise(r=>server.close(r)); }
 })().catch(e=>{console.error(e);process.exitCode=1;});
