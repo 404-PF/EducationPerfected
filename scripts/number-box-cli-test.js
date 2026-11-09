@@ -18,7 +18,7 @@ async function bootNumberBoxCli(path = '/lesson-number-box') {
 }
 
 async function run(approval, succeed, options = {}) {
-    const { prepare, path, prompt = '(4 boxes).', expectedInputs = 11 } = options;
+    const { prepare, path, prompt = '(4 boxes).', expectedInputs = 11, expectedValues } = options;
     let session;
     try {
         session = await bootNumberBoxCli(path);
@@ -33,6 +33,7 @@ async function run(approval, succeed, options = {}) {
         assert.equal(promptOutput.split('Number-box Submit approval required for numberbox:').length - 1, 1);
         assert.equal(promptOutput.includes(prompt), true);
         assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits, numberBoxFixture.nexts]), [expectedInputs, true, 0, 0]);
+        if (expectedValues) assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('input.number-box-component')].map(input => input.value)), expectedValues);
         child.stdin.write(approval + '\n');
         if (succeed) {
             await wait(() => session.output.slice(offset).includes('Lesson completed.'));
@@ -82,7 +83,7 @@ async function expectRefusal(prepare, guard, expectedInputs, options = {}) {
     await run('yes', true);
     await run('no', false);
     await run('yes', true, { prepare: unmarkAllBoxes });
-    await run('yes', true, { path: '/lesson-number-box-variables', prompt: '(1 boxes).', expectedInputs: 2 });
+    await run('yes', true, { path: '/lesson-number-box-variables', prompt: '(1 boxes).', expectedInputs: 2, expectedValues: ['42'] });
 
     let session;
     try {

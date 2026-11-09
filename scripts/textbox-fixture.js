@@ -113,7 +113,7 @@ const inputBoxFixtures = {
         wrapsInput: true,
         definition: numberBoxDefinition,
         items: [
-            { id: 'box-v', raw: '{n}', answer: '42' },
+            { id: 'box-v', raw: '{[n][0]}', answer: '42' },
         ],
     },
 };
