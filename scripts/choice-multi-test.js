@@ -168,6 +168,19 @@ async function setup(page, origin) {
         await setup(page,origin);
         await page.evaluate(() => { multiFixture.q.questionDef.Components.push({ ComponentTypeCode: 'DEPTH_COMPONENT', ComponentID: 'invented-depth', Marked: 1 }); });
         assert.equal((await detectQuestion(page)).kind, 'choice', 'unlisted/display codes must not false-refuse');
-        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,3 mixed-question detection refusals passed. Source-derived synthetic only.');
+        // Every deny-listed code must refuse at detection; a typo in one entry
+        // would otherwise silently re-enable its mixed slide.
+        const denyCodes = ['DROPDOWN_COMPONENT', 'FORMULA_COMPONENT', 'WORKING_FORMULA_COMPONENT', 'FREEFORM_WORKING_COMPONENT',
+            'LONG_ANSWER_COMPONENT', 'FILL_IN_GAPS_COMPONENT', 'SCRATCH_PAD_COMPONENT', 'FILE_UPLOADER_COMPONENT',
+            'SOUND_RECORDER_COMPONENT', 'HIGHLIGHT_COMPONENT', 'TEXT_BOX_COMPONENT', 'NUMBER_BOX_COMPONENT', 'ANNOTATED_QUESTION_COMPONENT'];
+        for (const code of denyCodes) {
+            await setup(page,origin);
+            await page.evaluate(c => { multiFixture.q.questionDef.Components.push({ ComponentTypeCode: c, ComponentID: 'invented-' + c, Marked: 1 }); }, code);
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported', code);
+            assert.match(bad.reason, /other answer-bearing/, code + bad.reason);
+            assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],code);
+        }
+        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,3 mixed-question detection refusals,13 deny-list code refusals passed. Source-derived synthetic only.');
     } finally { if(browser)await browser.close();await new Promise(r=>server.close(r)); }
 })().catch(e=>{console.error(e);process.exitCode=1;});
