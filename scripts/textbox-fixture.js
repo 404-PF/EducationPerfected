@@ -60,11 +60,24 @@ function installInputBoxFixture(config) {
     // MULTICHOICE_COMPONENT's one radio input per option (EP chunk606).
     for (const extra of config.extraComponents || []) q.questionDef.Components.unshift({ Marked: 1, ...extra });
     for (const control of config.extraControls || []) {
+        if (control.trackEvents) f.radioEvents = [];
         for (let index = 0; index < control.count; index++) {
             const el = document.createElement(control.tag);
             if (control.type) el.type = control.type;
             if (control.name) el.name = control.name;
-            group.append(el);
+            if (control.value) el.value = `${control.value}-${index}`;
+            if (control.trackEvents) {
+                el.addEventListener('input', () => f.radioEvents.push('input'));
+                el.addEventListener('change', () => f.radioEvents.push('change'));
+            }
+            if (control.label) {
+                const label = document.createElement('label');
+                label.textContent = `${control.label}-${index}`;
+                label.appendChild(el);
+                group.append(label);
+            } else {
+                group.append(el);
+            }
         }
     }
     const oldButton = [...document.querySelectorAll('#sa-navigation-controls button')].find(b => b.textContent.trim() === 'Submit');
@@ -117,7 +130,7 @@ const inputBoxFixtures = {
             { ComponentTypeCode: 'MULTICHOICE_COMPONENT', ComponentID: 'mcq-1' },
         ],
         extraControls: [
-            { tag: 'input', type: 'radio', name: 'mcq-1', count: 3 },
+            { tag: 'input', type: 'radio', name: 'mcq-1', value: 'invented-zeta', label: 'Invented option label', trackEvents: true, count: 3 },
         ],
     },
     numberbox: {
