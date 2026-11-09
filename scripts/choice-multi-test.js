@@ -127,6 +127,8 @@ async function setup(page, origin) {
             rendererChanged: f => { f.state.previewOptions[0].renderer.templateString='foreign'; },
             textNotReady: f => { f.state.previewOptions[0].fields.renderGroup.textContent='loading'; },
             uneditable: f => { f.state.previewOptions[0].editable=false; },
+            coComponent: f => { f.q.questionDef.Components.push({ ComponentTypeCode: 'LONG_ANSWER_COMPONENT', ComponentID: 'invented-long-answer', Marked: 1 }); },
+            foreignEditable: f => { document.querySelector('#ep-question-container').append(document.createElement('textarea')); },
         };
         for(const [name, mutate] of Object.entries(mutations)) {
             await setup(page,origin); const desc=await detectQuestion(page);
@@ -149,6 +151,18 @@ async function setup(page, origin) {
             const r=await playChoiceRound(page,desc,{enter:true,timeout:100});assert.equal(r.status,'stopped',mutation);
             assert.equal(await page.evaluate(()=>multiFixture.submits),0,mutation);
         }
-        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,16 pre-click refusals and7 post-click stale/ineffective-click refusals passed. Source-derived synthetic only.');
+                // Mixed-question detection refuses before any click, not only mid-round.
+        for (const mix of ['co-component', 'foreign-editable']) {
+            await setup(page,origin);
+            await page.evaluate(m => {
+                if (m === 'co-component') multiFixture.q.questionDef.Components.push({ ComponentTypeCode: 'TEXT_BOX_COMPONENT', ComponentID: 'invented-text-box', Marked: 1 });
+                if (m === 'foreign-editable') document.querySelector('#ep-question-container').append(document.createElement('textarea'));
+            }, mix);
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported', mix);
+            assert.match(bad.reason, /other answer-bearing|editable controls outside/, mix + bad.reason);
+            assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],mix);
+        }
+        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,2 mixed-question detection refusals passed. Source-derived synthetic only.');
     } finally { if(browser)await browser.close();await new Promise(r=>server.close(r)); }
 })().catch(e=>{console.error(e);process.exitCode=1;});
