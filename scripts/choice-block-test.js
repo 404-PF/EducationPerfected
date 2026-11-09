@@ -125,6 +125,14 @@ async function setup(page, origin) {
             }, raw0, resolved0, rendered0);
             const descriptor = await detectQuestion(page);
             assert.equal(descriptor.kind, expected.kind, raw0);
+            if (expected.kind === 'choice') {
+                assert.equal(descriptor.options[0].text, resolved0, raw0);
+                const rest = [1, 2, 3].map(i => ['[block align="left"\nSynthetic plain answer ' + i + '\n]', i === 1 ? 'True' : 'false']);
+                assert.equal(descriptor.associationSignature, JSON.stringify([
+                    [[raw0, 'false'], ...rest],
+                    [[resolved0, 'false'], ...rest],
+                ]), raw0);
+            }
             if (expected.check) {
                 assert.equal(descriptor.diagnostic?.boundary, 'raw-template', raw0);
                 assert.equal(descriptor.diagnostic?.check, expected.check, raw0);
@@ -135,8 +143,16 @@ async function setup(page, origin) {
         await variableVariant('[block\nTotal {a} of {b}\n]', '[block\nTotal 3 of 10\n]', 'Total 3 of 10', { kind: 'choice' });
         await variableVariant('[block\n{round(a[1])}\n]', '[block\n7\n]', '7', { kind: 'choice' });
         await variableVariant('[block\nx < 5\n]', '[block\nx < 5\n]', 'x < 5', { kind: 'choice' });
+        // Literal > and unmatched braces are ordinary text in chunk606's
+        // splitParts grammar; an expression inside a color span resolves to a
+        // palette digit before the resolved-template check binds the final text.
+        await variableVariant('[block\nx > 5\n]', '[block\nx > 5\n]', 'x > 5', { kind: 'choice' });
+        await variableVariant('[block\nx { y\n]', '[block\nx { y\n]', 'x { y', { kind: 'choice' });
+        await variableVariant('[block\nx y }\n]', '[block\nx y }\n]', 'x y }', { kind: 'choice' });
+        await variableVariant('[block\n@@{color}@Yes@@\n]', '[block\n@@1@Yes@@\n]', 'Yes', { kind: 'choice' });
         await variableVariant('[block\n[table\n]\n]', '[block\nx\n]', 'x', { kind: 'unsupported', check: 'body-bracket' });
         await variableVariant('[block\n \n]', '[block\nx\n]', 'x', { kind: 'unsupported', check: 'body-blank' });
+        await variableVariant('[block\n \u000b \n]', '[block\nx\n]', 'x', { kind: 'unsupported', check: 'body-control' });
         const boundaries = {
             'no-parser': 'renderer-graph', 'foreign-index': 'renderer-graph', image: 'option-dom', math: 'raw-template', // injected katex flips detection to the formula path, whose raw templates carry no backticks
             'extra-editable': 'option-dom', 'render-text': 'option-dom', 'unknown-grammar': 'raw-template', 'unknown-attribute': 'raw-template',
@@ -227,6 +243,6 @@ async function setup(page, origin) {
             assert.equal(lateMutations, 1, mutation);
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,5 renderer-bound presentation-header accepts+5 malformed-header refusals,4 variable/literal-text accepts+2 narrowed-body refusals,25 initial refusals with boundary+check diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,5 renderer-bound presentation-header accepts+5 malformed-header refusals,8 variable/literal-text accepts+3 narrowed-body refusals,25 initial refusals with boundary+check diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
