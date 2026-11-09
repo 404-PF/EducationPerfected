@@ -64,6 +64,7 @@ function installInputBoxFixture(config) {
             const el = document.createElement(control.tag);
             if (control.type) el.type = control.type;
             if (control.name) el.name = control.name;
+            if (control.value) el.value = `${control.value}-${index}`;
             group.append(el);
         }
     }
@@ -117,7 +118,7 @@ const inputBoxFixtures = {
             { ComponentTypeCode: 'MULTICHOICE_COMPONENT', ComponentID: 'mcq-1' },
         ],
         extraControls: [
-            { tag: 'input', type: 'radio', name: 'mcq-1', count: 3 },
+            { tag: 'input', type: 'radio', name: 'mcq-1', value: 'invented-zeta', count: 3 },
         ],
     },
     numberbox: {
