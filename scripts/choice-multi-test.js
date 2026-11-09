@@ -127,6 +127,8 @@ async function setup(page, origin) {
             rendererChanged: f => { f.state.previewOptions[0].renderer.templateString='foreign'; },
             textNotReady: f => { f.state.previewOptions[0].fields.renderGroup.textContent='loading'; },
             uneditable: f => { f.state.previewOptions[0].editable=false; },
+            coComponent: f => { f.q.questionDef.Components.push({ ComponentTypeCode: 'LONG_ANSWER_COMPONENT', ComponentID: 'invented-long-answer', Marked: 1 }); },
+            foreignEditable: f => { document.querySelector('#ep-question-container').append(document.createElement('textarea')); },
         };
         for(const [name, mutate] of Object.entries(mutations)) {
             await setup(page,origin); const desc=await detectQuestion(page);
@@ -149,6 +151,36 @@ async function setup(page, origin) {
             const r=await playChoiceRound(page,desc,{enter:true,timeout:100});assert.equal(r.status,'stopped',mutation);
             assert.equal(await page.evaluate(()=>multiFixture.submits),0,mutation);
         }
-        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,16 pre-click refusals and7 post-click stale/ineffective-click refusals passed. Source-derived synthetic only.');
+                // Mixed-question detection refuses before any click, not only mid-round.
+        for (const mix of ['co-component', 'foreign-editable', 'missing-container']) {
+            await setup(page,origin);
+            await page.evaluate(m => {
+                if (m === 'co-component') multiFixture.q.questionDef.Components.push({ ComponentTypeCode: 'TEXT_BOX_COMPONENT', ComponentID: 'invented-text-box', Marked: 1 });
+                if (m === 'foreign-editable') document.querySelector('#ep-question-container').append(document.createElement('textarea'));
+                if (m === 'missing-container') { document.body.append(document.querySelector('.multi-choice-component')); document.querySelector('#ep-question-container').remove(); document.body.append(document.createElement('textarea')); }
+            }, mix);
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported', mix);
+            assert.match(bad.reason, /other answer-bearing|editable controls outside/, mix + bad.reason);
+            assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],mix);
+        }
+        // An unlisted/display-type co-component must not false-refuse.
+        await setup(page,origin);
+        await page.evaluate(() => { multiFixture.q.questionDef.Components.push({ ComponentTypeCode: 'DEPTH_COMPONENT', ComponentID: 'invented-depth', Marked: 1 }); });
+        assert.equal((await detectQuestion(page)).kind, 'choice', 'unlisted/display codes must not false-refuse');
+        // Every deny-listed code must refuse at detection; a typo in one entry
+        // would otherwise silently re-enable its mixed slide.
+        const denyCodes = ['DROPDOWN_COMPONENT', 'FORMULA_COMPONENT', 'WORKING_FORMULA_COMPONENT', 'FREEFORM_WORKING_COMPONENT',
+            'LONG_ANSWER_COMPONENT', 'FILL_IN_GAPS_COMPONENT', 'SCRATCH_PAD_COMPONENT', 'FILE_UPLOADER_COMPONENT',
+            'SOUND_RECORDER_COMPONENT', 'HIGHLIGHT_COMPONENT', 'TEXT_BOX_COMPONENT', 'NUMBER_BOX_COMPONENT', 'ANNOTATED_QUESTION_COMPONENT'];
+        for (const code of denyCodes) {
+            await setup(page,origin);
+            await page.evaluate(c => { multiFixture.q.questionDef.Components.push({ ComponentTypeCode: c, ComponentID: 'invented-' + c, Marked: 1 }); }, code);
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported', code);
+            assert.match(bad.reason, /other answer-bearing/, code + bad.reason);
+            assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],code);
+        }
+        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,3 mixed-question detection refusals,13 deny-list code refusals passed. Source-derived synthetic only.');
     } finally { if(browser)await browser.close();await new Promise(r=>server.close(r)); }
 })().catch(e=>{console.error(e);process.exitCode=1;});
