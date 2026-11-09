@@ -447,6 +447,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
         await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.answerOptions = ['42', '43']; }, { literalOptionsMatch: false });
         await variableRefusal(() => { const d = numberBoxFixture.q.questionDef.Components.find(d => d.ComponentID === 'box-v'); window.__toJsonCalls = 0; d.Options.toJSON = () => { window.__toJsonCalls++; return ['42']; }; }, { definitionOptionsMatch: false });
         assert.equal(await page.evaluate(() => window.__toJsonCalls), 0);
+        await variableRefusal(() => { const d = numberBoxFixture.q.questionDef.Components.find(d => d.ComponentID === 'box-v'); d.Options['4294967295'] = 'smuggled'; }, { definitionOptionsMatch: false });
         await page.goto(origin + '/lesson-textbox-variables');
         await page.evaluate(() => { textboxFixture.base['box-v'][0].componentState.optionsInjector[0].parts.push({ text: 'extra' }); });
         {
@@ -458,6 +459,6 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.status, 'stopped');
             assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 25 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 31 sanitized guard diagnostics and33refusals; variable-template number-box and textbox slides fill+submit, ten injector tamper refusals0input. Not live proof.');
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 25 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 31 sanitized guard diagnostics and33refusals; variable-template number-box and textbox slides fill+submit, eleven injector tamper refusals0input. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });
