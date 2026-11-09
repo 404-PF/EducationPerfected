@@ -112,6 +112,47 @@ async function setup(page, origin) {
         await headerVariant('[block width="wide"', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
         await headerVariant('[block align="left" align="right"', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
         await headerVariant('[block data-theme="plain', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
+        // Raw templates may carry EP variable expressions ({..}, resolved in
+        // the metadata clone) and literal < > { } text; the resolved template
+        // and rendered text still bind the answer exactly.
+        const variableVariant = async (raw0, resolved0, rendered0, expected) => {
+            await page.evaluate((raw0, resolved0, rendered0) => {
+                const f = window.mathFixture;
+                f.comp.Options[0].TextTemplate = raw0;
+                f.metadata.Options[0].TextTemplate = resolved0;
+                f.previews[0].renderer.templateString = resolved0;
+                f.previews[0].fields.renderGroup.textContent = rendered0;
+            }, raw0, resolved0, rendered0);
+            const descriptor = await detectQuestion(page);
+            assert.equal(descriptor.kind, expected.kind, raw0);
+            if (expected.kind === 'choice') {
+                assert.equal(descriptor.options[0].text, resolved0, raw0);
+                const rest = [1, 2, 3].map(i => ['[block align="left"\nSynthetic plain answer ' + i + '\n]', i === 1 ? 'True' : 'false']);
+                assert.equal(descriptor.associationSignature, JSON.stringify([
+                    [[raw0, 'false'], ...rest],
+                    [[resolved0, 'false'], ...rest],
+                ]), raw0);
+            }
+            if (expected.check) {
+                assert.equal(descriptor.diagnostic?.boundary, 'raw-template', raw0);
+                assert.equal(descriptor.diagnostic?.check, expected.check, raw0);
+                assert.equal(descriptor.diagnostic?.option, 0, raw0);
+            }
+        };
+        await variableVariant('[block\n{x}\n]', '[block\n42\n]', '42', { kind: 'choice' });
+        await variableVariant('[block\nTotal {a} of {b}\n]', '[block\nTotal 3 of 10\n]', 'Total 3 of 10', { kind: 'choice' });
+        await variableVariant('[block\n{round(a[1])}\n]', '[block\n7\n]', '7', { kind: 'choice' });
+        await variableVariant('[block\nx < 5\n]', '[block\nx < 5\n]', 'x < 5', { kind: 'choice' });
+        // Literal > and unmatched braces are ordinary text in chunk606's
+        // splitParts grammar; an expression inside a color span resolves to a
+        // palette digit before the resolved-template check binds the final text.
+        await variableVariant('[block\nx > 5\n]', '[block\nx > 5\n]', 'x > 5', { kind: 'choice' });
+        await variableVariant('[block\nx { y\n]', '[block\nx { y\n]', 'x { y', { kind: 'choice' });
+        await variableVariant('[block\nx y }\n]', '[block\nx y }\n]', 'x y }', { kind: 'choice' });
+        await variableVariant('[block\n@@{color}@Yes@@\n]', '[block\n@@1@Yes@@\n]', 'Yes', { kind: 'choice' });
+        await variableVariant('[block\n[table\n]\n]', '[block\nx\n]', 'x', { kind: 'unsupported', check: 'body-bracket' });
+        await variableVariant('[block\n \n]', '[block\nx\n]', 'x', { kind: 'unsupported', check: 'body-blank' });
+        await variableVariant('[block\n \u000b \n]', '[block\nx\n]', 'x', { kind: 'unsupported', check: 'body-control' });
         const boundaries = {
             'no-parser': 'renderer-graph', 'foreign-index': 'renderer-graph', image: 'option-dom', math: 'raw-template', // injected katex flips detection to the formula path, whose raw templates carry no backticks
             'extra-editable': 'option-dom', 'render-text': 'option-dom', 'unknown-grammar': 'raw-template', 'unknown-attribute': 'raw-template',
@@ -120,6 +161,12 @@ async function setup(page, origin) {
             'missing-original': 'option-graph', 'foreign-original': 'option-graph', 'missing-displayed': 'option-graph', 'foreign-displayed': 'option-graph',
             'correct-not-displayed': 'correct-set', 'missing-preview': 'component-binding', 'single-line-block': 'raw-template',
             'leading-block': 'raw-template', 'embedded-block': 'raw-template',
+        };
+        const checks = {
+            image: 'option-binding', math: 'template', 'extra-editable': 'input-binding', 'render-text': 'render-text',
+            'unknown-grammar': 'header', 'unknown-attribute': 'header', 'mixed-plain': 'line-count', 'nested-directive': 'body-bracket',
+            blank: 'body-blank', 'wrong-preview': 'option-binding', 'wrong-renderer': 'option-binding', 'duplicate-template': 'duplicate',
+            'single-line-block': 'line-count', 'leading-block': 'header', 'embedded-block': 'header',
         };
         const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'unknown-attribute', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview', 'single-line-block', 'leading-block', 'embedded-block'];
         for (const mutation of mutations) {
@@ -152,7 +199,7 @@ async function setup(page, origin) {
                 if (mutation === 'correct-not-displayed') { f.previews[1].element.remove(); state.displayedOptions.splice(1, 1); f.previews.splice(1, 1); }
                 if (mutation === 'missing-preview') f.previews.pop();
             }, mutation);
-            assert.deepEqual(await detectQuestion(page).then(detected => [detected.kind, detected.diagnostic?.boundary]), ['unsupported', boundaries[mutation]], mutation);
+            assert.deepEqual(await detectQuestion(page).then(detected => [detected.kind, detected.diagnostic?.boundary, detected.diagnostic?.check]), ['unsupported', boundaries[mutation], checks[mutation]], mutation);
             assert.equal(await page.evaluate(() => mathFixture.clicks.length), 0);
         }
         for (const mutation of ['round', 'template', 'resolved-marking', 'auto-marking', 'detached', 'graph']) {
@@ -196,6 +243,6 @@ async function setup(page, origin) {
             assert.equal(lateMutations, 1, mutation);
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,5 renderer-bound presentation-header accepts+5 malformed-header refusals,25 initial refusals with boundary diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,5 renderer-bound presentation-header accepts+5 malformed-header refusals,8 variable/literal-text accepts+3 narrowed-body refusals,25 initial refusals with boundary+check diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
