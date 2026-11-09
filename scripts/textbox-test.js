@@ -276,6 +276,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             'plus-sf': 'numeric-metadata',
             'negative-percent': 'numeric-metadata',
             'raw-option': 'state-shape',
+            'resolved-option': 'state-shape',
             'missing-state': 'state-shape',
             initial: 'state-shape',
             readonly: 'box-shape',
@@ -296,7 +297,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             'runtime-unmarked': 'state-shape',
             'stale-value': 'stored-value',
         };
-        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'private-error', 'circular-options', 'bigint-options', 'private-marked', 'private-mode', 'private-game-mode', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unwrapped-element', 'wrapper-tag', 'extra-wrapper-child', 'wrapper-text-node', 'unmarked', 'mixed-definition', 'private-definition', 'many-definitions', 'mixed-type', 'duplicate-ids', 'unmarked-definition', 'invalid-marked', 'mismatched-marked', 'runtime-unmarked', 'stale-value', 'prefill']) {
+        for (const mutation of ['manual', 'assessment', 'duplicate', 'nonnumeric', 'rounding', 'error', 'private-error', 'circular-options', 'bigint-options', 'private-marked', 'private-mode', 'private-game-mode', 'unrounded-sf', 'plus-sf', 'negative-percent', 'raw-option', 'resolved-option', 'missing-state', 'initial', 'readonly', 'wrong-element', 'unwrapped-element', 'wrapper-tag', 'extra-wrapper-child', 'wrapper-text-node', 'unmarked', 'mixed-definition', 'private-definition', 'many-definitions', 'mixed-type', 'duplicate-ids', 'unmarked-definition', 'invalid-marked', 'mismatched-marked', 'runtime-unmarked', 'stale-value', 'prefill']) {
             await page.goto(origin + '/lesson-number-box');
             await page.evaluate(m => {
                 const f = numberBoxFixture, c = f.base['box-c'][0], s = c.componentState;
@@ -308,6 +309,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                     d.Options = ['pi'];
                     s.metadataInstance.Options = ['pi'];
                     s.answerOptions = ['pi'];
+                    s.optionsInjector = [{ parts: [{ text: 'pi' }] }];
                 }
                 if (m === 'rounding') s.metadataInstance.RoundingTypeCode = 'ROUNDING_PRIVATE_SENTINEL';
                 if (m === 'error') s.metadataInstance.AcceptableErrorValue = -1;
@@ -325,6 +327,7 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                         record.RoundingAmount = 2;
                     }
                     s.answerOptions = ['3.142'];
+                    s.optionsInjector = [{ parts: [{ text: '3.142' }] }];
                 }
                 if (m === 'plus-sf' || m === 'negative-percent') {
                     const d = f.q.questionDef.Components.find(def => def.ComponentID === 'box-c');
@@ -337,8 +340,10 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                         record.AcceptableErrorValue = m === 'plus-sf' ? 0 : 10;
                     }
                     s.answerOptions = [answer];
+                    s.optionsInjector = [{ parts: [{ text: answer }] }];
                 }
                 if (m === 'raw-option') f.q.questionDef.Components.find(d => d.ComponentID === 'box-c').Options = ['31'];
+                if (m === 'resolved-option') s.answerOptions = ['31'];
                 if (m === 'missing-state') delete c.componentState;
                 if (m === 'initial') s.injectedInitialText = '3';
                 if (m === 'readonly') c.textBox.readOnly = true;
@@ -374,7 +379,8 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
                 assert.equal(d.diagnostic?.guard, expectedRefusalGuards[mutation], mutation);
                 assert.equal(['30', '94.2', '3.142', '+30', '-30', 'pi', 'box-a', 'box-b', 'box-c', 'box-d', 'PRIVATE_TYPE_WITH_ANSWER', 'private-id', 'ROUNDING_PRIVATE_SENTINEL', 'ERROR_PRIVATE_SENTINEL', 'MARKED_PRIVATE_SENTINEL', 'MODE_PRIVATE_SENTINEL', 'GAME_MODE_PRIVATE_SENTINEL', 'Select the correct definite article', 'armadietto', 'scuola'].some(text => JSON.stringify(d.diagnostic).includes(text)), false, mutation);
                 assert.equal(d.diagnostic.componentTypes.length <= 20, true, mutation);
-                if (mutation === 'circular-options' || mutation === 'bigint-options') assert.equal(d.diagnostic.optionsMatch, false, mutation);
+                if (mutation === 'circular-options' || mutation === 'bigint-options') assert.equal(d.diagnostic.answerOptionsValid, false, mutation);
+                if (mutation === 'resolved-option') assert.equal(d.diagnostic.literalOptionsMatch, false, mutation);
                 if (mutation === 'rounding') assert.deepEqual([d.diagnostic.roundingType, d.diagnostic.roundingTypeValid], [null, false], mutation);
                 if (mutation === 'private-error') assert.deepEqual([d.diagnostic.acceptableErrorType, d.diagnostic.acceptableErrorTypeValid], [null, false], mutation);
                 if (mutation === 'private-marked') assert.deepEqual([d.diagnostic.componentMarked, d.diagnostic.metadataMarked, d.diagnostic.componentMarkedValid, d.diagnostic.metadataMarkedValid], [null, null, false, false], mutation);
@@ -398,6 +404,61 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.reason, 'unsafe-or-changed-state', mutation);
             assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits]), [0, 0], mutation);
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 25 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 30 sanitized guard diagnostics and32refusals. Not live proof.');
+        // Variable-bearing option templates (EP BasicVariableInjector): raw
+        // def and metadata keep {expression} templates; answerOptions carry
+        // the resolved values. The injector record proves raw agreement.
+        await page.goto(origin + '/lesson-number-box-variables');
+        {
+            const vd = await detectQuestion(page);
+            assert.equal(vd.kind, 'numberbox', JSON.stringify(vd));
+            assert.deepEqual(vd.boxes.map(b => b.answer), ['42']);
+            const vr = await playNumberBoxRound(page, vd, { enter: true, timeout: 1000, requireSubmitApproval: true, approveSubmit: async () => true });
+            assert.equal(vr.status, 'advanced');
+            assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.inputs.every(e => e.trusted), numberBoxFixture.submits]), [2, true, 1]);
+        }
+        await page.goto(origin + '/lesson-textbox-variables');
+        {
+            const vd = await detectQuestion(page);
+            assert.equal(vd.kind, 'textbox', JSON.stringify(vd));
+            assert.deepEqual(vd.boxes.map(b => b.answer), ['armadietto']);
+            const vr = await playTextboxRound(page, vd, { enter: true, timeout: 1000 });
+            assert.equal(vr.status, 'advanced');
+            assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [10, 1]);
+        }
+        const variableRefusal = async (mutate, facts) => {
+            await page.goto(origin + '/lesson-number-box-variables');
+            await page.evaluate(mutate);
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported');
+            assert.equal(bad.diagnostic.guard, 'state-shape');
+            for (const [key, value] of Object.entries(facts)) assert.equal(bad.diagnostic[key], value, key);
+            assert.equal(JSON.stringify(bad.diagnostic).includes('42'), false);
+            const refused = await playNumberBoxRound(page, bad, { enter: true, timeout: 200, requireSubmitApproval: true, approveSubmit: async () => { throw new Error('refusal must not ask'); } });
+            assert.equal(refused.status, 'stopped');
+            assert.deepEqual(await page.evaluate(() => [numberBoxFixture.inputs.length, numberBoxFixture.submits]), [0, 0]);
+        };
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector[0].parts[0].text = 'tampered'; }, { optionTemplatesMatch: false, literalOptionsMatch: true });
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector[0].parts = [{ text: '{n}' }]; }, { optionTemplatesMatch: false });
+        await variableRefusal(() => { delete numberBoxFixture.base['box-v'][0].componentState.optionsInjector; }, { optionInjectorCount: null, optionTemplatesMatch: false });
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector.push({ parts: [{ text: 'x' }] }); }, { optionInjectorCount: 2, optionTemplatesMatch: false });
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector[0].parts[1].temporaryVariable = {}; }, { optionTemplatesMatch: false });
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector[0].parts[1].temporaryVariable.expression = ''; }, { optionTemplatesMatch: false });
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.optionsInjector = new Array(1); }, { optionInjectorCount: 1, optionTemplatesMatch: false });
+        await variableRefusal(() => { numberBoxFixture.base['box-v'][0].componentState.answerOptions = ['42', '43']; }, { literalOptionsMatch: false });
+        await variableRefusal(() => { const d = numberBoxFixture.q.questionDef.Components.find(d => d.ComponentID === 'box-v'); window.__toJsonCalls = 0; d.Options.toJSON = () => { window.__toJsonCalls++; return ['42']; }; }, { definitionOptionsMatch: false });
+        assert.equal(await page.evaluate(() => window.__toJsonCalls), 0);
+        await variableRefusal(() => { const d = numberBoxFixture.q.questionDef.Components.find(d => d.ComponentID === 'box-v'); d.Options['4294967295'] = 'smuggled'; }, { definitionOptionsMatch: false });
+        await page.goto(origin + '/lesson-textbox-variables');
+        await page.evaluate(() => { textboxFixture.base['box-v'][0].componentState.optionsInjector[0].parts.push({ text: 'extra' }); });
+        {
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported');
+            assert.equal(bad.diagnostic.guard, 'state-shape');
+            assert.equal(bad.diagnostic.optionTemplatesMatch, false);
+            const refused = await playTextboxRound(page, bad, { enter: true, timeout: 200 });
+            assert.equal(refused.status, 'stopped');
+            assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
+        }
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 25 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 31 sanitized guard diagnostics and33refusals; variable-template number-box and textbox slides fill+submit, eleven injector tamper refusals0input. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });

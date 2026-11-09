@@ -1,7 +1,11 @@
 // Invented sanitized source-derived fixtures, not captured account DOM.
 // EP chunk606: text boxes and number boxes share componentState answer state;
-// number boxes add numeric rounding/error metadata.
+// number boxes add numeric rounding/error metadata. The state builds one
+// BasicVariableInjector per raw option template and applyVariableContext
+// resolves {expression} templates in place on answerOptions, so an item with
+// `raw` keeps the template in def/metadata while answerOptions is resolved.
 function installInputBoxFixture(config) {
+    const injectorFrom = template => ({ parts: template.split(/({[^}]+})/g).map(part => part.startsWith('{') && part.endsWith('}') ? { temporaryVariable: { expression: part.slice(1, -1) } } : { text: part }) });
     const old = document.querySelector('.multi-choice-component');
     const self = window.angular.element(old).scope().self, q = self.model._currentQuestion;
     self.model.gameMode = 3;
@@ -24,7 +28,7 @@ function installInputBoxFixture(config) {
             ComponentID: item.id,
             Marked: 1,
             InitialText: '',
-            Options: [item.answer],
+            Options: [item.raw || item.answer],
             ...config.definition,
             ...(item.definition || {}),
         };
@@ -40,7 +44,7 @@ function installInputBoxFixture(config) {
         }
         group.append(visual);
         const metadataInstance = JSON.parse(JSON.stringify(def));
-        const state = { metadataInstance, answerOptions: [item.answer], variableOptions: [{ Code: 'synthetic-case', Value: 'true' }], injectedInitialText: '', userAnswer: '', isUserAnswerSet: false };
+        const state = { metadataInstance, answerOptions: [item.answer], optionsInjector: def.Options.map(injectorFrom), variableOptions: [{ Code: 'synthetic-case', Value: 'true' }], injectedInitialText: '', userAnswer: '', isUserAnswerSet: false };
         const component = { id: item.id, componentState: state, visualElement: visual, textBox: input, renderingParameters: { mode: 1 }, marked: 1 };
         base[item.id] = [component];
         input.addEventListener('input', e => {
@@ -57,6 +61,18 @@ function installInputBoxFixture(config) {
     submit.addEventListener('click', () => { f.submits++; q.questionIndex++; });
 }
 
+const numberBoxDefinition = {
+    RoundingTypeCode: 'NONE',
+    RoundingAmount: 0,
+    AcceptableErrorTypeCode: 'ABS',
+    AcceptableErrorValue: 0,
+    Height: 0,
+    Width: 0,
+    ScriptPosition: 'normal',
+    TextAlignment: 'left',
+    Score: 1,
+};
+
 const inputBoxFixtures = {
     textbox: {
         fixtureName: 'textboxFixture',
@@ -68,27 +84,36 @@ const inputBoxFixtures = {
             { id: 'box-a', answer: 'alpha' },
         ],
     },
+    'textbox-variables': {
+        fixtureName: 'textboxFixture',
+        componentType: 'TEXT_BOX_COMPONENT',
+        inputClass: 'text-box-component',
+        definition: { CaseSensitive: true, MarkPunctuation: false, IgnoredCharacters: '' },
+        items: [
+            { id: 'box-v', raw: '{word}', answer: 'armadietto' },
+        ],
+    },
     numberbox: {
         fixtureName: 'numberBoxFixture',
         componentType: 'NUMBER_BOX_COMPONENT',
         inputClass: 'number-box-component',
         wrapsInput: true,
-        definition: {
-            RoundingTypeCode: 'NONE',
-            RoundingAmount: 0,
-            AcceptableErrorTypeCode: 'ABS',
-            AcceptableErrorValue: 0,
-            Height: 0,
-            Width: 0,
-            ScriptPosition: 'normal',
-            TextAlignment: 'left',
-            Score: 1,
-        },
+        definition: numberBoxDefinition,
         items: [
             { id: 'box-c', answer: '30' },
             { id: 'box-a', answer: '30' },
             { id: 'box-d', answer: '30' },
             { id: 'box-b', answer: '94.2', definition: { RoundingTypeCode: 'DP', RoundingAmount: 2 } },
+        ],
+    },
+    'numberbox-variables': {
+        fixtureName: 'numberBoxFixture',
+        componentType: 'NUMBER_BOX_COMPONENT',
+        inputClass: 'number-box-component',
+        wrapsInput: true,
+        definition: numberBoxDefinition,
+        items: [
+            { id: 'box-v', raw: '{[n][0]}', answer: '42' },
         ],
     },
 };
