@@ -459,6 +459,27 @@ const { playTextboxRound, playNumberBoxRound } = require('../lib/textbox-handler
             assert.equal(refused.status, 'stopped');
             assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits]), [0, 0]);
         }
-        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 25 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 31 sanitized guard diagnostics and33refusals; variable-template number-box and textbox slides fill+submit, eleven injector tamper refusals0input. Not live proof.');
+        // Mixed-component slide: one text box beside a MULTICHOICE component
+        // (three radio option inputs) must keep refusing at lesson-dom, and the
+        // refusal identifies the component mix and control shapes it saw.
+        await page.goto(origin + '/lesson-textbox-mixed');
+        {
+            const bad = await detectQuestion(page);
+            assert.equal(bad.kind, 'unsupported');
+            const d = bad.diagnostic;
+            assert.equal(d.kind, 'textbox-refusal');
+            assert.equal(d.guard, 'lesson-dom');
+            assert.equal(d.componentCount, 2);
+            assert.deepEqual(d.componentTypes, ['UNLISTED_COMPONENT', 'TEXT_BOX_COMPONENT']);
+            assert.equal(d.editableControlCount, 4);
+            assert.deepEqual(d.editableControlShapes, { 'input:text': 1, 'input:radio': 3 });
+            assert.equal(JSON.stringify(d).includes('alpha'), false);
+            assert.equal(JSON.stringify(d).includes('invented-zeta'), false);
+            assert.equal(JSON.stringify(d).includes('Invented option label'), false);
+            const refused = await playTextboxRound(page, bad, { enter: true, timeout: 200 });
+            assert.equal(refused.status, 'stopped');
+            assert.deepEqual(await page.evaluate(() => [textboxFixture.inputs.length, textboxFixture.submits, document.querySelectorAll('input[type="radio"]:checked').length, textboxFixture.radioEvents.length]), [0, 0, 0, 0]);
+        }
+        console.log('Textbox source-derived browser fixtures PASS: DOM-order2fields/9trustedcharacters/1Submit; fill-only0Submit; 25 initial refusals; 5 mid-input stops after1character/0Submit;3 deterministic unsupported/modal transitions. Number boxes: DOM-order4fields/11trustedcharacters, DP-format answer validation, one approval gate, 1Submit, fill-only0Submit, semi-auto advance after user Submit, authored-unmarked textbox and number-box rounds complete with 1Submit each, 31 sanitized guard diagnostics and33refusals; variable-template number-box and textbox slides fill+submit, eleven injector tamper refusals0input; mixed textbox+multichoice slide refuses with component-mix diagnostic0input. Not live proof.');
     } finally { try { if (browser) await browser.close(); } finally { await new Promise(r => server.close(r)); } }
 })().catch(e => { console.error(e); process.exitCode = 1; });

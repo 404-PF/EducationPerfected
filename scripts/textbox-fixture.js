@@ -55,6 +55,31 @@ function installInputBoxFixture(config) {
         });
         input.addEventListener('keydown', e => { if (e.key === 'Enter') f.submits++; });
     }
+    // Mixed slides: extra definition components (never answer-bearing in the
+    // base map) plus their extra editable controls, modelling for example a
+    // MULTICHOICE_COMPONENT's one radio input per option (EP chunk606).
+    for (const extra of config.extraComponents || []) q.questionDef.Components.unshift({ Marked: 1, ...extra });
+    for (const control of config.extraControls || []) {
+        if (control.trackEvents) f.radioEvents = [];
+        for (let index = 0; index < control.count; index++) {
+            const el = document.createElement(control.tag);
+            if (control.type) el.type = control.type;
+            if (control.name) el.name = control.name;
+            if (control.value) el.value = `${control.value}-${index}`;
+            if (control.trackEvents) {
+                el.addEventListener('input', () => f.radioEvents.push('input'));
+                el.addEventListener('change', () => f.radioEvents.push('change'));
+            }
+            if (control.label) {
+                const label = document.createElement('label');
+                label.textContent = `${control.label}-${index}`;
+                label.appendChild(el);
+                group.append(label);
+            } else {
+                group.append(el);
+            }
+        }
+    }
     const oldButton = [...document.querySelectorAll('#sa-navigation-controls button')].find(b => b.textContent.trim() === 'Submit');
     const submit = oldButton.cloneNode(true);
     oldButton.replaceWith(submit);
@@ -91,6 +116,21 @@ const inputBoxFixtures = {
         definition: { CaseSensitive: true, MarkPunctuation: false, IgnoredCharacters: '' },
         items: [
             { id: 'box-v', raw: '{word}', answer: 'armadietto' },
+        ],
+    },
+    'textbox-mixed': {
+        fixtureName: 'textboxFixture',
+        componentType: 'TEXT_BOX_COMPONENT',
+        inputClass: 'text-box-component',
+        definition: { CaseSensitive: true, MarkPunctuation: false, IgnoredCharacters: '' },
+        items: [
+            { id: 'box-a', answer: 'alpha' },
+        ],
+        extraComponents: [
+            { ComponentTypeCode: 'MULTICHOICE_COMPONENT', ComponentID: 'mcq-1' },
+        ],
+        extraControls: [
+            { tag: 'input', type: 'radio', name: 'mcq-1', value: 'invented-zeta', label: 'Invented option label', trackEvents: true, count: 3 },
         ],
     },
     numberbox: {
