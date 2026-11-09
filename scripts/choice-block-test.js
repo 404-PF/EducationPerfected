@@ -78,6 +78,49 @@ async function setup(page, origin) {
                 assert.equal(await page.evaluate(()=>mathFixture.clicks.length),0);
             }
         }
+        // Presentation-only header attributes (justify align, width, ignored
+        // unknown keys) never change rendered text, so the exact text binding
+        // accepts them; malformed headers still refuse at the raw boundary.
+        await setup(page, origin);
+        const headerVariant = async (header, expected) => {
+            await page.evaluate(header => {
+                const f = window.mathFixture, template = header + '\nSynthetic plain answer 0\n]';
+                f.comp.Options[0].TextTemplate = template;
+                f.metadata.Options[0].TextTemplate = template;
+                f.previews[0].renderer.templateString = template;
+            }, header);
+            const descriptor = await detectQuestion(page);
+            assert.equal(descriptor.kind, expected.kind, header);
+            if (expected.kind === 'choice') {
+                assert.equal(descriptor.representation, 'renderer-template', header);
+                assert.equal(descriptor.plainBlock, true, header);
+                assert.equal(descriptor.options.length, 4, header);
+                assert.deepEqual(descriptor.correct, ['[block align="left"\nSynthetic plain answer 1\n]'], header);
+                const pairs = [0, 1, 2, 3].map(i => [(i === 0 ? header : '[block align="left"') + '\nSynthetic plain answer ' + i + '\n]', i === 1 ? 'True' : 'false']);
+                assert.equal(descriptor.associationSignature, JSON.stringify([pairs, pairs]), header);
+            }
+            if (expected.boundary) assert.equal(descriptor.diagnostic?.boundary, expected.boundary, header);
+            if (expected.check) assert.equal(descriptor.diagnostic?.check, expected.check, header);
+        };
+        await headerVariant('[block align="justify"', { kind: 'choice' });
+        await headerVariant('[block width="300"', { kind: 'choice' });
+        await headerVariant('[block width="300" align="right"', { kind: 'choice' });
+        await headerVariant('[block align="left" data-theme="plain"', { kind: 'choice' });
+        await headerVariant('[block data-theme="plain theme"', { kind: 'choice' });
+        await headerVariant('[block align="middle"', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
+        await headerVariant('[block align', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
+        await headerVariant('[block width="wide"', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
+        await headerVariant('[block align="left" align="right"', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
+        await headerVariant('[block data-theme="plain', { kind: 'unsupported', boundary: 'raw-template', check: 'header' });
+        const boundaries = {
+            'no-parser': 'renderer-graph', 'foreign-index': 'renderer-graph', image: 'option-dom', math: 'raw-template', // injected katex flips detection to the formula path, whose raw templates carry no backticks
+            'extra-editable': 'option-dom', 'render-text': 'option-dom', 'unknown-grammar': 'raw-template', 'unknown-attribute': 'raw-template',
+            'mixed-plain': 'raw-template', 'nested-directive': 'raw-template', blank: 'raw-template', 'wrong-group': 'component-binding',
+            'wrong-state': 'option-graph', 'wrong-preview': 'option-dom', 'wrong-renderer': 'option-dom', 'duplicate-template': 'raw-template',
+            'missing-original': 'option-graph', 'foreign-original': 'option-graph', 'missing-displayed': 'option-graph', 'foreign-displayed': 'option-graph',
+            'correct-not-displayed': 'correct-set', 'missing-preview': 'component-binding', 'single-line-block': 'raw-template',
+            'leading-block': 'raw-template', 'embedded-block': 'raw-template',
+        };
         const mutations = ['no-parser', 'foreign-index', 'image', 'math', 'extra-editable', 'render-text', 'unknown-grammar', 'unknown-attribute', 'mixed-plain', 'nested-directive', 'blank', 'wrong-group', 'wrong-state', 'wrong-preview', 'wrong-renderer', 'duplicate-template', 'missing-original', 'foreign-original', 'missing-displayed', 'foreign-displayed', 'correct-not-displayed', 'missing-preview', 'single-line-block', 'leading-block', 'embedded-block'];
         for (const mutation of mutations) {
             await setup(page, origin);
@@ -92,7 +135,7 @@ async function setup(page, origin) {
                 if (mutation === 'math') { const formula = document.createElement('span'); formula.className = 'katex'; f.previews[1].element.append(formula); }
                 if (mutation === 'extra-editable') f.previews[1].element.append(document.createElement('input'));
                 if (mutation === 'render-text') f.previews[1].fields.renderGroup.textContent = 'foreign text';
-                if (mutation === 'unknown-attribute') f.comp.Options[0].TextTemplate = '[block unknown\ntext\n]';
+                if (mutation === 'unknown-attribute') f.comp.Options[0].TextTemplate = '[block unknown="x\ntext\n]';
                 if (mutation === 'unknown-grammar') f.comp.Options[0].TextTemplate = '[unknown\ntext\n]';
                 if (mutation === 'mixed-plain') f.comp.Options[0].TextTemplate = 'plain';
                 if (mutation === 'nested-directive') f.comp.Options[0].TextTemplate = '[block\n[image url="x"]\n]';
@@ -109,7 +152,7 @@ async function setup(page, origin) {
                 if (mutation === 'correct-not-displayed') { f.previews[1].element.remove(); state.displayedOptions.splice(1, 1); f.previews.splice(1, 1); }
                 if (mutation === 'missing-preview') f.previews.pop();
             }, mutation);
-            assert.equal((await detectQuestion(page)).kind, 'unsupported', mutation);
+            assert.deepEqual(await detectQuestion(page).then(detected => [detected.kind, detected.diagnostic?.boundary]), ['unsupported', boundaries[mutation]], mutation);
             assert.equal(await page.evaluate(() => mathFixture.clicks.length), 0);
         }
         for (const mutation of ['round', 'template', 'resolved-marking', 'auto-marking', 'detached', 'graph']) {
@@ -153,6 +196,6 @@ async function setup(page, origin) {
             assert.equal(lateMutations, 1, mutation);
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,25 initial refusals+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,5 renderer-bound presentation-header accepts+5 malformed-header refusals,25 initial refusals with boundary diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
