@@ -96,6 +96,8 @@ async function setup(page, origin) {
                 assert.equal(descriptor.plainBlock, true, header);
                 assert.equal(descriptor.options.length, 4, header);
                 assert.deepEqual(descriptor.correct, ['[block align="left"\nSynthetic plain answer 1\n]'], header);
+                const pairs = [0, 1, 2, 3].map(i => [(i === 0 ? header : '[block align="left"') + '\nSynthetic plain answer ' + i + '\n]', i === 1 ? 'True' : 'false']);
+                assert.equal(descriptor.associationSignature, JSON.stringify([pairs, pairs]), header);
             }
             if (expected.boundary) assert.equal(descriptor.diagnostic?.boundary, expected.boundary, header);
             if (expected.check) assert.equal(descriptor.diagnostic?.check, expected.check, header);
