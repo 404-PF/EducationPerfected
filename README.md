@@ -416,3 +416,23 @@ Use a fresh matching source ZIP, not the ordinary launcher or the fill-only comm
 Only `fill once`, `stop`, `status` and `quit` are supported; answering hotkeys are disabled. One attempt is consumed before inspection, including refusal or cancellation, and cannot be retried even on a different question. A new process is not permission to retry. `EP_TEXTBOX_FILL_ONCE` `filled-only` confirms the handler's exact fill checkpoint, not saving, marking, grading, points or advancement. An interrupted or uncertain fill may leave partial input. `stop` cannot undo a delivered key, and shutdown may wait for in-flight browser work. Final read/input checks are not atomic against concurrent page or user changes.
 
 The ordinary textbox contract and exclusions above remain unchanged. Synthetic Linux browser and real-program fixtures cover this validation path, not live textbox or Windows compatibility. Use a fresh matching source ZIP. Each live question needs separate approval before typing `fill once`.
+
+### Read-only Reflection inspection (#114)
+
+Self-marked Reflection answering is not implemented yet. To capture its component
+and control shapes without starting answering:
+
+1. Run `node bin/cli.js`, finish sign-in, and open the approved Reflection page.
+2. Leave the CLI inactive (stopped, completed or error state). Do not type `start` or press the answering hotkey.
+3. Type `inspect-self-mark` once. Paste the line beginning `EP_SELF_MARK_INSPECT`.
+4. Type `quit` when finished. Do not reveal answers or select a self-grade for this capture.
+
+The command reads structural metadata, control shapes and counts only. It does not type,
+click, focus, Submit, reveal answers, select a self-grade or advance the question.
+It reports recognized component codes and fixed metadata field shapes, not answer
+values, question text, arbitrary keys, classes, labels or IDs. Cached metadata
+accessors are skipped. Assessment mode and unconfirmed lesson modes stop before
+question-state reads. While inspection is pending, answering, mode changes and
+refresh are locked out. Waiting is bounded to two seconds; a remote read already
+in flight may finish later, but it has no write path. Existing answering guards
+are unchanged. A capture is not permission for live answering.

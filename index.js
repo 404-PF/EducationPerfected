@@ -17,6 +17,7 @@ const { playMultiChoiceSelection } = require('./lib/multi-choice-handler');
 const { createSelectChoiceOnce } = require('./lib/choice-select-once');
 const { detectQuestionInPage } = require('./lib/detect-question');
 const { diagnostic } = require('./lib/diagnostics');
+const { collectSelfMarkDiagnostics } = require('./lib/self-mark-diagnostics');
 const { guardClassicEnter } = require('./lib/classic-enter');
 
 // ===== Credentials ===== //
@@ -2395,6 +2396,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                 requestStop: () => { TOGGLE = false; cancelSubmitApprovals(); },
                 setMode: value => { ENTER = value === 'auto'; },
                 refresh: refreshWords,
+                inspect: () => collectSelfMarkDiagnostics(page),
                 close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
             });
             if (dropdownSubmitOnce) controls.inspectDropdowns = () => require('./lib/dropdown-diagnostics').collectDropdownDiagnostics(page,{definitionsOnly:true});

@@ -30,7 +30,7 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
     const requestNumberBoxSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Number-box Submit', `${approval.boxCount} boxes`, onCancel);
     const controls = await launch({ dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
     terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
-    output.write('Commands: start, stop, status, mode auto, mode semi, refresh, quit\n');
+    output.write('Commands: start, stop, status, mode auto, mode semi, refresh, inspect-self-mark, quit\n');
     const print = () => output.write(JSON.stringify(controls.status()) + '\n');
     const quit = () => {
         if (pendingApproval) { pendingApproval.resolve(false); pendingApproval = null; }
@@ -60,12 +60,15 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
                 else if (command === 'stop') await controls.stop();
                 else if (command === 'status' || command === '') { /* print below */ }
                 else if (command === 'mode auto' || command === 'mode semi') await controls.mode(command.slice(5));
+                else if (command === 'inspect-self-mark') output.write('EP_SELF_MARK_INSPECT ' + JSON.stringify(await controls.inspect()) + '\n');
                 else if (command === 'refresh') await controls.refresh();
                 else if (command === 'quit' || command === 'exit') { await quit(); print(); break; }
-                else { output.write('Unknown command. Use start, stop, status, mode auto, mode semi, refresh or quit.\n'); continue; }
+                else { output.write('Unknown command. Use start, stop, status, mode auto, mode semi, refresh, inspect-self-mark or quit.\n'); continue; }
                 print();
             } catch {
-                output.write('Command failed. Stop the run before mode or word-list changes; inspect the browser if a control failed.\n');
+                output.write(command === 'inspect-self-mark'
+                    ? 'Inspection unavailable. Stop answering and wait for pending controls before read-only inspection.\n'
+                    : 'Command failed. Stop the run before mode or word-list changes; inspect the browser if a control failed.\n');
             }
         }
     } finally {
@@ -113,6 +116,6 @@ if (require.main === module) {
         credentialCommand(commands[0]).catch(() => { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode = 1; });
         }
     } else if (process.argv.includes('--help') || process.argv.includes('-h')) {
-        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit\nDoes not start answering until start is entered.');
+        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, inspect-self-mark, quit\nDoes not start answering until start is entered.');
     } else runCli().catch(error => { console.error(diagnostic(error, 'EducationPerfected CLI')); process.exitCode = 1; });
 }
