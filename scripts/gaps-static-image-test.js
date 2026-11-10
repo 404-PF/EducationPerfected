@@ -34,7 +34,7 @@ async function testStaticImage(page, setup) {
             if(m==='duplicateTemplate'){const el=document.createElement('div');el.className='fitg-drop-content';f.group.append(el);}
             if(m==='inputExtra')f.state.identifiedComponents.baseComponents.image=[{isInput:true}];
             if(m==='unknownExtra')f.state.identifiedComponents.baseComponents.image=[{}];
-            if(m==='aliasedZone')f.state.identifiedComponents.baseComponents.image=[f.renderer.dropZones[0]];
+            if(m==='aliasedZone'){const zone=f.renderer.dropZones[0];zone.isInput=true;f.state.identifiedComponents.baseComponents.image=[zone];}
             if(m==='multiEntryGap')f.state.identifiedComponents.baseComponents['41'].push({isInput:false});
             if(m==='missingGapEntry')delete f.state.identifiedComponents.baseComponents['41'];
         },mutation);
