@@ -21,6 +21,8 @@ async function testMixedSlide(page, setup) {
     assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
     const cases = {textBox:'unsupported accompanying component: TEXT_BOX_COMPONENT',
         unknownCode:'unsupported accompanying component: redacted type',
+        unlistedEnum:'unsupported accompanying component: redacted type',
+        nullCompanion:'unsupported accompanying component: redacted type',
         duplicateGaps:'missing or duplicate drag-and-drop component',
         noGaps:'missing or duplicate drag-and-drop component'};
     await eachSequential(Object.keys(cases), async mutation => {
@@ -29,6 +31,8 @@ async function testMixedSlide(page, setup) {
             const f=gapsFixture, defs=f.q.questionDef.Components;
             if(m==='textBox')defs.push({ComponentTypeCode:'TEXT_BOX_COMPONENT',ComponentID:'tb-1'});
             if(m==='unknownCode')defs.push({ComponentTypeCode:'not an enum <script>',ComponentID:'x-1'});
+            if(m==='unlistedEnum')defs.push({ComponentTypeCode:'SECRET_COMPONENT',ComponentID:'x-2'});
+            if(m==='nullCompanion')defs.push(null);
             if(m==='duplicateGaps')defs.push({...defs[0],ComponentID:'gaps-2'});
             if(m==='noGaps')defs.splice(0,1);
         },mutation);
@@ -37,6 +41,6 @@ async function testMixedSlide(page, setup) {
         assert.equal(refused.reason,'Drag-and-drop gaps: '+cases[mutation],mutation);
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
     });
-    console.log('Mixed slide: annotated-text companion success, 4 named companion refusals PASS. Synthetic only.');
+    console.log('Mixed slide: annotated-text companion success, 6 named companion refusals PASS. Synthetic only.');
 }
 module.exports = { testMixedSlide };
