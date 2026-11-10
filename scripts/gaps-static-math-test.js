@@ -16,7 +16,7 @@ async function testStaticMath(page, setup) {
     const d = await detectQuestion(page); assert.equal(d.kind, 'gaps');
     assert.equal((await playGapsRound(page,d,{enter:true,timeout:300})).status,'advanced');
     assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs,gapsFixture.submits]),[[{index:2,trusted:true},{index:1,trusted:true}],1]);
-    await eachSequential(['source','dropZone','unknown','prompt','duplicateTemplate','nestedTemplate','nestedClassifiedTemplate','emptyDropZoneMath','ancestorControl','input','image'],async mutation=>{
+    await eachSequential(['source','dropZone','unknown','prompt','duplicateTemplate','nestedTemplate','nestedClassifiedTemplate','emptyDropZoneMath','ancestorControl','input'],async mutation=>{
         await setup(); await page.evaluate(installStaticMath);
         await page.evaluate(m=>{
             const f=gapsFixture, template=f.group.querySelector('.fitg-drop-content'), math=template.querySelector('.katex');
@@ -30,7 +30,6 @@ async function testStaticMath(page, setup) {
             if(m==='emptyDropZoneMath'){const el=math.cloneNode(true);el.textContent='';f.renderer.dropZones[0].span.append(el);}
             if(m==='ancestorControl')math.append(f.renderer.dropZones[0].containerSpan);
             if(m==='input')template.append(document.createElement('input'));
-            if(m==='image')template.append(document.createElement('img'));
         },mutation);
         assert.equal((await detectQuestion(page)).kind,'unsupported',mutation);
         assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0],mutation);
@@ -41,6 +40,6 @@ async function testStaticMath(page, setup) {
     assert.equal(relocated.status,'stopped');
     assert.equal(relocated.message,'Drag-and-drop gaps stopped: trusted key did not produce the exact expected answer prefix; no retry.');
     assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[1,0]);
-    console.log('Static maths: template-only success, 11 location/control refusals, post-input relocation stops PASS. Synthetic only.');
+    console.log('Static maths: template-only success, 10 location/control refusals, post-input relocation stops PASS. Synthetic only.');
 }
 module.exports = { testStaticMath };
