@@ -49,6 +49,16 @@ async function install(page) {
         assert.equal(output.includes('private-'), false);
         assert.equal(session.output.includes('answerLoop entered.'), false);
         assert.deepEqual(await page.evaluate(() => inspectionCounts), { events: 0, getters: 0 });
+        await page.evaluate(() => {
+            const host = document.querySelector('#ep-question-container');
+            const paper = document.createElement('div'); paper.className = 'paper-mode-container';
+            const message = document.createElement('div'); message.className = 'marking-message';
+            const outside = document.createElement('input');
+            host.prepend(paper, message, outside);
+        });
+        const markers = await collectSelfMarkDiagnostics(page);
+        assert.equal(markers.dom.paperMode, true); assert.equal(markers.dom.markingMessage, true);
+        assert.deepEqual(markers.dom.controls.map(c => c.tag), ['textarea', 'select', 'button']);
         // Unknown styles are reported as null, never coerced; unknown codes redacted.
         await page.evaluate(() => {
             const q = angular.element(document.querySelector('#slide-host')).scope().self.model._currentQuestion;
