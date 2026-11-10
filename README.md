@@ -423,11 +423,11 @@ Self-marked Reflection answering is not implemented yet. To capture its componen
 and control shapes without starting answering:
 
 1. Run `node bin/cli.js`, finish sign-in, and open the approved Reflection page.
-2. Leave the CLI stopped. Do not type `start` or press the answering hotkey.
+2. Leave the CLI inactive (stopped, completed or error state). Do not type `start` or press the answering hotkey.
 3. Type `inspect-self-mark` once. Paste the line beginning `EP_SELF_MARK_INSPECT`.
 4. Type `quit` when finished. Do not reveal answers or select a self-grade for this capture.
 
-The command reads structural metadata and control counts only. It does not type,
+The command reads structural metadata, control shapes and counts only. It does not type,
 click, focus, Submit, reveal answers, select a self-grade or advance the question.
 It reports recognized component codes and fixed metadata field shapes, not answer
 values, question text, arbitrary keys, classes, labels or IDs. Cached metadata

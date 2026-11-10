@@ -57,6 +57,33 @@ async function install(page) {
         const unknown = await collectSelfMarkDiagnostics(page);
         assert.equal(unknown.markingStyles.question, null);
         assert.equal(unknown.components[0].type, 'UNLISTED_COMPONENT');
+        await page.evaluate(() => {
+            const group = document.querySelector('#question-container-group');
+            const input = document.createElement('input'); group.append(input);
+            const hidden = document.createElement('input'); hidden.style.visibility = 'hidden'; group.append(hidden);
+            const collapse = document.createElement('button'); collapse.style.visibility = 'collapse'; group.append(collapse);
+        });
+        const visibility = await collectSelfMarkDiagnostics(page);
+        assert.equal(visibility.dom.controls[3].type, 'text');
+        assert.equal(visibility.dom.controls[3].visible, true);
+        assert.equal(visibility.dom.controls[4].visible, false);
+        assert.equal(visibility.dom.controls[5].visible, false);
+        await page.evaluate(() => {
+            const group = document.querySelector('#question-container-group');
+            for (let i = 0; i < 2100; i++) group.append(document.createElement('input'));
+        });
+        const capped = await collectSelfMarkDiagnostics(page);
+        assert.equal(capped.dom.controls.length, 40);
+        assert.equal(capped.dom.controlsTruncated, true);
+        assert.equal(capped.dom.traversalTruncated, true);
+        // A throwing local scope must not select a readable ancestor model.
+        await page.evaluate(() => {
+            window.savedAngular = window.angular;
+            const group = document.querySelector('#question-container-group');
+            window.angular = { element(el) { if (el === group) throw new Error('private-scope'); return savedAngular.element(el); } };
+        });
+        assert.equal((await collectSelfMarkDiagnostics(page)).guard, 'not-lesson-mode');
+        await page.evaluate(() => { window.angular = window.savedAngular; });
         // Assessment boundary before any question-property access.
         await page.evaluate(() => {
             const model = angular.element(document.querySelector('#slide-host')).scope().self.model;

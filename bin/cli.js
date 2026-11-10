@@ -66,7 +66,9 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
                 else { output.write('Unknown command. Use start, stop, status, mode auto, mode semi, refresh, inspect-self-mark or quit.\n'); continue; }
                 print();
             } catch {
-                output.write('Command failed. Stop the run before mode or word-list changes; inspect the browser if a control failed.\n');
+                output.write(command === 'inspect-self-mark'
+                    ? 'Inspection unavailable. Stop answering and wait for pending controls before read-only inspection.\n'
+                    : 'Command failed. Stop the run before mode or word-list changes; inspect the browser if a control failed.\n');
             }
         }
     } finally {
