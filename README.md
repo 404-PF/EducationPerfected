@@ -316,6 +316,8 @@ Source map from [`mfe-hashed-assets-171-69df426caed962f89980.js`](https://mfe-st
 
 The CLI treats the source-shaped Assessment controls as a content-free boundary: it stops before reading question answer state. If those controls are absent or have not mounted, the per-question `gameMode === 2` guards still refuse every supported question shape. Detection returns `assessment: true` with a refusal explaining the graded whole-attempt, autosave and focus-tracking risk. Synthetic tests prove zero clicks, text input, key presses and Submits across choice, dropdown, textbox, drag-and-drop gaps and multi-select fixtures. None of this is live-verified, and a live Assessment remains out of scope.
 
+The [12 November source-only lifecycle review](research/assessment-lifecycle.md) maps navigation, autosave, teacher/time events, early exit and asynchronous completion persistence. Local instrumented fixtures prove refusal adds no input or lifecycle calls, but cannot promise that EP stops its own queued saves. Assessment answering remains disabled.
+
 ## Known limitations
 
 - Ordinary lesson text and number boxes have the narrow source-derived contract above and synthetic fixture coverage only. No live number-box detection, filling or grading is proved; long/rich, gaps-textbox and manual/assessment variants remain unsupported.
