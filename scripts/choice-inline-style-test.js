@@ -10,7 +10,24 @@ async function install(page,body,rendered,mutation){
   for(let i=0;i<f.previews.length;i++){
    const text=i===3?body:'Synthetic answer '+i,template='[block\n'+text+'\n]';
    f.comp.Options[i].TextTemplate=template;f.metadata.Options[i].TextTemplate=template;f.previews[i].renderer.templateString=template;
-   const output=document.createElement('div'),p=document.createElement('p'),span=document.createElement('span');span.textContent=i===3?rendered:text;p.append(span);output.append(p);f.previews[i].fields.renderGroup.replaceChildren(output);
+   f.comp.Options[i].Correct=i===3?'true':'false';f.metadata.Options[i].Correct=f.comp.Options[i].Correct;f.previews[i].correct=i===3;
+   const output=document.createElement('div'),p=document.createElement('p');
+   // Source-shaped separate spans with real style attributes, not one aggregate
+   // plain span. Unsupported templates use explicit supplied rendered text.
+   const supported=i===3&&!/[\\#₍₎⁽⁾]/.test(text)&&text!=='@@**2@Synthetic**@@'&&text!=='**open';
+   if(supported){
+    const styles={fontWeight:'',fontStyle:'',textDecoration:'',color:''};
+    const pieces=text.split(/(\*\*|__|\/\/|~~|@@2@|@@)/);
+    for(const piece of pieces){
+     if(piece==='**')styles.fontWeight=styles.fontWeight?'':'bold';
+     else if(piece==='__')styles.textDecoration=styles.textDecoration?'':'underline';
+     else if(piece==='//')styles.fontStyle=styles.fontStyle?'':'italic';
+     else if(piece==='~~')styles.textDecoration=styles.textDecoration?'':'line-through';
+     else if(piece==='@@2@')styles.color='red';else if(piece==='@@')styles.color='';
+     else{const span=document.createElement('span');span.textContent=piece;Object.assign(span.style,styles);p.append(span);}
+    }
+   }else{const span=document.createElement('span');span.textContent=i===3?rendered:text;p.append(span);}
+   output.append(p);f.previews[i].fields.renderGroup.replaceChildren(output);
   }
   const p=f.previews[3].fields.renderGroup.querySelector('p');
   if(mutation==='unknown')p.innerHTML='<b>'+rendered+'</b>';
@@ -18,6 +35,8 @@ async function install(page,body,rendered,mutation){
   if(mutation==='extra')p.parentElement.append(document.createElement('p'));
   if(mutation==='drift')p.textContent='foreign';
   if(mutation==='editable')p.contentEditable='true';
+  if(mutation==='loss')p.children[1]?.remove();
+  if(mutation==='reorder')p.prepend(p.lastChild);
   window.inlineSubmits=0;document.querySelector('#sa-navigation-controls button').addEventListener('click',event=>{event.stopImmediatePropagation();window.inlineSubmits++;f.q.questionIndex++;},true);
  },{body,rendered,mutation});
 }
@@ -28,8 +47,14 @@ async function install(page,body,rendered,mutation){
   const run=async(body,rendered,mutation,accepted)=>{
    await setup(page,'http://127.0.0.1:'+server.address().port);await install(page,body,rendered,mutation);
    const d=await detectQuestion(page);
-   if(accepted){assert.equal(d.kind,'choice',JSON.stringify(d));assert.equal((await playChoiceRound(page,d,{enter:true,timeout:600})).status,'advanced');assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,inlineSubmits]),[1,1]);}
-   else{assert.equal(d.kind,'unsupported',JSON.stringify(d));assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,inlineSubmits]),[0,0]);}
+   if(accepted){assert.equal(d.kind,'choice',JSON.stringify(d));assert.equal((await playChoiceRound(page,d,{enter:true,timeout:600})).status,'advanced');assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks,inlineSubmits]),[['[block\n'+body+'\n]'],1]);}
+   else{assert.equal(d.kind,'unsupported',JSON.stringify(d));
+    const diagnostic=d.diagnostic;
+    assert.equal(diagnostic.boundary,mutation?'option-dom':'raw-template');
+    assert.equal(diagnostic.check,mutation?(mutation==='editable'?'render-structure':'render-text'):(body==='@@**2@Synthetic**@@'?'color':'inline-format'));
+    assert.equal(JSON.stringify(diagnostic).includes(body),false);assert.equal(JSON.stringify(diagnostic).includes(rendered),false);
+    if(diagnostic.check==='render-text')assert.deepEqual({inlineStyleTokens:diagnostic.inlineStyleTokens,headingToken:diagnostic.headingToken,highlightToken:diagnostic.highlightToken,scriptToken:diagnostic.scriptToken,escapeToken:diagnostic.escapeToken},{inlineStyleTokens:true,headingToken:false,highlightToken:false,scriptToken:false,escapeToken:false});
+    assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,inlineSubmits]),[0,0]);}
   };
   await run('**Synthetic bold**','Synthetic bold','',true);
   await run('__Synthetic underline__','Synthetic underline','',true);
@@ -49,6 +74,8 @@ async function install(page,body,rendered,mutation){
   await run('**Synthetic bold**','Synthetic bold','extra',false);
   await run('**Synthetic bold**','Synthetic bold','drift',false);
   await run('**Synthetic bold**','Synthetic bold','editable',false);
+  await run('prefix **styled** tail','prefix styled tail','loss',false);
+  await run('prefix **styled** tail','prefix styled tail','reorder',false);
  }finally{try{if(browser)await browser.close();}finally{await new Promise(r=>server.close(r));}}
  console.log('Inline styles PASS: exact balanced bold/underline/italic/strike/mixed/color with1selection1Submit; malformed/escaped/highlight/script/unknown/flat/extra/drift/editable refuse0input. Source fixtures only.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
