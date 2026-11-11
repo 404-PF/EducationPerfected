@@ -1,6 +1,6 @@
 # Assessments: source-only lifecycle map
 
-Checked 12 November 2026. Scope: public student source and local synthetic fixtures only. Assessment answering remains disabled. No live EP access, graded attempt, submission or completion proof is part of this work. This is phase 1 of #33, not Assessment support being released.
+Checked 12 November 2026. Scope: public student source and local synthetic fixtures only. Assessment answering remains disabled. No live Assessment attempt or private-account access is part of this work. There is no live graded input, submission or completion proof. This is phase 1 of #33, not Assessment support being released.
 
 ## Recommendation
 
