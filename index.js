@@ -1822,8 +1822,8 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     }
                     // 'stopped'
                     if (again.kind === 'dropdown' && result.selectionDiagnostic) {
-                        const { phase, dropdownIndex, keyDispatchesReturned, guard } = result.selectionDiagnostic;
-                        console.error('Dropdown refusal diagnostic ' + JSON.stringify({ phase, dropdownIndex, keyDispatchesReturned, guard, dropdownCount: again.dropdowns.length }));
+                        const { phase, dropdownIndex, keyDispatchesReturned, guard, submitState } = result.selectionDiagnostic;
+                        console.error('Dropdown refusal diagnostic ' + JSON.stringify({ phase, dropdownIndex, keyDispatchesReturned, guard, dropdownCount: again.dropdowns.length, ...(submitState ? {submitState} : {}) }));
                     }
                     if ((again.kind === 'textbox' || again.kind === 'numberbox') && result.diagnostic) console.error('Unsupported question diagnostic ' + JSON.stringify(result.diagnostic));
                     console.error(result.message);
