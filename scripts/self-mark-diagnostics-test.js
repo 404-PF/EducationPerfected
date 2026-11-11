@@ -49,7 +49,7 @@ async function install(page) {
             const dom=document.createElement('div');dom.className='ProseMirror';dom.contentEditable='true';element.append(dom);
             document.querySelector('#question-container-group').append(element);
             const metadata={...raw};
-            const state={metadata,componentID:raw.ComponentID,questionElement:{element,editor:{editor:{view:{dom}}}}};
+            const state={metadata,metadataInstance:{ModelAnswerHTML:null},componentID:raw.ComponentID,questionElement:{element,editor:{editor:{view:{dom}}}}};
             q.cachedRenderers={1:{identifiedComponents:{baseComponents:{[raw.ComponentID]:[{id:raw.ComponentID,componentState:state,visualElement:element}]}}}};
             window.privateLongState=state;
         });
@@ -71,7 +71,23 @@ async function install(page) {
         assert.equal(detached.longAnswer.fields.ModelAnswerHTML,'accessor');
         assert.equal(detached.longAnswer.modelHTMLPresent,false);
         assert.equal(detached.longAnswer.inputBound,false);
+        assert.equal(detached.longAnswer.editorBound,false);
         assert.deepEqual(await page.evaluate(()=>inspectionCounts),{events:0,getters:0});
+        await page.evaluate(()=>{
+            const q=angular.element(document.querySelector('#slide-host')).scope().self.model._currentQuestion;
+            q.questionDef.Components.unshift({ComponentTypeCode:'ANNOTATED_TEXT_COMPONENT',ComponentID:'private-prompt'});
+        });
+        const companion=await collectSelfMarkDiagnostics(page);
+        assert.equal(companion.longAnswer.guard,'captured');
+        await page.evaluate(()=>{
+            const q=angular.element(document.querySelector('#slide-host')).scope().self.model._currentQuestion;
+            q.questionDef.Components.push({ComponentTypeCode:'LONG_ANSWER_COMPONENT',ComponentID:'private-second'});
+        });
+        assert.equal((await collectSelfMarkDiagnostics(page)).longAnswer.guard,'component-count');
+        await page.evaluate(()=>{
+            const q=angular.element(document.querySelector('#slide-host')).scope().self.model._currentQuestion;
+            q.questionDef.Components.pop();q.questionDef.Components.shift();
+        });
         // Explicit inspection, no start command and no automatic answer-loop path.
         let offset = session.output.length;
         child.stdin.write('inspect-self-mark\n');
