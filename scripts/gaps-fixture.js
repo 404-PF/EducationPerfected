@@ -20,7 +20,7 @@ function installGapsFixture(config = {}) {
     }
     const metadata = JSON.parse(JSON.stringify(comp));
     q.questionDef.Components = [comp];
-    const state = { metadataInstance: metadata, gapIDtoIndex: { 41: 0, 7: 1, 88: 2 }, gapIndexesShown: [0,1], hintsShown: ['wrong','alpha','beta'],
+    const state = { metadataInstance: metadata, gapIDtoIndex: { 41: 0, 7: 1, 88: 2 }, gapIndexesShown: [0,1], hintsShown: config.hints||['wrong','alpha','beta'],
         usersAnswers: {}, checkOptions: [], identifiedComponents: { baseComponents: {} } };
     if (config.repeated) Object.assign(state, {gapIDtoIndex:{41:0,7:1,88:2,52:3},gapIndexesShown:[0,1,2,3],hintsShown:['Circumference','π','Radius','Circumference','Diameter','Diameter']});
     const renderer = { id: comp.ComponentID, componentState: state, container: group, renderingParameters: {mode:1}, dropZones: [], draggables: [] };
