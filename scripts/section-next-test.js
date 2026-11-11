@@ -17,11 +17,9 @@ function bindNext(mutation){
         if(mutation==='old-question')return;
         f.self.model._currentQuestion={...f.self.model._currentQuestion,contentID:999,questionIndex:99};
         if(mutation==='assessment')f.self.model.gameMode=2;
-        if(mutation==='transient')setTimeout(()=>{f.self.sectionData=f.dialog.currentSection;},20);
         if(mutation==='group-drift')f.next.activityGroup.ID=55;
         if(mutation==='new-modal'||mutation==='transient-modal'){
             const modal=document.createElement('div');modal.setAttribute('uib-modal-window','modal-window');modal.textContent='PRIVATE';document.body.append(modal);
-            if(mutation==='transient-modal')setTimeout(()=>modal.remove(),75);
         }
     });
     if(mutation==='inherited'){
@@ -49,6 +47,23 @@ async function browserCases(){
         const run=async(mutation,guard,clicks=1)=>{
             await page.goto('http://127.0.0.1:'+server.address().port+'/lesson-dropdown?count=2');
             const descriptor=await detectQuestion(page),baseline=await captureSelectionBaseline(page,descriptor);
+            const evaluateHandle=page.evaluateHandle.bind(page);
+            let transientHandled=false;
+            page.evaluateHandle=async(...args)=>{
+                const handle=await evaluateHandle(...args);
+                const operation=args[3];
+                if(!transientHandled&&((mutation==='transient'&&operation==='snapshot')||(mutation==='transient-modal'&&operation==='verify'))){
+                    transientHandled=true;
+                    // Mutate only after the selected verification read completed.
+                    // No timer races or production hook are needed.
+                    await page.evaluate(m=>{
+                        const f=dropdownFixture;
+                        if(m==='transient')f.self.sectionData=f.dialog.currentSection;
+                        else for(const modal of document.querySelectorAll('div[uib-modal-window=modal-window]'))modal.remove();
+                    },mutation);
+                }
+                return handle;
+            };
             try{
                 await page.evaluate(installModal,'stay');await page.evaluate(bindNext,mutation);
                 const result=await advanceSelectionSection(page,descriptor,baseline,{timeout:100,shouldStop:()=>mutation==='cancel'});
@@ -56,7 +71,7 @@ async function browserCases(){
                 assert.deepEqual(await page.evaluate(()=>[dropdownFixture.sectionClicks,dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.trustedNext]),[clicks,0,0,clicks?[true]:[]]);
                 assert.doesNotMatch(JSON.stringify(result),/PRIVATE|contentID|questionIndex|999/);
                 if(mutation==='stay')assert.equal((await advanceSelectionSection(page,descriptor,baseline,{timeout:100})).guard,'section-action-consumed');
-            }finally{await baseline.dispose();}
+            }finally{page.evaluateHandle=evaluateHandle;await baseline.dispose();}
         };
         await run('advance','next-section-verified');await run('inherited','next-section-verified');
         await run('stay','next-section-unverified');await run('dismiss','next-section-unverified');
