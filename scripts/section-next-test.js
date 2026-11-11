@@ -17,6 +17,7 @@ function bindNext(mutation){
         if(mutation==='old-question')return;
         f.self.model._currentQuestion={...f.self.model._currentQuestion,contentID:999,questionIndex:99};
         if(mutation==='assessment')f.self.model.gameMode=2;
+        if(mutation==='transient')setTimeout(()=>{f.self.sectionData=f.dialog.currentSection;},20);
         if(mutation==='group-drift')f.next.activityGroup.ID=55;
         if(mutation==='new-modal'){
             const modal=document.createElement('div');modal.setAttribute('uib-modal-window','modal-window');modal.textContent='PRIVATE';document.body.append(modal);
@@ -60,7 +61,7 @@ async function browserCases(){
         await run('stay','next-section-unverified');await run('dismiss','next-section-unverified');
         await run('wrong-next','next-section-unverified');await run('old-question','next-section-unverified');
         await run('group-drift','next-section-unverified');await run('new-modal','next-section-unverified');
-        await run('assessment','assessment-mode');await run('cancel','section-action-cancelled',0);
+        await run('transient','section-transition-unstable');await run('assessment','assessment-mode');await run('cancel','section-action-cancelled',0);
         await run('pre-assessment','assessment-mode',0);await run('fieldset','next-button-unready',0);
         await run('disabled','next-button-unready',0);await run('covered','next-button-covered',0);
         await run('type','next-section-type-unverified',0);await run('peer','peer-review-next',0);await run('extra-backdrop','backdrop-unverified',0);
