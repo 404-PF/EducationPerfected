@@ -467,10 +467,6 @@ A displayed gaps tile is usable only when its raw label is an exact member of th
 ### Plain-block paragraph choices
 
 EP's source renders separate template lines as adjacent paragraph nodes, without separator text nodes. Plain-block association accepts that exact paragraph shape (optionally inside the source's div wrappers), binding every template line in order to one paragraph (including an exact empty paragraph for a blank line) and retaining the existing cached option/template/marking/radio association. It does not join arbitrary layout, reorder paragraphs, strip markup or infer an answer. Unknown paragraph shapes and changed line text stop. Content-free render failures now distinguish unsupported descendants from text mismatch; text mismatches include template-line/paragraph counts. Source-derived fixtures only; the live report's exact shape remains unconfirmed.
-### Reflection capture v2
-
-`inspect-self-mark`, with answering stopped, remains read-only. v2 adds the actual long-answer source field shapes (`ModelAnswerHTML`, `InitialHTML`, `Format`, `LanguageID`, `ExpectationParameters`, `KeywordMatches`, `MinAnswerTime`, `ApplyGibberishFilter`) and existing cached renderer/editor binding booleans. No question text, answer text, HTML, IDs or arbitrary fields are printed. It never initializes a renderer, runs a getter, reveals an answer, types, submits or self-grades. v1's absent `ModelAnswer` field did not establish that EP had no model answer: its long-answer source uses `ModelAnswerHTML`. A nonempty HTML string only establishes presence, not that it is a supported text answer. Missing or false binding checks need investigation; they are not permission to select an arbitrary editable field. The Reflection answer handler remains unsupported pending a source-bound answer and editor contract.
-
 
 ### Plain-block inline style tokens
 
