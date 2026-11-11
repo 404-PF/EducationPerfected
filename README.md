@@ -318,6 +318,8 @@ The CLI treats the source-shaped Assessment controls as a content-free boundary:
 
 The [12 November source-only lifecycle review](research/assessment-lifecycle.md) maps navigation, autosave, teacher/time events, early exit and asynchronous completion persistence. Local instrumented fixtures prove refusal adds no input or lifecycle calls, but cannot promise that EP stops its own queued saves. Assessment answering remains disabled.
 
+The [phase 2 stored-state review](research/assessment-question-state.md) separates answer edits from metadata saves and attempted status. An optional hash-pinned offline audit checks exact public client method text and grade definitions; the update matrix runs only the original model. It does not enable answering or prove server grading/saving.
+
 ## Known limitations
 
 - Ordinary lesson text and number boxes have the narrow source-derived contract above and synthetic fixture coverage only. No live number-box detection, filling or grading is proved; long/rich, gaps-textbox and manual/assessment variants remain unsupported.
