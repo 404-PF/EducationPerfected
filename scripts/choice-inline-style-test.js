@@ -9,7 +9,7 @@ async function install(page,body,rendered,mutation){
   const f=mathFixture;
   function appendStyled(p,text){
    const styles={fontWeight:'',fontStyle:'',textDecoration:'',color:''};
-   const toggles={'**':['fontWeight','bold'],'__':['textDecoration','underline'],'//':['fontStyle','italic'],'~~':['textDecoration','line-through']};
+   const toggles={__proto__:null,'**':['fontWeight','bold'],'__':['textDecoration','underline'],'//':['fontStyle','italic'],'~~':['textDecoration','line-through']};
    for(const piece of text.split(/(\*\*|__|\/\/|~~|@@2@|@@)/)){
     const toggle=toggles[piece];
     if(toggle){const [key,value]=toggle;styles[key]=styles[key]?'':value;}
@@ -65,6 +65,7 @@ async function install(page,body,rendered,mutation){
   await run('**Synthetic //mixed//**','Synthetic mixed','',true);
   await run('@@2@**Synthetic colored**@@','Synthetic colored','',true);
   await run('Synthetic plain','Synthetic plain','',true);
+  await run('constructor','constructor','',true);
   await run('@@**2@Synthetic**@@','Synthetic','',false);
   await run('**open','open','',false);await run(String.raw`**closed\**`,'closed**','',false);
   await run('##highlight##','highlight','',false);
