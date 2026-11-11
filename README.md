@@ -436,3 +436,20 @@ question-state reads. While inspection is pending, answering, mode changes and
 refresh are locked out. Waiting is bounded to two seconds; a remote read already
 in flight may finish later, but it has no write path. Existing answering guards
 are unchanged. A capture is not permission for live answering.
+
+
+### Dropdown Submit readiness
+
+Auto mode verifies the full exact dropdown answer set while waiting up to three
+seconds (or a shorter configured round timeout) for the associated Submit button
+to become available. EP's SkillsControls has a one-second new-question lock; a
+fast fill can finish before it unlocks. These probes never replay input, click,
+enable a button or bypass the terminal Submit approval. Each probe rechecks the
+original model, question key, renderer identities and exact selected answers.
+Multiple visible Submit buttons, any identity/answer drift, assessment mode and
+cancellation stop without Submit. A timeout reports `submit-readiness-timeout`
+with content-free visible/enabled Submit counts. The final button-identity and
+coverage checks and the no-retry rule after an uncertain click are unchanged.
+The one-shot validation helper still uses its existing single-read Submit gate.
+This is synthetic-test proof of the readiness path, not proof of the cause of
+every live `submit-button` refusal.
