@@ -39,7 +39,7 @@ const { installAssessmentLifecycle } = require('./assessment-lifecycle-fixture')
         // Detector stops before question getters and does not invoke any
         // lifecycle method, including cleanup. Pre-existing EP-like work is
         // deliberately NOT cancelled or incorrectly attributed to detection.
-        for (const event of [null, 'autosave', 'navigate', 'flag', 'focus', 'earlyExit', 'complete', 'freeze', 'forceSubmit', 'expire']) {
+        const checkEvent = async event => {
             await reset();
             if (event) await page.evaluate(name => window.assessmentLifecycle[name](), event);
             const before = await snapshot();
@@ -49,7 +49,9 @@ const { installAssessmentLifecycle } = require('./assessment-lifecycle-fixture')
             assert.deepEqual(await snapshot(), before, String(event));
             assert.equal(before.counts.answerReads, 0);
             assert.deepEqual(before.counts, { clicks: 0, inputs: 0, keys: 0, submits: 0, answerReads: 0 });
-        }
+        };
+        const events = [null, 'autosave', 'navigate', 'flag', 'focus', 'earlyExit', 'complete', 'freeze', 'forceSubmit', 'expire'];
+        await events.reduce((previous, event) => previous.then(() => checkEvent(event)), Promise.resolve());
         // An already queued save can run after refusal. The promise is zero
         // program-generated input, NOT zero site-generated persistence.
         await reset();
