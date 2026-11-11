@@ -48,8 +48,8 @@ async function setup(page, origin) {
         });
         assert.equal((await playChoiceRound(page, automatic, { enter: true, timeout: 1000 })).status, 'advanced');
         assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, blockSubmits, indexGetterCalls]), [1, 1, 0]);
-        // Conservative textContent contract: whitespace must be explicit between
-        // paragraph nodes. Visual block layout alone does not insert a text node.
+        // Source DOMParagraph boundaries preserve template line identity even
+        // without separator text nodes.
         for (const spaced of [true, false]) {
             await setup(page, origin);
             const rendered = await page.evaluate(spaced => {
@@ -67,17 +67,50 @@ async function setup(page, origin) {
             },spaced);
             assert.equal(rendered,spaced?'Synthetic first 0\nSynthetic second 0':'Synthetic first 0Synthetic second 0');
             const multi=await detectQuestion(page);
-            if(spaced) {
+            {
                 assert.equal(multi.kind,'choice');assert.equal(multi.plainBlock,true);
                 let selected=false;
                 assert.equal((await playChoiceRound(page,multi,{enter:false,timeout:30,shouldStop:()=>selected,log:message=>{if(message.startsWith('Selected '))selected=true;}})).status,'aborted');
                 assert.deepEqual(await page.evaluate(()=>mathFixture.clicks),multi.correct);
                 assert.equal(await page.evaluate(()=>navigationClicks),0);
-            } else {
-                assert.equal(multi.kind,'unsupported');
-                assert.equal(await page.evaluate(()=>mathFixture.clicks.length),0);
             }
         }
+        const paragraphVariant=async mutation=>{
+            await setup(page,origin);
+            await page.evaluate(mutation=>{
+                const f=mathFixture,p=f.previews[2],template=mutation.startsWith('blank')?'[block\nFirst exact line\n\nSecond exact line\n]':'[block\nFirst exact line\nSecond exact line\n]';
+                f.comp.Options[2].TextTemplate=template;f.metadata.Options[2].TextTemplate=template;p.renderer.templateString=template;
+                const output=document.createElement('div'),block=document.createElement('div');output.className='ep-render-output';
+                for(const text of (mutation==='blank'?['First exact line','','Second exact line']:['First exact line','Second exact line'])){const paragraph=document.createElement('p'),span=document.createElement('span');span.textContent=text;paragraph.append(span);block.append(paragraph);}
+                output.append(block);p.fields.renderGroup.replaceChildren(output);
+                const paragraphs=block.querySelectorAll('p');
+                if(mutation==='reorder')block.prepend(paragraphs[1]);
+                if(mutation==='extra')block.append(document.createElement('p'));
+                if(mutation==='merged'||mutation==='merged-space'){paragraphs[0].textContent+=(mutation==='merged-space'?' ':'')+'Second exact line';paragraphs[1].remove();}
+                if(mutation==='foreign-inline'){paragraphs[0].innerHTML='<b>First exact line</b>';block.insertBefore(document.createTextNode(' '),paragraphs[1]);}
+                if(mutation==='nested')paragraphs[0].append(document.createElement('div'));
+                if(mutation==='foreign')output.append(document.createTextNode('foreign'));
+                if(mutation==='line-drift')paragraphs[1].textContent='foreign';
+                if(mutation==='editable')paragraphs[0].contentEditable='true';
+                if(mutation==='flat')block.textContent='First exact line Second exact line';
+            },mutation);
+            const d=await detectQuestion(page);
+            if(mutation==='source'||mutation==='blank'){
+                assert.equal(d.kind,'choice');
+                await page.evaluate(()=>{document.querySelector('#sa-navigation-controls button').addEventListener('click',event=>{event.stopImmediatePropagation();blockSubmits++;mathFixture.q.questionIndex++;},true);});
+                const result=await playChoiceRound(page,d,{enter:true,timeout:600});assert.equal(result.status,'advanced');
+                assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,blockSubmits]),[1,1]);
+            }else{
+                assert.equal(d.kind,'unsupported',mutation);assert.equal(d.diagnostic.option,2,mutation);
+                assert.equal(d.diagnostic.check,mutation==='editable'?'render-structure':'render-text',mutation);
+                assert.equal(await page.evaluate(()=>mathFixture.clicks.length),0);
+            }
+        };
+        await paragraphVariant('source');await paragraphVariant('reorder');await paragraphVariant('extra');
+        await paragraphVariant('merged');await paragraphVariant('nested');await paragraphVariant('foreign');
+        await paragraphVariant('line-drift');await paragraphVariant('editable');
+        await paragraphVariant('merged-space');await paragraphVariant('foreign-inline');
+        await paragraphVariant('blank');await paragraphVariant('blank-collapsed');await paragraphVariant('flat');
         // Presentation-only header attributes (justify align, width, ignored
         // unknown keys) never change rendered text, so the exact text binding
         // accepts them; malformed headers still refuse at the raw boundary.
@@ -243,6 +276,6 @@ async function setup(page, origin) {
             assert.equal(lateMutations, 1, mutation);
             assert.deepEqual(await page.evaluate(() => [mathFixture.clicks.length, navigationClicks]), [0, 0]);
         }
-        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph explicit-whitespace success/adjacent-no-whitespace refusal,5 renderer-bound presentation-header accepts+5 malformed-header refusals,8 variable/literal-text accepts+3 narrowed-body refusals,25 initial refusals with boundary+check diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
+        console.log('Plain block choice synthetic fixtures: exact renderer mapping despite reorder, semi1select/0Submit, auto1select/1Submit, getter0calls, multiline2paragraph with/without separator success, source-shaped wrapped paragraphs and7shape/drift refusals,5 renderer-bound presentation-header accepts+5 malformed-header refusals,8 variable/literal-text accepts+3 narrowed-body refusals,25 initial refusals with boundary+check diagnostics+6 pre-start changes+2 final-recheck drift0select PASS. No live answering proof.');
     } finally { if(browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
