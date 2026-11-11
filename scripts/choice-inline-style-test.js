@@ -40,6 +40,9 @@ async function install(page,body,rendered,mutation){
   await run('Synthetic plain','Synthetic plain','',true);
   await run('@@**2@Synthetic**@@','Synthetic','',false);
   await run('**open','open','',false);await run(String.raw`**closed\**`,'closed**','',false);
+  await run('##highlight##','highlight','',false);
+  await run('⁽script⁾','script','',false);
+  await run('# Heading','Heading','',false);
   await run('**##highlight##**','highlight','',false);await run('**⁽script⁾**','script','',false);
   await run('**Synthetic bold**','Synthetic bold','unknown',false);
   await run('**Synthetic bold**','Synthetic bold','flat',false);
