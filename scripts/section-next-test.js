@@ -75,7 +75,10 @@ async function browserCases(){
             assert.equal((await advanceSelectionSection(page,descriptor,baseline)).guard,'section-action-consumed');
             assert.equal(await page.evaluate(()=>dropdownFixture.sectionClicks),1);
         }finally{await baseline.dispose();}
-    }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}
+    }finally{
+        if(browser){await browser.close();}
+        await new Promise(r=>server.close(r));
+    }
 }
 async function cliCase(){
     const session=await bootFixtureCli('cli.js','Commands: start');
