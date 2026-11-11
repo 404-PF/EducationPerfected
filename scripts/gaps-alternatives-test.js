@@ -9,12 +9,19 @@ const {playGapsRound}=require('../lib/gaps-handler');
  try{
   browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage();
   const setup=async mutation=>{
-   await page.goto('http://127.0.0.1:'+server.address().port+'/lesson');await page.evaluate(installGapsFixture);
+   await page.goto('http://127.0.0.1:'+server.address().port+'/lesson');await page.evaluate(installGapsFixture,{hints:['wrong','beta','alpha']});
    await page.evaluate(m=>{
     const f=gapsFixture;
     // DOM gap7 is flexible; gap41 requires beta. A greedy choice beta for
     // gap7 would starve gap41, so exact matching must allocate alpha to gap7.
     f.metadata.Gaps[1].CorrectOptions=['beta','alpha'];f.metadata.Gaps[0].CorrectOptions=['beta'];
+    // Put beta before alpha in every bound source representation. Forward
+    // greedy assignment now fails; reverse admission must still pass.
+    // The reverse admission implementation also needs an augmenting path:
+    // admit flexible gap41 first, then displace it for rigid DOM gap7.
+    if(m==='reverse-starvation'){
+     f.metadata.Gaps[1].CorrectOptions=['beta'];f.metadata.Gaps[0].CorrectOptions=['beta','alpha'];
+    }
     if(m==='missing')f.metadata.Gaps[1].CorrectOptions=['not displayed'];
     if(m==='shortage')f.metadata.Gaps[1].CorrectOptions=['beta'];
     if(m==='duplicate-correct')f.metadata.Gaps[1].CorrectOptions=['alpha','alpha','beta'];
@@ -22,11 +29,11 @@ const {playGapsRound}=require('../lib/gaps-handler');
    },mutation);
   };
   const positive=async mutation=>{
-   await setup(mutation);const d=await detectQuestion(page);assert.equal(d.kind,'gaps');assert.deepEqual(d.gaps.map(g=>g.source),[1,2]);
+   await setup(mutation);const d=await detectQuestion(page);assert.equal(d.kind,'gaps');assert.deepEqual(d.gaps.map(g=>g.source),(mutation==='reverse-starvation'?[1,2]:[2,1]));
    assert.equal((await playGapsRound(page,d,{enter:true,timeout:500})).status,'advanced');
-   assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.map(i=>i.index),gapsFixture.submits]),[[1,2],1]);
+   assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.map(i=>i.index),gapsFixture.submits]),[mutation==='reverse-starvation'?[1,2]:[2,1],1]);
   };
-  await positive('alternatives');await positive('duplicate-correct');
+  await positive('alternatives');await positive('duplicate-correct');await positive('reverse-starvation');
   const refusal=async(mutation,guard)=>{
    await setup(mutation);const d=await detectQuestion(page);assert.equal(d.kind,'unsupported');assert.equal(d.diagnostic.guard,guard);assert.doesNotMatch(JSON.stringify(d.diagnostic),/alpha|beta|displayed|CorrectOptions/);
    assert.deepEqual(await page.evaluate(()=>[gapsFixture.inputs.length,gapsFixture.submits]),[0,0]);
