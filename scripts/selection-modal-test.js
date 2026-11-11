@@ -77,6 +77,10 @@ async function cliCase(mutation){
         session.child.stdin.write('start\n');await session.wait(()=>session.output.includes('still open; close or check'));
         assert.deepEqual(await session.page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[8,1]);
         assert.doesNotMatch(session.output,/Lesson completed\.|Verified the next section/);
+        await session.page.evaluate(()=>{dropdownFixture.modal.hidden=true;dropdownFixture.backdrop.hidden=true;});
+        const before=session.output.length;
+        session.child.stdin.write('start\n');await session.wait(()=>session.output.slice(before).includes('answerLoop Exited.'));
+        assert.doesNotMatch(session.output.slice(before),/still open; close or check/,'explicit restart is not blocked by hidden stale markup');
         assert.doesNotMatch(session.output,/PRIVATE/);
         session.child.stdin.write('quit\n');await session.wait(()=>session.child.exitCode!==null);
     }finally{await session.cleanup();}

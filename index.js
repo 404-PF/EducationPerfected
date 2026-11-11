@@ -1872,12 +1872,16 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     // the loop below exits without touching the page.
                     if (CLEANUP !== null) await CLEANUP;
                     if(preserveSelectionModal){
-                        const modal=await page.$('div[uib-modal-window=modal-window]');
-                        if(modal){
-                            await modal.dispose();
+                        const dialogOpen=await page.evaluate(()=>{
+                            const shown=el=>!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none'&&getComputedStyle(el).visibility!=='hidden';
+                            return [...document.querySelectorAll('div[uib-modal-window=modal-window],div[uib-modal-backdrop=modal-backdrop]')].some(shown);
+                        }).catch(()=>true);
+                        if(dialogOpen){
                             console.error('The interrupted selection dialog is still open; close or check it before restarting.');
                             return {reason:runReason};
                         }
+                        // This is an explicit new user start after the obstruction
+                        // has gone, not automatic continuation or proof of acceptance.
                         preserveSelectionModal=false;
                     }
                     await answerQuestions();
