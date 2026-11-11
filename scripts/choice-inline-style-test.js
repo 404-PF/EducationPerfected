@@ -7,28 +7,28 @@ const {playChoiceRound}=require('../lib/choice-handler');
 async function install(page,body,rendered,mutation){
  await page.evaluate(({body,rendered,mutation})=>{
   const f=mathFixture;
-  for(let i=0;i<f.previews.length;i++){
+  function appendStyled(p,text){
+   const styles={fontWeight:'',fontStyle:'',textDecoration:'',color:''};
+   const toggles={'**':['fontWeight','bold'],'__':['textDecoration','underline'],'//':['fontStyle','italic'],'~~':['textDecoration','line-through']};
+   for(const piece of text.split(/(\*\*|__|\/\/|~~|@@2@|@@)/)){
+    const toggle=toggles[piece];
+    if(toggle){const [key,value]=toggle;styles[key]=styles[key]?'':value;}
+    else if(piece==='@@2@')styles.color='red';else if(piece==='@@')styles.color='';
+    else{const span=document.createElement('span');span.textContent=piece;Object.assign(span.style,styles);p.append(span);}
+   }
+  }
+  function renderOption(i){
    const text=i===3?body:'Synthetic answer '+i,template='[block\n'+text+'\n]';
    f.comp.Options[i].TextTemplate=template;f.metadata.Options[i].TextTemplate=template;f.previews[i].renderer.templateString=template;
    f.comp.Options[i].Correct=i===3?'true':'false';f.metadata.Options[i].Correct=f.comp.Options[i].Correct;f.previews[i].correct=i===3;
    const output=document.createElement('div'),p=document.createElement('p');
-   // Source-shaped separate spans with real style attributes, not one aggregate
-   // plain span. Unsupported templates use explicit supplied rendered text.
+   // Separate source-shaped spans preserve style fragment boundaries.
    const supported=i===3&&!/[\\#₍₎⁽⁾]/.test(text)&&text!=='@@**2@Synthetic**@@'&&text!=='**open';
-   if(supported){
-    const styles={fontWeight:'',fontStyle:'',textDecoration:'',color:''};
-    const pieces=text.split(/(\*\*|__|\/\/|~~|@@2@|@@)/);
-    for(const piece of pieces){
-     if(piece==='**')styles.fontWeight=styles.fontWeight?'':'bold';
-     else if(piece==='__')styles.textDecoration=styles.textDecoration?'':'underline';
-     else if(piece==='//')styles.fontStyle=styles.fontStyle?'':'italic';
-     else if(piece==='~~')styles.textDecoration=styles.textDecoration?'':'line-through';
-     else if(piece==='@@2@')styles.color='red';else if(piece==='@@')styles.color='';
-     else{const span=document.createElement('span');span.textContent=piece;Object.assign(span.style,styles);p.append(span);}
-    }
-   }else{const span=document.createElement('span');span.textContent=i===3?rendered:text;p.append(span);}
+   if(supported)appendStyled(p,text);
+   else{const span=document.createElement('span');span.textContent=i===3?rendered:text;p.append(span);}
    output.append(p);f.previews[i].fields.renderGroup.replaceChildren(output);
   }
+  f.previews.forEach((_,i)=>renderOption(i));
   const p=f.previews[3].fields.renderGroup.querySelector('p');
   if(mutation==='unknown')p.innerHTML='<b>'+rendered+'</b>';
   if(mutation==='flat')f.previews[3].fields.renderGroup.textContent=rendered;
@@ -51,7 +51,9 @@ async function install(page,body,rendered,mutation){
    else{assert.equal(d.kind,'unsupported',JSON.stringify(d));
     const diagnostic=d.diagnostic;
     assert.equal(diagnostic.boundary,mutation?'option-dom':'raw-template');
-    assert.equal(diagnostic.check,mutation?(mutation==='editable'?'render-structure':'render-text'):(body==='@@**2@Synthetic**@@'?'color':'inline-format'));
+    let check=body==='@@**2@Synthetic**@@'?'color':'inline-format';
+    if(mutation)check=mutation==='editable'?'render-structure':'render-text';
+    assert.equal(diagnostic.check,check);
     assert.equal(JSON.stringify(diagnostic).includes(body),false);assert.equal(JSON.stringify(diagnostic).includes(rendered),false);
     if(diagnostic.check==='render-text')assert.deepEqual({inlineStyleTokens:diagnostic.inlineStyleTokens,headingToken:diagnostic.headingToken,highlightToken:diagnostic.highlightToken,scriptToken:diagnostic.scriptToken,escapeToken:diagnostic.escapeToken},{inlineStyleTokens:true,headingToken:false,highlightToken:false,scriptToken:false,escapeToken:false});
     assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,inlineSubmits]),[0,0]);}
