@@ -453,3 +453,9 @@ coverage checks and the no-retry rule after an uncertain click are unchanged.
 The one-shot validation helper still uses its existing single-read Submit gate.
 This is synthetic-test proof of the readiness path, not proof of the cause of
 every live `submit-button` refusal.
+
+### Selection dialogs at section boundaries
+
+Normal selection rounds (choice, gaps, dropdown, textbox and number-box) do not dismiss or click a dialog after Submit. A source-shaped `section-complete-dialog` can be observed read-only for up to three seconds. Continuing requires the dialog to disappear, no modal/backdrop to remain, the same practice model, that dialog's exact next-section object, a changed question identity and a supported next selection descriptor. Two identity/overlay reads bracket detection. A generic Continue, changed question alone, dialog text or final-activity dialog does not authorize continuation or a completion claim.
+
+Unrecognized, ambiguous, persistent or unverified dialogs stop with a content-free `Selection modal diagnostic` (fixed family/guard names, counts and identity-match booleans only). They are left open for checking, not erased by normal loop cleanup. Restart stays inert while the interrupted dialog remains. No answer text, question text, section names, raw IDs or dialog text is logged. The one-shot validation commands are unchanged. Source-derived synthetic fixtures cover these paths; this is not proof of live section-transition compatibility.
