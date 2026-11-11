@@ -19,6 +19,7 @@ const { detectQuestionInPage } = require('./lib/detect-question');
 const { diagnostic } = require('./lib/diagnostics');
 const { collectSelfMarkDiagnostics } = require('./lib/self-mark-diagnostics');
 const { guardClassicEnter } = require('./lib/classic-enter');
+const {captureSelectionBaseline,inspectSelectionModal}=require('./lib/selection-modal');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -776,6 +777,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             // ===== Auto-answer code starts here ===== //
             let TOGGLE = false;  // user intent: the loop should be answering right now
             let RUNNING = null;  // promise handle of the run currently executing, or null
+            let preserveSelectionModal = false; // do not erase an unclassified selection dialog
             let CLEANUP = null;  // promise of the most recent run's post-run modal cleanup
             let ENTER = true;
             let runReason = 'stopped';
@@ -1783,6 +1785,11 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         return true;
                     }
                     const play = descriptor.kind === 'dropdown' ? playDropdownRound : descriptor.kind === 'numberbox' ? playNumberBoxRound : descriptor.kind === 'textbox' ? playTextboxRound : descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
+                    // Preserve even if Stop/errors arrive after Submit but before
+                    // the handler's next modal poll. No selection cleanup deletes dialogs.
+                    preserveSelectionModal=true;
+                    const modalBaseline=await captureSelectionBaseline(page,again);
+                    try{
                     const result = await play(page, again, {
                         enter: ENTER,
                         timeout: ADVANCE_TIMEOUT,
@@ -1811,12 +1818,13 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         return false;
                     }
                     if (result.status === 'modal') {
-                        // A modal after a selection submission is not necessarily a
-                        // rejection (EP shows info/completion modals too), and the
-                        // wrong-answer modal for choice questions has never been
-                        // observed live. Stop and report rather than guess which it is.
+                        preserveSelectionModal=true;
+                        const modalDiagnostic=await inspectSelectionModal(page,again,modalBaseline);
+                        if(!TOGGLE)return false;
+                        console.error('Selection modal diagnostic '+JSON.stringify(modalDiagnostic));
+                        if(modalDiagnostic.guard==='section-next-action-required')console.error('EP is waiting at a section boundary. Use its Next Section control when ready; automation has stopped.');
                         const roundLabel = descriptor.kind === 'textbox' ? 'textbox' : descriptor.kind === 'numberbox' ? 'number-box' : 'selection';
-                        console.error(`A modal appeared during the ${roundLabel} round; stopping so it can be checked. The submission may or may not have been accepted.`);
+                        console.error(`A modal appeared during the ${roundLabel} round; stopping so it can be checked. The submission may or may not have been accepted. The dialog is left open.`);
                         await alert(`A modal interrupted the ${roundLabel} round; stopping the run.`);
                         return false;
                     }
@@ -1829,6 +1837,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     console.error(result.message);
                     await alert(result.message);
                     return false;
+                    }finally{if(modalBaseline)await modalBaseline.dispose().catch(()=>{});}
                 }
 
             // A generic Continue/modal is not proof that the task ended. Status
@@ -1865,6 +1874,19 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     // A stop pressed during this hand-over simply leaves TOGGLE false, and
                     // the loop below exits without touching the page.
                     if (CLEANUP !== null) await CLEANUP;
+                    if(preserveSelectionModal){
+                        const dialogOpen=await page.evaluate(()=>{
+                            const shown=el=>!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none'&&getComputedStyle(el).visibility!=='hidden';
+                            return [...document.querySelectorAll('div[uib-modal-window=modal-window],div[uib-modal-backdrop=modal-backdrop]')].some(shown);
+                        }).catch(()=>true);
+                        if(dialogOpen){
+                            console.error('The interrupted selection dialog is still open; close or check it before restarting.');
+                            return {reason:runReason};
+                        }
+                        // This is an explicit new user start after the obstruction
+                        // has gone, not automatic continuation or proof of acceptance.
+                        preserveSelectionModal=false;
+                    }
                     await answerQuestions();
                 } catch (e) {
                     // Navigation mid-run (task completed and EP left the task screen, or
@@ -1885,12 +1907,12 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     TOGGLE = false;
                     RUNNING = null;
 
-                    // always clean up, including on error paths, so a late modal or backdrop
-                    // is never left covering the page. CLEANUP is recorded so a run spawned
+                    // Preserve selection interruptions for checking. Other legacy paths
+                    // retain their cleanup. CLEANUP is recorded so a run spawned
                     // during this cleanup chains after it instead of overlapping it.
                     // A navigation during cleanup makes deleteModals' $$evals hit a detached
                     // frame; that used to print a scary stack trace for a harmless skip.
-                    CLEANUP = deleteModals().catch(e => {
+                    CLEANUP = (preserveSelectionModal ? Promise.resolve() : deleteModals()).catch(e => {
                         if (isPageGoneError(e)) console.log('answerLoop cleanup skipped: the page navigated away.');
                         else console.error('answerLoop cleanup failed:', e);
                     });

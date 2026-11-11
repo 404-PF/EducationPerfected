@@ -453,3 +453,9 @@ coverage checks and the no-retry rule after an uncertain click are unchanged.
 The one-shot validation helper still uses its existing single-read Submit gate.
 This is synthetic-test proof of the readiness path, not proof of the cause of
 every live `submit-button` refusal.
+
+### Selection dialogs at section boundaries
+
+Normal selection rounds (choice, gaps, dropdown, textbox and number-box) stop on a dialog after Submit. A read-only `Selection modal diagnostic` identifies source-shaped `section-complete-dialog` structure and, when exact model/current-section association and next-section fields are verified, reports `section-next-action-required`. EP's source normally routes that dialog's Next Section action to section navigation. The user must handle it in EP; automation does not click, dismiss, wait for auto-advance or resume automatically. A final activity dialog is reported separately without claiming the lesson completed or the answer was accepted.
+
+Unrecognized, ambiguous, hidden or unverified dialogs still stop. Diagnostics contain fixed family/guard names, counts and identity-match booleans only, never dialog/answer/question text, section names or raw IDs. Selection runs do not erase dialogs in normal loop cleanup, including when Stop lands after Submit but before the next modal poll. An explicit restart stays inert while a visible dialog or backdrop remains; once the user handles it, a new start uses normal fresh detection, not an inferred section-transition result. One-shot validation commands are unchanged. This is source-derived synthetic proof, not confirmation of which dialog appeared in a live run and not a fix that bypasses the reported stop.
