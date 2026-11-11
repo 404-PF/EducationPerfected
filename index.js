@@ -19,7 +19,7 @@ const { detectQuestionInPage } = require('./lib/detect-question');
 const { diagnostic } = require('./lib/diagnostics');
 const { collectSelfMarkDiagnostics } = require('./lib/self-mark-diagnostics');
 const { guardClassicEnter } = require('./lib/classic-enter');
-const {captureSelectionBaseline,resolveSelectionModal}=require('./lib/selection-modal');
+const {captureSelectionBaseline,inspectSelectionModal}=require('./lib/selection-modal');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -1816,14 +1816,10 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                     }
                     if (result.status === 'modal') {
                         preserveSelectionModal=true;
-                        const transition=await resolveSelectionModal(page,again,modalBaseline,{shouldStop:()=>!TOGGLE,timeout:ADVANCE_TIMEOUT});
-                        if(transition.status==='aborted')return false;
-                        console.error('Selection modal diagnostic '+JSON.stringify(transition.diagnostic));
-                        if(transition.status==='advanced'){
-                            preserveSelectionModal=false;
-                            console.log('Verified the next section after the section dialog closed; continuing.');
-                            return TOGGLE;
-                        }
+                        const modalDiagnostic=await inspectSelectionModal(page,again,modalBaseline);
+                        if(!TOGGLE)return false;
+                        console.error('Selection modal diagnostic '+JSON.stringify(modalDiagnostic));
+                        if(modalDiagnostic.guard==='section-next-action-required')console.error('EP is waiting at a section boundary. Use its Next Section control when ready; automation has stopped.');
                         const roundLabel = descriptor.kind === 'textbox' ? 'textbox' : descriptor.kind === 'numberbox' ? 'number-box' : 'selection';
                         console.error(`A modal appeared during the ${roundLabel} round; stopping so it can be checked. The submission may or may not have been accepted. The dialog is left open.`);
                         await alert(`A modal interrupted the ${roundLabel} round; stopping the run.`);
