@@ -4,33 +4,7 @@ const {createServer}=require('./mock-ep');
 const {detectQuestion}=require('../lib/detect-question');
 const {captureSelectionBaseline,inspectSelectionModal}=require('../lib/selection-modal');
 const {bootFixtureCli}=require('./fixture-cli-session');
-function installModal(mutation){
-    const f=dropdownFixture,self=f.self,old=self.sectionData;
-    old.id=10;
-    const next={id:11,activityGroup:{isAutoMarked:true}};
-    const modal=document.createElement('div');modal.setAttribute('uib-modal-window','modal-window');
-    modal.className='modal section-complete-dialog';
-    modal.innerHTML='<div id="modal-section-complete-wrapper"><div id="modal-section-complete"><button id="next-button">PRIVATE QUESTION ANSWER NAME</button></div></div>';
-    const backdrop=document.createElement('div');backdrop.setAttribute('uib-modal-backdrop','modal-backdrop');backdrop.textContent='PRIVATE CONTENT';
-    document.body.append(modal,backdrop);
-    const dialog={model:self.model,currentSection:old,nextSection:next,activityComplete:false};
-    const original=window.angular.element;
-    window.angular.element=el=>el===modal?{scope:()=>({self:dialog})}:original(el);
-    f.modal=modal;f.backdrop=backdrop;f.next=next;f.dialog=dialog;f.extraInputs=0;
-    modal.addEventListener('click',()=>f.extraInputs++);
-    modal.addEventListener('keydown',()=>f.extraInputs++);
-    if(mutation==='unknown')modal.className='modal';
-    if(mutation==='lookalike')dialog.model={...self.model};
-    if(mutation==='wrong-section')dialog.currentSection={...old};
-    if(mutation==='complete'){dialog.activityComplete=true;dialog.nextSection=null;}
-    if(mutation==='no-next')dialog.nextSection=null;
-    if(mutation==='accessor')Object.defineProperty(dialog,'nextSection',{get(){f.getterCalls=(f.getterCalls||0)+1;throw new Error('not allowed');}});
-    if(mutation==='ambiguous')document.body.append(modal.cloneNode(true));
-    if(mutation==='hidden')modal.hidden=true;
-    if(mutation==='unnested')modal.append(modal.querySelector('#next-button'));
-    if(mutation==='duplicate-button')modal.append(modal.querySelector('#next-button').cloneNode(true));
-
-}
+const {installModal}=require('./section-modal-fixture');
 async function browserCases(){
     const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
     try{
@@ -48,8 +22,8 @@ async function browserCases(){
             }finally{await baseline.dispose();}
         };
         await run('stay','section-next-action-required');
-        await run('unknown','unknown-modal');await run('lookalike','unknown-modal');await run('wrong-section','unknown-modal');
-        await run('complete','activity-completion-dialog');await run('no-next','unknown-modal');await run('accessor','unknown-modal');
+        await run('unknown','unknown-modal');await run('lookalike','dialog-model-mismatch');await run('wrong-section','dialog-section-mismatch');
+        await run('complete','activity-completion-dialog');await run('no-next','next-section-missing');await run('accessor','next-section-missing');
         await run('unnested','unknown-modal');await run('duplicate-button','unknown-modal');
         await run('ambiguous','modal-ambiguous');await run('hidden','modal-visibility-unverified');
     }finally{if(browser){await browser.close();}await new Promise(r=>server.close(r));}
@@ -77,7 +51,7 @@ async function cliCase(mutation){
         assert.match(session.output,/Selection modal diagnostic/);
         assert.equal(await session.page.evaluate(()=>dropdownFixture.modal.isConnected),true,'cleanup leaves dialog for checking');
         if(mutation==='unknown')assert.match(session.output,/Selection modal diagnostic .*"guard":"unknown-modal"/);
-        if(mutation==='stay')assert.match(session.output,/section-next-action-required/);
+        if(mutation==='stay'){assert.match(session.output,/section-next-action-required/);assert.match(session.output,/next-section-unverified/);}
         session.child.stdin.write('start\n');await session.wait(()=>session.output.includes('still open; close or check'));
         assert.deepEqual(await session.page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[8,1]);
         assert.doesNotMatch(session.output,/Lesson completed\.|Verified the next section/);
