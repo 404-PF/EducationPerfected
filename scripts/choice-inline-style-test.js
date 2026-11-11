@@ -18,7 +18,7 @@ async function install(page,body,rendered,mutation){
   if(mutation==='extra')p.parentElement.append(document.createElement('p'));
   if(mutation==='drift')p.textContent='foreign';
   if(mutation==='editable')p.contentEditable='true';
-  window.inlineSubmits=0;document.querySelector('#sa-navigation-controls button').addEventListener('click',event=>{event.stopImmediatePropagation();inlineSubmits++;f.q.questionIndex++;},true);
+  window.inlineSubmits=0;document.querySelector('#sa-navigation-controls button').addEventListener('click',event=>{event.stopImmediatePropagation();window.inlineSubmits++;f.q.questionIndex++;},true);
  },{body,rendered,mutation});
 }
 (async()=>{
@@ -39,9 +39,13 @@ async function install(page,body,rendered,mutation){
   await run('@@2@**Synthetic colored**@@','Synthetic colored','',true);
   await run('Synthetic plain','Synthetic plain','',true);
   await run('@@**2@Synthetic**@@','Synthetic','',false);
-  await run('**open','open','',false);await run('**closed\\**','closed**','',false);
+  await run('**open','open','',false);await run(String.raw`**closed\**`,'closed**','',false);
   await run('**##highlight##**','highlight','',false);await run('**⁽script⁾**','script','',false);
-  for(const mutation of ['unknown','flat','extra','drift','editable'])await run('**Synthetic bold**','Synthetic bold',mutation,false);
+  await run('**Synthetic bold**','Synthetic bold','unknown',false);
+  await run('**Synthetic bold**','Synthetic bold','flat',false);
+  await run('**Synthetic bold**','Synthetic bold','extra',false);
+  await run('**Synthetic bold**','Synthetic bold','drift',false);
+  await run('**Synthetic bold**','Synthetic bold','editable',false);
  }finally{try{if(browser)await browser.close();}finally{await new Promise(r=>server.close(r));}}
  console.log('Inline styles PASS: exact balanced bold/underline/italic/strike/mixed/color with1selection1Submit; malformed/escaped/highlight/script/unknown/flat/extra/drift/editable refuse0input. Source fixtures only.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
