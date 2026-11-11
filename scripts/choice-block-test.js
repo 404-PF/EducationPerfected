@@ -78,26 +78,27 @@ async function setup(page, origin) {
         const paragraphVariant=async mutation=>{
             await setup(page,origin);
             await page.evaluate(mutation=>{
-                const f=mathFixture,p=f.previews[2],template='[block\nFirst exact line\nSecond exact line\n]';
+                const f=mathFixture,p=f.previews[2],template=mutation.startsWith('blank')?'[block\nFirst exact line\n\nSecond exact line\n]':'[block\nFirst exact line\nSecond exact line\n]';
                 f.comp.Options[2].TextTemplate=template;f.metadata.Options[2].TextTemplate=template;p.renderer.templateString=template;
                 const output=document.createElement('div'),block=document.createElement('div');output.className='ep-render-output';
-                for(const text of ['First exact line','Second exact line']){const paragraph=document.createElement('p'),span=document.createElement('span');span.textContent=text;paragraph.append(span);block.append(paragraph);}
+                for(const text of (mutation==='blank'?['First exact line','','Second exact line']:['First exact line','Second exact line'])){const paragraph=document.createElement('p'),span=document.createElement('span');span.textContent=text;paragraph.append(span);block.append(paragraph);}
                 output.append(block);p.fields.renderGroup.replaceChildren(output);
                 const paragraphs=block.querySelectorAll('p');
                 if(mutation==='reorder')block.prepend(paragraphs[1]);
                 if(mutation==='extra')block.append(document.createElement('p'));
-                if(mutation==='merged'){paragraphs[0].textContent+='Second exact line';paragraphs[1].remove();}
+                if(mutation==='merged'||mutation==='merged-space'){paragraphs[0].textContent+=(mutation==='merged-space'?' ':'')+'Second exact line';paragraphs[1].remove();}
+                if(mutation==='foreign-inline'){paragraphs[0].innerHTML='<b>First exact line</b>';block.insertBefore(document.createTextNode(' '),paragraphs[1]);}
                 if(mutation==='nested')paragraphs[0].append(document.createElement('div'));
                 if(mutation==='foreign')output.append(document.createTextNode('foreign'));
                 if(mutation==='line-drift')paragraphs[1].textContent='foreign';
                 if(mutation==='editable')paragraphs[0].contentEditable='true';
             },mutation);
             const d=await detectQuestion(page);
-            if(mutation==='source'){
+            if(mutation==='source'||mutation==='blank'){
                 assert.equal(d.kind,'choice');
                 await page.evaluate(()=>{document.querySelector('#sa-navigation-controls button').addEventListener('click',event=>{event.stopImmediatePropagation();blockSubmits++;mathFixture.q.questionIndex++;},true);});
                 const result=await playChoiceRound(page,d,{enter:true,timeout:600});assert.equal(result.status,'advanced');
-                assert.equal(await page.evaluate(()=>mathFixture.clicks.length),1);
+                assert.deepEqual(await page.evaluate(()=>[mathFixture.clicks.length,blockSubmits]),[1,1]);
             }else{
                 assert.equal(d.kind,'unsupported',mutation);assert.equal(d.diagnostic.option,2,mutation);
                 assert.equal(d.diagnostic.check,mutation==='editable'?'render-structure':'render-text',mutation);
@@ -107,6 +108,8 @@ async function setup(page, origin) {
         await paragraphVariant('source');await paragraphVariant('reorder');await paragraphVariant('extra');
         await paragraphVariant('merged');await paragraphVariant('nested');await paragraphVariant('foreign');
         await paragraphVariant('line-drift');await paragraphVariant('editable');
+        await paragraphVariant('merged-space');await paragraphVariant('foreign-inline');
+        await paragraphVariant('blank');await paragraphVariant('blank-collapsed');
         // Presentation-only header attributes (justify align, width, ignored
         // unknown keys) never change rendered text, so the exact text binding
         // accepts them; malformed headers still refuse at the raw boundary.
