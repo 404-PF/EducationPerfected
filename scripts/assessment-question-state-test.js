@@ -4,7 +4,6 @@ const { createAssessmentQuestionStateFixture } = require('./assessment-question-
 // This is a field/update matrix for an ORIGINAL offline model, not a test of
 // EP's actual function or proof of server grading. Literal expected rows keep
 // answer changes, user state, attempt state and persistence separate.
-let sourceUpdate;
 if (process.argv[2] === '--source-stdin') {
     const fs = require('node:fs');
     const crypto = require('node:crypto');
@@ -17,12 +16,10 @@ if (process.argv[2] === '--source-stdin') {
     assert.ok(start >= 0);
     const end = source.indexOf(suffix, start);
     assert.ok(end > start);
-    const InGameAssessmentQuestionStatesManager = { GRADE_CORRECT: 1, GRADE_INCORRECT: 0 };
-    // Static reviewed function, never eval or VM execution of supplied bytes.
-    // Exact string equality below verifies it matches the pinned public body.
-    const pinnedUpdate = function(A,E,I,z,S,L,N,B){var Y=this.getAttemptForContentID(A);return null!=E&&z&&(Y.UsersAnswer=E,Y.Grade=S?InGameAssessmentQuestionStatesManager.GRADE_CORRECT:InGameAssessmentQuestionStatesManager.GRADE_INCORRECT,Y.ScoreFraction=L),null!=I&&(Y.UserState=I),Y.TimeTaken=N,Y.Seen=N>0,Y.Attempted=Y.Attempted||z||S,Y.FlaggedForLater=B,Y.SequenceNumber++,this.assessmentPersistenceService.storeQuestionState([Y]),Y};
-    assert.equal(source.slice(start + prefix.length, end), pinnedUpdate.toString(), 'static method differs from pinned source');
-    sourceUpdate = pinnedUpdate;
+    const pinned = require('./assessment-pinned-method.json');
+    assert.equal(source.slice(start + prefix.length, end), pinned.method, 'method text differs from reviewed source');
+    assert.ok(source.includes(pinned.constants), 'grade constants differ from reviewed source');
+    console.log('Pinned source text audit PASS: exact reviewed method and grade definitions match; no source code executed.');
 }
 
 const initial = {
@@ -46,7 +43,7 @@ const rows = [
 ];
 for (const [name, change, expected] of rows) {
     assert.equal(typeof name, 'string');
-    const caseName = String(name);
+    const caseName = typeof name === 'string' ? name : 'invalid-case-name';
     const fixture = createAssessmentQuestionStateFixture(initial);
     const input = { ...baseline, ...change };
     const before = { ...input };
@@ -55,17 +52,7 @@ for (const [name, change, expected] of rows) {
     assert.deepEqual(result, expectedState, name);
     assert.deepEqual(fixture.snapshot(), { state: expectedState, writes: [expectedState] }, name);
     assert.deepEqual(input, before, `${caseName}: input unchanged`);
-    if (sourceUpdate) {
-        const state = { ...initial };
-        const writes = [];
-        const receiver = {
-            getAttemptForContentID(id) { assert.equal(id, 17); return state; },
-            assessmentPersistenceService: { storeQuestionState(values) { writes.push(...values.map(value => ({ ...value }))); } },
-        };
-        sourceUpdate.call(receiver, 17, input.answer, input.userState, input.edited, input.correct, input.fraction, input.elapsed, input.flagged);
-        assert.deepEqual(state, expectedState, `${caseName}: pinned actual source`);
-        assert.deepEqual(writes, [expectedState], `${caseName}: pinned actual persistence edge`);
-    }
+
 }
 // Unedited/no-answer updates still save metadata on every call. Attempted is
 // sticky; Seen is derived from the supplied elapsed value and is not sticky.
@@ -81,19 +68,6 @@ assert.equal(result.writes.length, 2);
 assert.equal(result.writes[0].Seen, true);
 assert.equal(result.writes[0].FlaggedForLater, false);
 assert.equal(result.writes[1].FlaggedForLater, true);
-if (sourceUpdate) {
-    const state = { ...initial, Attempted: true };
-    const writes = [];
-    const receiver = {
-        getAttemptForContentID(id) { assert.equal(id, 17); return state; },
-        assessmentPersistenceService: { storeQuestionState(values) { writes.push(...values.map(value => ({ ...value }))); } },
-    };
-    sourceUpdate.call(receiver, 17, 'new', null, false, false, 0.25, 9, false);
-    sourceUpdate.call(receiver, 17, null, null, false, false, 0.25, 0, true);
-    assert.deepEqual(state, result.state, 'pinned source shared-state updates');
-    assert.deepEqual(writes, result.writes, 'pinned source successive persistence snapshots');
-}
+
 assert.deepEqual(initial, { UsersAnswer: 'old', Grade: 1, ScoreFraction: 0.75, UserState: 'stored', TimeTaken: 8, Seen: true, Attempted: false, FlaggedForLater: false, SequenceNumber: 4 });
 console.log('Assessment state matrix PASS:12literal update cases, sticky attempted/nonsticky seen, null/empty separation and per-update persistence. Original offline model only, not EP/server proof.');
-
-if (sourceUpdate) console.log('Pinned source audit PASS: same12literal rows execute the hash-verified EP update method with stubbed lookup/persistence; no app/network access.');

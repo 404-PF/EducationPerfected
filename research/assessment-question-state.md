@@ -31,7 +31,7 @@ Education Perfect's [public student chunk 171](https://mfe-student-app.education
 | `Attempted` | Previous attempted OR edited OR correct. It is sticky for ordinary boolean inputs. |
 | `FlaggedForLater` | Always replaced with supplied flag. |
 | `SequenceNumber` | Incremented for every update. |
-| Persistence | Always calls `assessmentPersistenceService.storeQuestionState([state])`. This enqueues state; it does not prove durable server saving. |
+| Persistence | After successful lookup of an existing state, calls `assessmentPersistenceService.storeQuestionState([state])`. This enqueues state; it does not prove durable server saving. |
 
 Consequences: null plus edited true can mark attempted without replacing the stored answer. Correct plus edited false can mark attempted without replacing grade/score. A time-only or flag-only update can persist without marking attempted. These are observed client mechanics, not allowances to generate those states or assumptions that malformed inputs are accepted.
 
@@ -53,9 +53,9 @@ For reproducible source checking, download the cited public bundle to a local fi
 node scripts/assessment-question-state-test.js --source-stdin < /path/to/downloaded-chunk171.js
 ```
 
-The optional audit reads source bytes from stdin, not a caller-supplied path, and refuses a SHA-256 mismatch. It compares the named method's exact source text with a static reviewed function in the test. Only that checked-in static function runs the twelve rows and the shared-state two-update case with a stubbed content lookup and persistence sink. No supplied bytes are evaluated, no VM is used, and no full application, website or request is involved. Exact equality plus the hash pin establishes that the static method matches the inspected client snapshot; a changed snapshot requires fresh review. This checks one client method, not server behavior.
+The optional audit reads source bytes from stdin and refuses a SHA-256 mismatch. It compares the named method's exact text and grade constant definitions with a reviewed static JSON record. No supplied source code or pinned method body is executed. This is a textual source-contract check, not an execution test of the client function. A changed snapshot requires fresh review.
 
-The normal test chain uses no network or downloaded bundle. The optional source audit was run separately against the pinned bytes and passed. Browser/CLI Assessment refusal tests remain separate. No renderer, server persistence, concurrent autosave or live attempt behavior is proved by this matrix.
+The normal test chain uses no network or downloaded bundle. The optional text audit was run separately against the pinned bytes and passed. The twelve literal cases and shared-state updates execute only the original simplified model. Browser/CLI Assessment refusal tests remain separate. No renderer, server persistence, concurrent autosave or live attempt behavior is proved by this matrix.
 
 ## Remaining work
 

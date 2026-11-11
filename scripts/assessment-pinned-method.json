@@ -1,0 +1,4 @@
+{
+  "method": "function(A,E,I,z,S,L,N,B){var Y=this.getAttemptForContentID(A);return null!=E&&z&&(Y.UsersAnswer=E,Y.Grade=S?InGameAssessmentQuestionStatesManager.GRADE_CORRECT:InGameAssessmentQuestionStatesManager.GRADE_INCORRECT,Y.ScoreFraction=L),null!=I&&(Y.UserState=I),Y.TimeTaken=N,Y.Seen=N>0,Y.Attempted=Y.Attempted||z||S,Y.FlaggedForLater=B,Y.SequenceNumber++,this.assessmentPersistenceService.storeQuestionState([Y]),Y}",
+  "constants": "InGameAssessmentQuestionStatesManager.GRADE_INCORRECT=0,InGameAssessmentQuestionStatesManager.GRADE_CORRECT=1"
+}
