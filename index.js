@@ -1785,6 +1785,9 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         return true;
                     }
                     const play = descriptor.kind === 'dropdown' ? playDropdownRound : descriptor.kind === 'numberbox' ? playNumberBoxRound : descriptor.kind === 'textbox' ? playTextboxRound : descriptor.kind === 'gaps' ? playGapsRound : playChoiceRound;
+                    // Preserve even if Stop/errors arrive after Submit but before
+                    // the handler's next modal poll. No selection cleanup deletes dialogs.
+                    preserveSelectionModal=true;
                     const modalBaseline=await captureSelectionBaseline(page,again);
                     try{
                     const result = await play(page, again, {

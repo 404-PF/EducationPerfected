@@ -4,7 +4,8 @@ const Module = require('node:module');
 const puppeteer = require('puppeteer');
 const { createServer } = require('./mock-ep');
 const { installGapsFixture } = require('./gaps-fixture');
-const gapsMode = process.argv.includes('--gaps');
+const selectionModalMode=process.argv.includes('--selection-modal');
+const gapsMode = process.argv.includes('--gaps')||selectionModalMode;
 (async () => {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -41,14 +42,18 @@ const gapsMode = process.argv.includes('--gaps');
         await page.goto(origin + '/lesson');
         if (gapsMode) {
         await page.evaluate(installGapsFixture);
-        await page.evaluate(() => {
+        await page.evaluate(selectionModalMode => {
             gapsFixture.complete = true;
             document.querySelector('#sa-navigation-controls button').addEventListener('click', () => {
+                if(selectionModalMode){
+                    const modal=document.createElement('div');modal.setAttribute('uib-modal-window','modal-window');modal.id='preserved-modal';document.body.append(modal);
+                    return;
+                }
                 gapsFixture.group.remove();
                 document.querySelector('#question-container-group')?.remove();
                 gapsFixture.self.model._currentQuestion = null;
             });
-        });
+        },selectionModalMode);
         } else {
         await page.evaluate(() => {
             document.querySelector('#ep-question-container').remove();
@@ -58,6 +63,15 @@ const gapsMode = process.argv.includes('--gaps');
         });
         }
         const evaluate = page.evaluate.bind(page);
+        if(selectionModalMode){
+            const click=page.mouse.click.bind(page.mouse);
+            page.mouse.click=async(...args)=>{
+                await click(...args);
+                if(!intercepted&&await evaluate(()=>!!document.querySelector('#preserved-modal'))){
+                    intercepted=true;stopPromise=controls.stop();
+                }
+            };
+        }else{
         page.evaluate = async (fn, ...args) => {
             const result = await evaluate(fn, ...args);
             if (!intercepted && String(fn).includes('const button = document.querySelector(css)')) {
@@ -66,6 +80,7 @@ const gapsMode = process.argv.includes('--gaps');
             }
             return result;
         };
+        }
         controls.start();
         const finishBy = Date.now() + 12000;
         while (!intercepted || ['running', 'stopping'].includes(controls.status().state)) {
@@ -74,6 +89,9 @@ const gapsMode = process.argv.includes('--gaps');
         }
         await stopPromise;
         assert.equal(intercepted, true);
+        if(selectionModalMode){
+            assert.equal(await evaluate(()=>!!document.querySelector('#preserved-modal')),true,'Stop before the next modal poll must not erase the dialog');
+        }
         if (gapsMode) {
             assert.equal(await evaluate(() => gapsFixture.submits), 1);
             assert.ok(!errors.some(s => s.includes('without proof of task completion')), 'user stop must not emit an unproven-completion warning');
