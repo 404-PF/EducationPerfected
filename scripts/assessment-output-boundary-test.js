@@ -25,7 +25,7 @@ const { detectQuestion } = require('../lib/detect-question');
                     get() { window.outputBoundaryReads.push(field); throw new Error('poisoned output boundary'); },
                 });
                 // A positive control proves the getter sentinels really fire.
-                try { void question.validAnswers; } catch {}
+                try { Reflect.get(question, 'validAnswers'); } catch {}
             });
             assert.deepEqual(await page.evaluate(() => window.outputBoundaryReads), ['validAnswers'], route);
             await page.evaluate(() => { window.outputBoundaryReads = []; });
