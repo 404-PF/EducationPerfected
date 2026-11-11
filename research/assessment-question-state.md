@@ -50,10 +50,10 @@ No runtime inspector is introduced here. The behavior and side effects of every 
 For reproducible source checking, download the cited public bundle to a local file, then run:
 
 ```sh
-node scripts/assessment-question-state-test.js --source /path/to/downloaded-chunk171.js
+node scripts/assessment-question-state-test.js --source-stdin < /path/to/downloaded-chunk171.js
 ```
 
-The optional audit refuses any byte snapshot whose SHA-256 differs from the pin. Only after matching does it isolate the named `updateQuestionState` function and execute those same twelve rows with a stubbed content lookup and persistence sink. It does not execute the full application, load a website or send a request. This verifies the field matrix against that actual client function, not merely our own model. The VM timeout applies only while creating the function expression; its body runs later via `.call()` without a VM execution timeout. This is not a security sandbox. Safety depends on the exact hash pin and review of that specific function body, not on isolation for arbitrary downloaded code. Hash mismatch is a research blocker, not permission to update the pin without reviewing the source.
+The optional audit reads source bytes from stdin, not a caller-supplied path, and refuses a SHA-256 mismatch. It compares the named method's exact source text with a static reviewed function in the test. Only that checked-in static function runs the twelve rows and the shared-state two-update case with a stubbed content lookup and persistence sink. No supplied bytes are evaluated, no VM is used, and no full application, website or request is involved. Exact equality plus the hash pin establishes that the static method matches the inspected client snapshot; a changed snapshot requires fresh review. This checks one client method, not server behavior.
 
 The normal test chain uses no network or downloaded bundle. The optional source audit was run separately against the pinned bytes and passed. Browser/CLI Assessment refusal tests remain separate. No renderer, server persistence, concurrent autosave or live attempt behavior is proved by this matrix.
 
