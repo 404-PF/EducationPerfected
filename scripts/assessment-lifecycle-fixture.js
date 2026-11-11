@@ -13,21 +13,22 @@ function installAssessmentLifecycle() {
         flag() { record('flag-current'); model.autosave(); },
         focus() { record('queue-focus'); queued++; },
         earlyExit() { record('save-exit'); record('submit-current'); persistCurrent(); },
-        complete() {
+        complete(exitUI = true) {
             record('mark-attempt-submitting'); record('submit-current'); persistCurrent();
-            record('request-completion'); record('exit-ui');
+            record('request-completion');
+            if (exitUI) record('exit-ui');
         },
         freeze() { record('teacher-lock'); model.earlyExit(); },
-        forceSubmit() { record('teacher-ended'); model.complete(); },
+        // onCloseEvent awaits submitAssessment(false,false), including
+        // completion persistence, then performs its own teacher-ended finish.
+        forceSubmit() { model.complete(false); record('teacher-ended'); record('exit-ui'); },
         expire() { record('time-expired'); model.complete(); },
         flush() { if (queued) { record('flush-queued'); queued = 0; } },
         get pending() { return queued; },
     };
     window.assessmentLifecycle = model;
-    const shell = document.createElement('game-assessment-navigation-controls');
+    const shell = document.querySelector('game-assessment-navigation-controls');
     shell.id = 'lifecycle-controls';
-    shell.innerHTML = '<button type="button">Submit assessment</button>';
-    document.body.append(shell);
     shell.querySelector('button').onclick = () => model.complete();
     document.querySelector('#answer-text').addEventListener('input', () => model.autosave());
     document.addEventListener('keydown', event => { if (event.key === 'ArrowRight') model.navigate(); });

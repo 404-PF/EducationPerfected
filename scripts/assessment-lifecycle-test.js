@@ -36,6 +36,11 @@ const { installAssessmentLifecycle } = require('./assessment-lifecycle-fixture')
         assert.deepEqual(completion.calls, ['mark-attempt-submitting', 'submit-current', 'mark-current', 'queue-question', 'request-completion', 'exit-ui']);
         assert.equal(completion.pending, 1, 'UI exit does not prove a drained save queue');
 
+        await reset();
+        assert.equal(await page.$$eval('game-assessment-navigation-controls', nodes => nodes.length), 1);
+        await page.evaluate(() => window.assessmentLifecycle.forceSubmit());
+        assert.deepEqual((await snapshot()).calls, ['mark-attempt-submitting', 'submit-current', 'mark-current', 'queue-question', 'request-completion', 'teacher-ended', 'exit-ui']);
+
         // Detector stops before question getters and does not invoke any
         // lifecycle method, including cleanup. Pre-existing EP-like work is
         // deliberately NOT cancelled or incorrectly attributed to detection.
