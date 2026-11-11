@@ -92,6 +92,7 @@ async function setup(page, origin) {
                 if(mutation==='foreign')output.append(document.createTextNode('foreign'));
                 if(mutation==='line-drift')paragraphs[1].textContent='foreign';
                 if(mutation==='editable')paragraphs[0].contentEditable='true';
+                if(mutation==='flat')block.textContent='First exact line Second exact line';
             },mutation);
             const d=await detectQuestion(page);
             if(mutation==='source'||mutation==='blank'){
@@ -109,7 +110,7 @@ async function setup(page, origin) {
         await paragraphVariant('merged');await paragraphVariant('nested');await paragraphVariant('foreign');
         await paragraphVariant('line-drift');await paragraphVariant('editable');
         await paragraphVariant('merged-space');await paragraphVariant('foreign-inline');
-        await paragraphVariant('blank');await paragraphVariant('blank-collapsed');
+        await paragraphVariant('blank');await paragraphVariant('blank-collapsed');await paragraphVariant('flat');
         // Presentation-only header attributes (justify align, width, ignored
         // unknown keys) never change rendered text, so the exact text binding
         // accepts them; malformed headers still refuse at the raw boundary.
