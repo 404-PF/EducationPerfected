@@ -27,6 +27,8 @@ function installModal(mutation){
     if(mutation==='accessor')Object.defineProperty(dialog,'nextSection',{get(){f.getterCalls=(f.getterCalls||0)+1;throw new Error('not allowed');}});
     if(mutation==='ambiguous')document.body.append(modal.cloneNode(true));
     if(mutation==='hidden')modal.hidden=true;
+    if(mutation==='unnested')modal.append(modal.querySelector('#next-button'));
+    if(mutation==='duplicate-button')modal.append(modal.querySelector('#next-button').cloneNode(true));
 
 }
 async function browserCases(){
@@ -48,6 +50,7 @@ async function browserCases(){
         await run('stay','section-next-action-required');
         await run('unknown','unknown-modal');await run('lookalike','unknown-modal');await run('wrong-section','unknown-modal');
         await run('complete','activity-completion-dialog');await run('no-next','unknown-modal');await run('accessor','unknown-modal');
+        await run('unnested','unknown-modal');await run('duplicate-button','unknown-modal');
         await run('ambiguous','modal-ambiguous');await run('hidden','modal-visibility-unverified');
     }finally{if(browser){await browser.close();}await new Promise(r=>server.close(r));}
 }
@@ -73,6 +76,7 @@ async function cliCase(mutation){
         await session.wait(()=>session.output.includes('answerLoop Exited.'));
         assert.match(session.output,/Selection modal diagnostic/);
         assert.equal(await session.page.evaluate(()=>dropdownFixture.modal.isConnected),true,'cleanup leaves dialog for checking');
+        if(mutation==='unknown')assert.match(session.output,/Selection modal diagnostic .*"guard":"unknown-modal"/);
         if(mutation==='stay')assert.match(session.output,/section-next-action-required/);
         session.child.stdin.write('start\n');await session.wait(()=>session.output.includes('still open; close or check'));
         assert.deepEqual(await session.page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits]),[8,1]);
