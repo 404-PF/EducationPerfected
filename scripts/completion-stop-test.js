@@ -20,7 +20,7 @@ const gapsMode = process.argv.includes('--gaps')||selectionModalMode;
     Module._load = function (id, ...args) {
         const value = load.call(this, id, ...args);
         return id === 'puppeteer' ? new Proxy(value, { get(target, key) {
-            return key === 'launch' ? async (...options) => { browser = await launchBrowser(...options); return browser; } : target[key];
+            return key === 'launch' ? async (...options) => { browser = await launchBrowser({...options[0],...(process.env.HANDLER_EXECUTABLE_PATH?{executablePath:process.env.HANDLER_EXECUTABLE_PATH}:{})}); return browser; } : target[key];
         } }) : value;
     };
     console.log = (...args) => { if (String(args[0]).includes('No credentials provided')) loginReady = true; log(...args); };
