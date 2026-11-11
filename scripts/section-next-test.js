@@ -26,6 +26,11 @@ function bindNext(mutation){
         const original=window.angular.element;
         window.angular.element=el=>el===f.modal.querySelector('#modal-section-complete-wrapper')?{scope:()=>Object.create({self:f.dialog})}:original(el);
     }
+    if(mutation==='pre-assessment')f.self.model.gameMode=2;
+    if(mutation==='fieldset'){
+        const fieldset=document.createElement('fieldset');fieldset.disabled=true;
+        const button=f.modal.querySelector('#next-button');button.replaceWith(fieldset);fieldset.append(button);
+    }
     if(mutation==='disabled')f.modal.querySelector('#next-button').disabled=true;
     if(mutation==='covered'){
         const blocker=document.createElement('div');Object.assign(blocker.style,{position:'fixed',inset:'0',zIndex:'9999'});document.body.append(blocker);
@@ -56,6 +61,7 @@ async function browserCases(){
         await run('wrong-next','next-section-unverified');await run('old-question','next-section-unverified');
         await run('group-drift','next-section-unverified');await run('new-modal','next-section-unverified');
         await run('assessment','assessment-mode');await run('cancel','section-action-cancelled',0);
+        await run('pre-assessment','assessment-mode',0);await run('fieldset','next-button-unready',0);
         await run('disabled','next-button-unready',0);await run('covered','next-button-covered',0);
         await run('type','next-section-type-unverified',0);await run('peer','peer-review-next',0);await run('extra-backdrop','backdrop-unverified',0);
         // Simulate a dispatch whose outcome is lost. It remains consumed.
@@ -64,7 +70,8 @@ async function browserCases(){
         try{
             await page.evaluate(installModal,'stay');await page.evaluate(bindNext,'stay');
             const click=page.mouse.click.bind(page.mouse);page.mouse.click=async(...args)=>{await click(...args);throw new Error('uncertain');};
-            assert.equal((await advanceSelectionSection(page,descriptor,baseline)).guard,'section-click-uncertain');page.mouse.click=click;
+            assert.equal((await advanceSelectionSection(page,descriptor,baseline)).guard,'section-click-uncertain');
+            page.mouse.click=click;
             assert.equal((await advanceSelectionSection(page,descriptor,baseline)).guard,'section-action-consumed');
             assert.equal(await page.evaluate(()=>dropdownFixture.sectionClicks),1);
         }finally{await baseline.dispose();}
