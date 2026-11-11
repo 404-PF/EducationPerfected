@@ -19,7 +19,7 @@ const { detectQuestionInPage } = require('./lib/detect-question');
 const { diagnostic } = require('./lib/diagnostics');
 const { collectSelfMarkDiagnostics } = require('./lib/self-mark-diagnostics');
 const { guardClassicEnter } = require('./lib/classic-enter');
-const {captureSelectionBaseline,inspectSelectionModal}=require('./lib/selection-modal');
+const {captureSelectionBaseline,inspectSelectionModal,advanceSelectionSection}=require('./lib/selection-modal');
 
 // ===== Credentials ===== //
 // Credentials are never stored in this (or any other tracked) file. They are read at
@@ -1822,7 +1822,22 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
                         const modalDiagnostic=await inspectSelectionModal(page,again,modalBaseline);
                         if(!TOGGLE)return false;
                         console.error('Selection modal diagnostic '+JSON.stringify(modalDiagnostic));
-                        if(modalDiagnostic.guard==='section-next-action-required')console.error('EP is waiting at a section boundary. Use its Next Section control when ready; automation has stopped.');
+                        if(modalDiagnostic.guard==='section-next-action-required'){
+                            const sectionResult=await advanceSelectionSection(page,again,modalBaseline,{shouldStop:()=>!TOGGLE,timeout:ADVANCE_TIMEOUT});
+                            console.log('Section transition diagnostic '+JSON.stringify(sectionResult));
+                            if(!TOGGLE)return false;
+                            if(sectionResult.guard==='next-section-verified'){
+                                // Detect the new question read-only before allowing the next
+                                // normal round to run its own complete fresh safety checks.
+                                const nextQuestion=await detectQuestion(page);
+                                if(nextQuestion&&nextQuestion.kind!=='unsupported'&&nextQuestion.key!==again.key){
+                                    console.log('Verified the next section and a new question.');
+                                    return TOGGLE;
+                                }
+                                console.error('The next section opened without a supported new question; stopping.');
+                                return false;
+                            }
+                        }
                         const roundLabel = descriptor.kind === 'textbox' ? 'textbox' : descriptor.kind === 'numberbox' ? 'number-box' : 'selection';
                         console.error(`A modal appeared during the ${roundLabel} round; stopping so it can be checked. The submission may or may not have been accepted. The dialog is left open.`);
                         await alert(`A modal interrupted the ${roundLabel} round; stopping the run.`);
