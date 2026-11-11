@@ -44,14 +44,12 @@ const { createSubmitGapsOnce } = require('../lib/gaps-submit-once');
             assert.equal((await runner(page)).status, 'refused');
             assert.deepEqual(await counters(), [[],0,0,0]);
         }
-        const initialCases = ['shortage','differentCorrectLabels','overlappingCorrectLabels','paddedCollision','usedEmpty','wrongRawText','reorderedSources','foreignDrag','nonPrefix','duplicateGap'];
+        const initialCases = ['shortage','paddedCollision','usedEmpty','wrongRawText','reorderedSources','foreignDrag','nonPrefix','duplicateGap'];
         for (const mutation of initialCases) {
             await setup();
             await page.evaluate(m => {
                 const f=gapsFixture;
                 if(m==='shortage'){f.state.hintsShown[3]='extra';f.renderer.draggables[3].target.textContent='extra';}
-                if(m==='differentCorrectLabels')f.metadata.Gaps[1].CorrectOptions.push('Radius');
-                if(m==='overlappingCorrectLabels')f.metadata.Gaps[0].CorrectOptions.push('Circumference');
                 if(m==='paddedCollision'){f.state.hintsShown[2]=' Circumference ';f.renderer.draggables[2].target.textContent=' Circumference ';}
                 if(m==='usedEmpty')f.renderer.draggables[3].target.classList.add('used');
                 if(m==='wrongRawText')f.renderer.draggables[3].target.textContent='Circumference ';

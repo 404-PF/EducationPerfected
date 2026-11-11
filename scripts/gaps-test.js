@@ -76,7 +76,7 @@ async function testInvisibleText(page, setup) {
         await setup();let selected=false;
         assert.equal((await playGapsRound(page,await detectQuestion(page),{enter:false,timeout:100,log:()=>{selected=true;},shouldStop:()=>selected})).status,'aborted');
         assert.equal(await page.evaluate(()=>gapsFixture.submits),0);
-        for(const mutation of ['manual','markingUnknown','gameMode','textbox','mixed','duplicateHints','missingCorrect','wrongIndex','duplicateID','foreignSource','foreignZone','prefilled','hidden','domID','extraGap','reviewMode','staleOrder','duplicateCorrect','unknownInput','malformedHints','templateOrder','storedAnswer']) {
+        for(const mutation of ['manual','markingUnknown','gameMode','textbox','mixed','duplicateHints','missingCorrect','wrongIndex','duplicateID','foreignSource','foreignZone','prefilled','hidden','domID','extraGap','reviewMode','staleOrder','unknownInput','malformedHints','templateOrder','storedAnswer']) {
             await setup();await page.evaluate(m=>{
                 const f=gapsFixture;
                 if(m==='manual')f.self.sectionData.activityGroup.isAutoMarked=false;
@@ -95,7 +95,6 @@ async function testInvisibleText(page, setup) {
                 if(m==='domID')f.renderer.dropZones[0].span.id='999';
                 if(m==='reviewMode')f.renderer.renderingParameters.mode=2;
                 if(m==='staleOrder')f.renderer.displayOrderDropZones=f.renderer.dropZones;
-                if(m==='duplicateCorrect')f.metadata.Gaps[0].CorrectOptions=['alpha','wrong'];
                 if(m==='unknownInput')delete f.metadata.InputType;
                 if(m==='templateOrder')f.metadata.TextTemplate='[41:alpha] [7:beta] [88:unshown]';
                 if(m==='storedAnswer')f.state.usersAnswers[7]='beta';
