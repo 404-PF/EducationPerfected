@@ -38,6 +38,7 @@ async function install(page,body,rendered,mutation){
   await run('**Synthetic //mixed//**','Synthetic mixed','',true);
   await run('@@2@**Synthetic colored**@@','Synthetic colored','',true);
   await run('Synthetic plain','Synthetic plain','',true);
+  await run('@@**2@Synthetic**@@','Synthetic','',false);
   await run('**open','open','',false);await run('**closed\\**','closed**','',false);
   await run('**##highlight##**','highlight','',false);await run('**⁽script⁾**','script','',false);
   for(const mutation of ['unknown','flat','extra','drift','editable'])await run('**Synthetic bold**','Synthetic bold',mutation,false);
