@@ -19,8 +19,9 @@ function bindNext(mutation){
         if(mutation==='assessment')f.self.model.gameMode=2;
         if(mutation==='transient')setTimeout(()=>{f.self.sectionData=f.dialog.currentSection;},20);
         if(mutation==='group-drift')f.next.activityGroup.ID=55;
-        if(mutation==='new-modal'){
+        if(mutation==='new-modal'||mutation==='transient-modal'){
             const modal=document.createElement('div');modal.setAttribute('uib-modal-window','modal-window');modal.textContent='PRIVATE';document.body.append(modal);
+            if(mutation==='transient-modal')setTimeout(()=>modal.remove(),75);
         }
     });
     if(mutation==='inherited'){
@@ -60,7 +61,7 @@ async function browserCases(){
         await run('advance','next-section-verified');await run('inherited','next-section-verified');
         await run('stay','next-section-unverified');await run('dismiss','next-section-unverified');
         await run('wrong-next','next-section-unverified');await run('old-question','next-section-unverified');
-        await run('group-drift','next-section-unverified');await run('new-modal','next-section-unverified');
+        await run('group-drift','next-section-unverified');await run('new-modal','section-new-modal');await run('transient-modal','section-new-modal');
         await run('transient','section-transition-unstable');await run('assessment','assessment-mode');await run('cancel','section-action-cancelled',0);
         await run('pre-assessment','assessment-mode',0);await run('fieldset','next-button-unready',0);
         await run('disabled','next-button-unready',0);await run('covered','next-button-covered',0);
@@ -77,8 +78,8 @@ async function browserCases(){
             assert.equal(await page.evaluate(()=>dropdownFixture.sectionClicks),1);
         }finally{await baseline.dispose();}
     }finally{
-        if(browser){await browser.close();}
-        await new Promise(r=>server.close(r));
+        try{if(browser){await browser.close();}}
+        finally{await new Promise(r=>server.close(r));}
     }
 }
 async function cliCase(){
