@@ -42,7 +42,7 @@ In chunk 171, `ComponentInputManager.editedSinceDisplayed` is `edited || hasSing
 
 ### Marking is not an Assessment permission signal
 
-`InGameMarkingManager.markAnswer` chooses EP vs language-question validation. The EP path creates a validator and interprets outcomes, including self-mark/information distinctions. `AssessmentGameController.submitAnswer` passes an explicit auto-marked style, while `storeCurrentAnswer` uses the default style. Those call-site choices do not establish that a component is safe for automation or that all Assessment renderers are supported. A computed client score, default style or raw/runtime marked flag is not a substitute for the missing renderer, identity and save contracts.
+`InGameMarkingManager.markAnswer` dispatches to `markAnswerEP` for EP questions and `markAnswerLP` for language-perfect questions; each validates internally. The EP path creates a validator and interprets outcomes, including self-mark/information distinctions. `AssessmentGameController.submitAnswer` passes an explicit auto-marked style, while `storeCurrentAnswer` uses the default style. Those call-site choices do not establish that a component is safe for automation or that all Assessment renderers are supported. A computed client score, default style or raw/runtime marked flag is not a substitute for the missing renderer, identity and save contracts.
 
 No output/validator method is called by the new test. No validator, teacher-lock, timing or focus mechanism is bypassed.
 
