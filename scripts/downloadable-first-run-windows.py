@@ -45,6 +45,9 @@ def main():
 def first_run_evidence(data):
     # Literal-presence flags only. No arbitrary child text, paths or credentials.
     markers={
+        'interactive_required':b'First browser download needs an interactive terminal',
+        'opening':b'Opening EducationPerfected. Finish sign-in in the browser.',
+        'integrity_failed':b'Browser payload integrity check failed (EP_BROWSER_CHECKSUM)',
         'archive_verified':b'Browser download checksum verified',
         'owner_ready':b'EP_TEST_LOGIN_READY',
         'commands_ready':b'Commands: start',

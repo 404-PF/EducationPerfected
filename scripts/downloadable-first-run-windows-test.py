@@ -38,3 +38,15 @@ assert all(type(value) is bool for value in evidence.values())
 assert not any(value in json.dumps(evidence) for value in ('private@example.test','private','token'))
 assert not any(m.first_run_evidence(b'arbitrary child output').values())
 print('Windows first-run fixed drain evidence excludes private and arbitrary child data (inert only).')
+
+# Source-only parity contract. No Node or child process needed in the driver.
+import ast,re
+source=ast.parse(pathlib.Path(m.__file__).read_text())
+function=next(node for node in source.body if isinstance(node,ast.FunctionDef) and node.name=='first_run_evidence')
+assignment=next(node for node in function.body if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='markers' for t in node.targets))
+python_literals=set(ast.literal_eval(assignment.value).values())
+js=pathlib.Path(__file__).with_name('packaged-startup-evidence.js').read_text()
+js_literals={value.encode() for value in re.findall(r"^ [A-Za-z]+:'([^']+)',?$",js,re.MULTILINE)}
+assert len(js_literals)>=14 and js_literals<=python_literals
+assert m.first_run_evidence(b'First browser download needs an interactive terminal')['interactive_required']
+print('Windows first-run fixed marker table contains every packaged startup literal; interactive-terminal category covered (source parity only).')
