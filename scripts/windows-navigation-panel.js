@@ -1,12 +1,12 @@
 // Controlled local experiment only, not a product retry or release attestation.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
 const {startupFailure}=require('../lib/test-startup-failure');
-const {browserStderr}=require('./windows-browser-stderr');
-async function sample({kind,executablePath,env,url,launch,requestSeen}){
+const {browserStderr,browserLogFile}=require('./windows-browser-stderr');
+async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
  const stderr=browserStderr();let detach=()=>{};
  let browser,cleanup=false,initialBlank=null,navigated=false,ready=false,cause=null,stage='launch';
  try{
-  browser=await launch({headless:'shell',defaultViewport:null,handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false,executablePath,env});
+  browser=await launch({headless:'shell',defaultViewport:null,handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false,executablePath,env,...(logPath?{args:['--enable-logging','--log-file='+logPath]}:{})});
   detach=stderr.attach(browser.process()?.stderr);
   stage='page-selection';
   const initial=(await browser.pages())[0];initialBlank=initial.url()==='about:blank';
@@ -27,7 +27,7 @@ async function sample({kind,executablePath,env,url,launch,requestSeen}){
  catch{try{browser.process()?.kill();}catch{ /* Retain uncertainty even if best-effort kill fails. */ }}
  finally{clearTimeout(timer);detach();}
  if(!cleanup)throw new Error('Diagnostic browser cleanup unconfirmed');
- return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,stderr:stderr.result()};
+ return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
 async function panel(){
@@ -43,9 +43,9 @@ async function panel(){
   const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!['PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_BROWSER','PUPPETEER_EXECUTABLE_PATH'].includes(key.toUpperCase())));
   Object.assign(env,{HOME:home,USERPROFILE:home,PATH:empty,TEMP:tmp,TMP:tmp,TMPDIR:tmp});
   // Alternating independent fresh browser launches, never retry a failed page.
-  for(const kind of ['initial-page','new-page','initial-page','new-page']){
+  for(const [index,kind] of ['initial-page','new-page','initial-page','new-page'].entries()){
    const before=requests;safe=false;
-   const result=await sample({kind,executablePath,env,url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
+   const result=await sample({kind,executablePath,env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
    safe=result.cleanup;console.log('Windows local navigation comparison: '+JSON.stringify(result));
   }
  }finally{

@@ -1,6 +1,17 @@
 const assert=require('node:assert/strict'),{sample}=require('./windows-navigation-panel');
-const {browserStderr,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=require('node:stream');
+const {browserStderr,browserLogFile,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=require('node:stream');
 (async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-log-inert-')),logPath=path.join(root,'chrome.log');
+ try{
+  assert.equal(browserLogFile(logPath).state,'absent');assert.equal(browserLogFile(root).state,'unreadable');
+  fs.writeFileSync(logPath,'private-path network_service_instance_impl.cc: Network service crashed private\n'+'x'.repeat(LIMIT));
+  const file=browserLogFile(logPath);assert.equal(file.state,'read');assert.equal(file.bytesExamined,LIMIT);assert.equal(file.truncated,true);assert.equal(file.networkServiceCrash,true);assert.ok(!JSON.stringify(file).includes('private'));
+  const page={url:()=> 'about:blank',goto:async()=>{},waitForSelector:async()=>{}};
+  let options;const browser={pages:async()=>[page],close:async()=>{},process:()=>null};
+  const result=await sample({kind:'initial-page',logPath,launch:async value=>{options=value;return browser;},requestSeen:()=>true});
+  assert.deepEqual(options.args,['--enable-logging','--log-file='+logPath]);assert.equal(result.loggingEnabled,true);assert.equal(result.logFile.networkServiceCrash,true);assert.ok(!JSON.stringify(result).includes(logPath));
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
  const stream=new PassThrough(),diagnostic=browserStderr(),detach=diagnostic.attach(stream);
  stream.write('private-path network_service_instance_impl.cc: Network ser');
  stream.write('vice crashed, restarting service.\nsandbox_win.cc: Sandbox cannot access executable. Access is denied.\n');

@@ -29,4 +29,17 @@ function browserStderr(){
  }
  return{observe,attach,result:()=>({attached,bytesExamined,truncated,...flags})};
 }
-module.exports={browserStderr,LIMIT};
+function browserLogFile(file){
+ const fs=require('node:fs'),diagnostic=browserStderr();let fd,state='unreadable';
+ try{
+  fd=fs.openSync(file,'r');
+  const stat=fs.fstatSync(fd);
+  if(!stat.isFile())throw new Error('Expected owned regular log file');
+  // One extra byte lets the collector distinguish a complete prefix from a capped read.
+  const buffer=Buffer.alloc(LIMIT+1),count=fs.readSync(fd,buffer,0,buffer.length,0);
+  diagnostic.observe(buffer.subarray(0,count));state='read';
+ }catch(error){if(error.code==='ENOENT')state='absent';}
+ finally{if(fd!==undefined)fs.closeSync(fd);}
+ const flags=diagnostic.result();delete flags.attached;return{state,...flags};
+}
+module.exports={browserStderr,browserLogFile,LIMIT};
