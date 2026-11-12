@@ -8,7 +8,7 @@ const {validationLabel,inventory,targets}=require('./beta-candidate');
 (async()=>{
     assert.equal(validationLabel('2026.11.12-validation.1'),'2026.11.12-validation.1');
     assert.equal(validationLabel('2026.2.28-validation.25'),'2026.2.28-validation.25');
-    assert.throws(()=>validationLabel('2026.11.12-beta.1'),'Public beta labels must not be consumed by validation runs');
+    assert.throws(()=>validationLabel('2026.11.12-beta.1'),/Expected internal validation label/,'Public beta labels must not be consumed by validation runs');
     for(const bad of ['2026.02.28-validation.1','2026.2.29-validation.1','2026.4.31-validation.1','2026.0.1-validation.1','2026.13.1-validation.1','2026.1.0-validation.1','2026.11.12','2026.11.12-validation.0','2026.11.12-validation.01','2026.11.12-validation.1;echo unsafe','2027.1.1-validation.1'])assert.throws(()=>validationLabel(bad));
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-beta-contract-'));
     try{
@@ -84,7 +84,7 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
         const built=build({});assert.ifError(built.error);assert.equal(built.status,0,built.stderr);
         assert.equal(fs.existsSync(path.join(directory,'stale')),false);
         const manifest=JSON.parse(fs.readFileSync(path.join(directory,'CANDIDATE.json'),'utf8'));assert.equal(manifest.sourceCommit,commit);
-        assert.equal(manifest.validationLabel,'2026.11.12-validation.1');assert.equal(manifest.target,target);assert.equal(manifest.publicationAuthorized,false);
+        assert.equal(manifest.schemaVersion,2);assert.equal(manifest.labelKind,'internal-validation-not-release');assert.equal(manifest.validationLabel,'2026.11.12-validation.1');assert.equal(manifest.target,target);assert.equal(manifest.publicationAuthorized,false);
         assert.equal(manifest.files[0].size,Buffer.byteLength('synthetic fresh executable'));
         assert.equal(manifest.files[0].sha256,createHash('sha256').update('synthetic fresh executable').digest('hex'));
         const downloadableDirectory=path.join(checkout,'build',target+'-downloadable');

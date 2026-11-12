@@ -16,7 +16,7 @@ function validationLabel(value){
     if(!match)throw new Error('Expected internal validation label (not a release version): 2026.M.D-validation.N');
     const [,year,month,day]=match;
     const date=new Date(Date.UTC(Number(year),Number(month)-1,Number(day)));
-    if(date.getUTCMonth()+1!==Number(month)||date.getUTCDate()!==Number(day))throw new Error('Invalid beta calendar date');
+    if(date.getUTCMonth()+1!==Number(month)||date.getUTCDate()!==Number(day))throw new Error('Invalid validation label calendar date');
     return value;
 }
 async function hashFile(file){
@@ -64,7 +64,7 @@ async function main(){
     const expectedCommit=process.env.GITHUB_SHA;
     if(expectedCommit&&sourceCommit!==expectedCommit)throw new Error('Candidate source differs from workflow commit');
     // Deliberately do not mutate package/lock versions or tracked files. The
-    // candidate label names this build, not an already-published npm version.
+    // validation label names this build, not an already-published npm version.
     const info={sourceCommit,sourceVersion:require('../package.json').version,validationLabel:version,target};
     if(command==='check'){console.log(JSON.stringify(info));return;}
     const directDownload=command==='build-downloadable';

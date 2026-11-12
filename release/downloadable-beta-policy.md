@@ -6,7 +6,7 @@ This is preparation, not release approval or a statement that native checks pass
 
 The downloadable candidate is a Node SEA executable plus its dependency/runtime
 notices. It contains no Chrome/Chromium archive or executable. Build with
-`npm run build:downloadable-candidate -- 2026.11.12-beta.1 linux-x64`
+`npm run build:downloadable-candidate -- 2026.11.12-validation.1 linux-x64`
 (replace the candidate date/number and native target as appropriate) on the matching native host with Node
 22.23.4. Existing `*-dev` builders still embed a browser and are NOT this
 publication path. Do not upload their artifacts by mistake.

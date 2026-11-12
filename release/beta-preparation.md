@@ -12,9 +12,9 @@ The first public beta on its actual publication date should use `YYYY.M.D-beta.1
 
 ## Build-only workflow
 
-After the workflow is merged, an authorized maintainer can manually run **V2026 beta build preparation (no publication)** on main with a candidate label. It uses read-only repository permissions, pinned checkout/setup actions, Node 22.23.4 and the lockfile, runs preparation contracts and existing build preflight checks, and builds on the five native target lanes: Windows x64, macOS ARM64/x64, Linux x64/ARM64.
+After the workflow is merged, an authorized maintainer can manually run **V2026 beta build preparation (no publication)** on main with an internal validation label. It uses read-only repository permissions, pinned checkout/setup actions, Node 22.23.4 and the lockfile, runs preparation contracts and existing build preflight checks, and builds on the five native target lanes: Windows x64, macOS ARM64/x64, Linux x64/ARM64.
 
-The candidate command deletes its target build directory first, invokes only the fixed native development builder, and requires it to succeed with an unchanged clean source commit before writing inventory. It cannot relabel an arbitrary old binary. Each ephemeral runner writes CANDIDATE.json and SHA256SUMS beside its development executable and existing third-party notices. The inventory records the exact source commit, source package version, candidate label, native target, expected (not observed) browser pin, file lengths and SHA-256 values. It inventories the executable and notices, not temporary SEA build inputs. The builder's embedded-browser manifest remains separate. There is no upload step. Runner files are discarded after the job; the manifest and checksums are printed in job logs for inspection, but logs are not a downloadable beta. A successful build does not prove native launch, saved login, no-Node behavior, signing or compatibility with a live EP task.
+The candidate command deletes its target build directory first, invokes only the fixed native development builder, and requires it to succeed with an unchanged clean source commit before writing inventory. It cannot relabel an arbitrary old binary. Each ephemeral runner writes CANDIDATE.json and SHA256SUMS beside its development executable and existing third-party notices. The inventory records the exact source commit, source package version, schema-2 validationLabel and labelKind fields, native target, expected (not observed) browser pin, file lengths and SHA-256 values. It inventories the executable and notices, not temporary SEA build inputs. The builder's embedded-browser manifest remains separate. There is no upload step. Runner files are discarded after the job; the manifest and checksums are printed in job logs for inspection, but logs are not a downloadable beta. A successful build does not prove native launch, saved login, no-Node behavior, signing or compatibility with a live EP task.
 
 The existing builders may apply their existing development ad-hoc signing on macOS. This does not set a release signing policy, buy a certificate or run a new signing-validation project.
 
@@ -26,7 +26,7 @@ Page chose the direct-Google-download candidate path in PR #133. This does not a
 
 ## Release-note outline
 
-- V2026 CLI beta candidate, exact commit and candidate label.
+- V2026 CLI beta candidate, exact commit and internal validation label.
 - Source code and local fixture evidence only where that is what passed.
 - Task-support prose in README; partial lesson support is not all-task support.
 - Assessment mode remains refused. Manually/self-marked work and unimplemented maths editors remain refused.
