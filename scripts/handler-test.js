@@ -1198,11 +1198,12 @@ async function main() {
             await testContextWaits(program.page, origin);
             await testRealLoopAsyncLesson(program.page, program.output);
             await program.page.goto(origin + '/lesson-multi', { waitUntil: 'domcontentloaded' });
+            assert.deepEqual(await program.page.evaluate(() => [multiFixture.state.selectedOptions === undefined, multiFixture.selectionWrites]), [true, 0]);
             await program.page.evaluate(() => { window.multiFixture.completeOnSubmit = true; window.startAnswer(); });
             await program.page.waitForFunction(() => window.multiFixture?.submits === 1, { timeout: 8000 }).catch(e => { throw new Error(e.message + '\n' + program.output()); });
             await program.page.waitForFunction(async () => !(await window.epTestState()).running, { timeout: 8000 });
             assert.deepEqual(await program.page.evaluate(() => ({clicks: multiFixture.clicks.sort(), submits: multiFixture.submits})), {clicks:[0,2],submits:1});
-            check('real loop: multi-select exact set clicked, verified and submitted once on source-derived local fixture');
+            check('real loop: untouched undefined multi-select state, exact set clicked, verified and submitted once on source-derived local fixture');
             await program.page.goto(origin + '/lesson-gaps', { waitUntil: 'domcontentloaded' });
             await program.page.evaluate(() => { window.gapsFixture.complete = true; window.startAnswer(); });
             await program.page.waitForFunction(() => window.gapsFixture?.submits === 1, { timeout: 8000 }).catch(e => { throw new Error(e.message + '\n' + program.output()); });

@@ -20,8 +20,17 @@ function installMultiChoiceFixture() {
         const displayed = [original[2], original[0], original[1]];
         group.replaceChildren();
         const state = { componentID: comp.ComponentID, originalMultiChoiceOptions: original, displayedOptions: displayed,
-            metadataInstance: metadata, optionsOrderUsingOriginalIndexAsID: [2,0,1], selectedOptions: [] };
+            metadataInstance: metadata, optionsOrderUsingOriginalIndexAsID: [2,0,1] };
+        // Source-shaped untouched state: EP's getter returns its unset backing
+        // field until selection/restoration. Count writes to catch reader repairs.
+        let selected;
+        let selectionWrites = 0;
+        Object.defineProperty(state, 'selectedOptions', {
+            get() { return selected; },
+            set(value) { selectionWrites++; selected = value; },
+        });
         const fixture = window.multiFixture = { self, q, comp, metadata, state, group, clicks: [], submits: 0, nexts: 0 };
+        Object.defineProperty(fixture, 'selectionWrites', { get() { return selectionWrites; } });
         state.previewOptions = displayed.map(option => {
             const el = document.createElement('div'); el.className = 'mcq-preview-option'; el.setAttribute('role', 'option');
             el.innerHTML = '<div id="content-container"><div id="button-group"><input type="checkbox" id="check"/><div id="render-group"></div></div></div>';

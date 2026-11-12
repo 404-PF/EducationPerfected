@@ -29,7 +29,10 @@ async function setup(page, origin) {
         await setup(page, origin);
         // Capture only when explicitly requested by a developer; no machine-specific path.
         if (process.env.EP_MULTI_SCREENSHOT) await page.screenshot({path:process.env.EP_MULTI_SCREENSHOT});
-        const d = await detectQuestion(page); assert.equal(d.kind, 'choice', JSON.stringify(d)); assert.deepEqual(d.correct,[0,2]);
+        assert.equal(await page.evaluate(() => multiFixture.state.selectedOptions), undefined);
+        const d = await detectQuestion(page);
+        assert.deepEqual(await page.evaluate(() => [multiFixture.state.selectedOptions === undefined, multiFixture.selectionWrites]), [true, 0], 'detection must not initialize EP state');
+        assert.equal(d.kind, 'choice', JSON.stringify(d)); assert.deepEqual(d.correct,[0,2]);
         const outcome = await playChoiceRound(page,d,{enter:true,timeout:1000});
         assert.equal(outcome.status,'advanced',JSON.stringify(outcome));
         assert.deepEqual(await page.evaluate(() => ({ clicks: multiFixture.clicks.sort(), submits: multiFixture.submits })), { clicks:[0,2],submits:1 });
@@ -124,6 +127,13 @@ async function setup(page, origin) {
             staleCheckbox: f => { f.state.previewOptions[0].fields.check.checked=true; },
             staleAria: f => { f.state.previewOptions[0].element.setAttribute('aria-selected','true'); },
             invalidSelected: f => { f.state.selectedOptions=[99]; },
+            nullSelected: f => { f.state.selectedOptions=null; },
+            stringSelected: f => { f.state.selectedOptions='0'; },
+            objectSelected: f => { f.state.selectedOptions={}; },
+            duplicateSelected: f => { f.state.selectedOptions=[0,0]; },
+            stringIDs: f => { f.state.selectedOptions=['0']; },
+            unsetPreviewSelected: f => { f.state.previewOptions[0].isSelected=true; },
+            unsetAriaSelected: f => { f.state.previewOptions[0].element.setAttribute('aria-selected','true'); },
             rendererChanged: f => { f.state.previewOptions[0].renderer.templateString='foreign'; },
             textNotReady: f => { f.state.previewOptions[0].fields.renderGroup.textContent='loading'; },
             uneditable: f => { f.state.previewOptions[0].editable=false; },
@@ -137,6 +147,16 @@ async function setup(page, origin) {
             assert.equal(r.status,'stopped',name+JSON.stringify(r));
             assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],name);
         }
+        // Explicit empty arrays remain supported alongside the unset default.
+        await setup(page,origin);
+        await page.evaluate(() => { multiFixture.state.selectedOptions=[]; });
+        assert.equal((await playChoiceRound(page,await detectQuestion(page),{enter:true,timeout:1000})).status,'advanced');
+        // Returning to an unset field after a click cannot hide selected previews.
+        await setup(page,origin);
+        await page.evaluate(() => { multiFixture.mutateOnClick=()=>{multiFixture.state.selectedOptions=undefined;}; });
+        const lost=await playChoiceRound(page,await detectQuestion(page),{enter:true,timeout:100});
+        assert.equal(lost.status,'stopped');
+        assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[1,0]);
         // Stale data after a trusted click must never submit partial answers.
         for(const mutation of ['key','metadata','marking','replacePreview','ignore','selectionDrift','manual']) {
             await setup(page,origin);const desc=await detectQuestion(page);
@@ -181,6 +201,6 @@ async function setup(page, origin) {
             assert.match(bad.reason, /other answer-bearing/, code + bad.reason);
             assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],code);
         }
-        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,18 pre-click refusals and7 post-click stale/ineffective-click refusals,3 mixed-question detection refusals,13 deny-list code refusals passed. Source-derived synthetic only.');
+        console.log('Multi-select: exact set/reordered DOM/preselection/semi-auto,25 pre-click refusals and8 post-click stale/ineffective-click refusals,3 mixed-question detection refusals,13 deny-list code refusals passed. Source-derived synthetic only.');
     } finally { if(browser)await browser.close();await new Promise(r=>server.close(r)); }
 })().catch(e=>{console.error(e);process.exitCode=1;});
