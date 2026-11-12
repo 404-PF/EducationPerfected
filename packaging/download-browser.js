@@ -35,7 +35,7 @@ async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir
   if(record.version!==pins.version||record.sha256!==pin.sha256||typeof record.executable!=='string'||path.isAbsolute(record.executable))throw new Error('Invalid browser installation receipt');
   const file=path.resolve(directory,record.executable);
   if(!file.startsWith(directory+path.sep)||!fs.statSync(file).isFile()||!fs.realpathSync(file).startsWith(fs.realpathSync(directory)+path.sep))throw new Error('Incomplete browser installation');
-  if(typeof record.executableSha256!=='string'||await fileHash(file)!==record.executableSha256)throw new Error('Cached browser executable changed; inspect/remove this installation before downloading again');
+  if(typeof record.executableSha256!=='string'||await fileHash(file)!==record.executableSha256){output.write('Cached browser executable changed. Close all EducationPerfected processes, remove this browser installation directory, then retry: '+directory+'\n');throw new Error('Cached browser executable changed');}
   return file;
  };
  const cached=await existing();if(cached)return cached;
