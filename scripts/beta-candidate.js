@@ -79,6 +79,7 @@ async function main(){
     if(directDownload){
         const built=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json'),'utf8'));
         const sea=JSON.parse(fs.readFileSync(path.join(directory,'sea.json'),'utf8'));
+        if(built.browserVersion!==manifest.expectedBrowserVersion)throw new Error('Direct-download pin differs from expected browser version');
         if(built.browserMode!=='direct-google-download'||Object.hasOwn(sea.assets||{},'browser')||Object.keys(sea.assets||{}).sort((a,b)=>a.localeCompare(b,'en')).join(',')!=='manifest,native')throw new Error('Direct-download candidate has unexpected browser assets');
         manifest.distributionMode='direct-google-download';manifest.browserBundled=false;
     }

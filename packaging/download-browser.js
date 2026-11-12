@@ -5,7 +5,7 @@ const {createHash}=require('node:crypto');
 async function fileHash(file){const hash=createHash('sha256');for await(const chunk of fs.createReadStream(file)){hash.update(chunk);}return hash.digest('hex');}
 const platforms={'linux-x64':'linux64','linux-arm64':'linux-arm64','darwin-arm64':'mac-arm64','darwin-x64':'mac-x64','win32-x64':'win64'};
 function checkExtractor(platform=process.platform,run=require('node:child_process').spawnSync){
- const command=platform==='win32'?path.join(process.env.SystemRoot||String.raw`C:\Windows`,'System32','tar.exe'):'/usr/bin/unzip';
+ const command=platform==='win32'?path.join(process.env.SystemRoot||String.raw`C:\Windows`,'System32','tar.exe'):'unzip';
  const result=run(command,platform==='win32'?['--version']:['-v'],{stdio:'ignore',timeout:10000});
  if(result.error||result.status!==0)throw new Error('ZIP extractor unavailable');
 }
@@ -49,7 +49,7 @@ async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir
  let timer;
  try {
   if(!await consent()){output.write('Browser download cancelled; no browser started.\n');throw new Error('Browser download cancelled; no browser started');}
-  try {extractor(platform);}catch(error){output.write('ZIP extraction needs /usr/bin/unzip on Linux/macOS or Windows System32 tar.exe. Install/repair that OS tool before retrying; no browser downloaded.\n');throw error;}
+  try {extractor(platform);}catch(error){output.write('ZIP extraction needs unzip on PATH on Linux/macOS or Windows System32 tar.exe. Install/repair that OS tool before retrying; no browser downloaded.\n');throw error;}
   timer=setTimeout(()=>{output.write('Browser installation timed out. Restart to retry.\n');process.exit(1);},15*60*1000);timer.unref();
   staging=fs.mkdtempSync(path.join(root,'.download-'));fs.chmodSync(staging,0o700);
   fs.writeFileSync(fd,JSON.stringify({pid:process.pid,staging:path.basename(staging)})+'\n');
