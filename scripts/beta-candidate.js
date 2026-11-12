@@ -1,14 +1,15 @@
-// Build metadata only. Never tags, uploads, publishes or changes release gates.
+// Build-only candidate preparation. Never tags, uploads, publishes or changes release gates.
 const fs=require('node:fs');
 const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {sourceState}=require('./release-gate');
+const {spawnSync}=require('node:child_process');
 const targets={
-    'linux-x64':{platform:'linux',arch:'x64',executable:'educationperfected'},
-    'linux-arm64':{platform:'linux',arch:'arm64',executable:'educationperfected'},
-    'windows-x64':{platform:'win32',arch:'x64',executable:'educationperfected.exe'},
-    'macos-arm64':{platform:'darwin',arch:'arm64',executable:'educationperfected'},
-    'macos-x64':{platform:'darwin',arch:'x64',executable:'educationperfected'},
+    'linux-x64':{platform:'linux',arch:'x64',executable:'educationperfected',builder:'build-linux.js'},
+    'linux-arm64':{platform:'linux',arch:'arm64',executable:'educationperfected',builder:'build-linux.js'},
+    'windows-x64':{platform:'win32',arch:'x64',executable:'educationperfected.exe',builder:'build-windows.js'},
+    'macos-arm64':{platform:'darwin',arch:'arm64',executable:'educationperfected',builder:'build-macos.js'},
+    'macos-x64':{platform:'darwin',arch:'x64',executable:'educationperfected',builder:'build-macos.js'},
 };
 function betaVersion(value){
     const match=/^(2026)\.([1-9]|1[0-2])\.([1-9]|[12][0-9]|3[01])-beta\.([1-9][0-9]{0,3})$/.exec(value||'');
@@ -49,7 +50,7 @@ async function inventory({directory,target,version,sourceCommit,sourceVersion,ex
 }
 async function main(){
     const [command,version,target]=process.argv.slice(2);
-    if(!['check','inventory'].includes(command)||process.argv.length!==5)throw Error('Usage: beta-candidate.js check|inventory 2026.M.D-beta.N target');
+    if(!['check','build'].includes(command)||process.argv.length!==5)throw Error('Usage: beta-candidate.js check|build 2026.M.D-beta.N target');
     betaVersion(version);
     if(!Object.hasOwn(targets,target))throw Error('Unknown candidate target');
     const expected=targets[target];
@@ -63,6 +64,12 @@ async function main(){
     const info={sourceCommit,sourceVersion:require('../package.json').version,candidateVersion:version,target};
     if(command==='check'){console.log(JSON.stringify(info));return;}
     const directory=path.join(root,'build',target);
+    // An arbitrary pre-existing binary must never be relabelled as this commit.
+    // Own the fresh build and inventory in one process, with a fixed builder.
+    fs.rmSync(directory,{recursive:true,force:true});
+    const result=spawnSync(process.execPath,[path.join(root,'packaging',expected.builder)],{cwd:root,stdio:'inherit'});
+    if(result.error||result.status!==0)throw Error('Candidate build failed; no candidate manifest created');
+    if(sourceState(root)!==sourceCommit)throw Error('Source changed during candidate build');
     const manifest=await inventory({directory,target,version,sourceCommit,sourceVersion:info.sourceVersion,expectedBrowserVersion:require('puppeteer').PUPPETEER_REVISIONS.chrome});
     fs.writeFileSync(path.join(directory,'CANDIDATE.json'),JSON.stringify(manifest,null,2)+'\n');
     fs.writeFileSync(path.join(directory,'SHA256SUMS'),manifest.files.map(file=>file.sha256+'  '+file.path).join('\n')+'\n');

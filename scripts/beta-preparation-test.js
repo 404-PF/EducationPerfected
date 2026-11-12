@@ -31,19 +31,41 @@ const {betaVersion,inventory,targets}=require('./beta-candidate');
     // browser, credentials or publication process runs in this fixture.
     const checkout=fs.mkdtempSync(path.join(os.tmpdir(),'ep-beta-cli-'));
     try{
-        for(const directory of ['scripts','release'])fs.mkdirSync(path.join(checkout,directory));
+        for(const directory of ['scripts','release','packaging'])fs.mkdirSync(path.join(checkout,directory));
         for(const file of ['scripts/beta-candidate.js','scripts/release-gate.js','release/criteria.json','package.json'])fs.copyFileSync(path.resolve(__dirname,'..',file),path.join(checkout,file));
-        const env={...process.env};delete env.GITHUB_SHA;
-        const git=(...args)=>execFileSync('git',args,{cwd:checkout,env,encoding:'utf8'}).trim();
-        git('init','--quiet');git('add','.');
-        git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','Synthetic fixture');
-        const commit=git('rev-parse','HEAD');
         const target=Object.keys(targets).find(key=>targets[key].platform===process.platform&&targets[key].arch===process.arch);
         assert.ok(target,'test host must be a supported native target');
+        fs.writeFileSync(path.join(checkout,'packaging',targets[target].builder),`
+const fs=require('node:fs'),path=require('node:path');
+const out=path.join(process.cwd(),'build',${JSON.stringify(target)});
+if(fs.existsSync(out))throw Error('Stale build directory was not removed');
+if(process.env.EP_FIXTURE_FAIL==='1')process.exit(1);
+fs.mkdirSync(path.join(out,'THIRD-PARTY-NOTICES'),{recursive:true});
+fs.writeFileSync(path.join(out,${JSON.stringify(targets[target].executable)}),'synthetic fresh executable');
+fs.writeFileSync(path.join(out,'THIRD-PARTY-NOTICES','NOTICE'),'synthetic');
+if(process.env.EP_FIXTURE_DIRTY==='1')fs.appendFileSync('package.json','\\n');
+`);
+        fs.mkdirSync(path.join(checkout,'node_modules','puppeteer'),{recursive:true});
+        fs.writeFileSync(path.join(checkout,'node_modules','puppeteer','index.js'),'exports.PUPPETEER_REVISIONS={chrome: \"synthetic\"};');
+        const env={...process.env};delete env.GITHUB_SHA;
+        const git=(...args)=>execFileSync('git',args,{cwd:checkout,env,encoding:'utf8'}).trim();
+        git('init','--quiet');git('add','scripts','release','packaging','package.json');
+        git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','Synthetic fixture');
+        const commit=git('rev-parse','HEAD');
         const command=(version='2026.11.12-beta.1',extra={})=>spawnSync(process.execPath,['scripts/beta-candidate.js','check',version,target],{cwd:checkout,env:{...env,...extra},encoding:'utf8'});
         const clean=command();assert.equal(clean.status,0,clean.stderr);assert.equal(JSON.parse(clean.stdout).sourceCommit,commit);
         assert.notEqual(command('2026.2.29-beta.1').status,0);
         assert.notEqual(command(undefined,{GITHUB_SHA:'b'.repeat(40)}).status,0);
+        const build=extra=>spawnSync(process.execPath,['scripts/beta-candidate.js','build','2026.11.12-beta.1',target],{cwd:checkout,env:{...env,...extra},encoding:'utf8'});
+        const directory=path.join(checkout,'build',target);
+        fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(path.join(directory,'stale'),'old bytes');
+        const built=build({});assert.equal(built.status,0,built.stderr);
+        assert.equal(fs.existsSync(path.join(directory,'stale')),false);
+        const manifest=JSON.parse(fs.readFileSync(path.join(directory,'CANDIDATE.json'),'utf8'));assert.equal(manifest.sourceCommit,commit);
+        assert.notEqual(build({EP_FIXTURE_FAIL:'1'}).status,0);
+        assert.equal(fs.existsSync(path.join(directory,'CANDIDATE.json')),false,'failed builds cannot retain a candidate manifest');
+        assert.notEqual(build({EP_FIXTURE_DIRTY:'1'}).status,0);
+        assert.equal(fs.existsSync(path.join(directory,'CANDIDATE.json')),false,'source drift cannot be inventoried');
         fs.appendFileSync(path.join(checkout,'package.json'),'\n');
         assert.notEqual(command().status,0,'dirty source must not become a candidate');
     }finally{fs.rmSync(checkout,{recursive:true,force:true});}

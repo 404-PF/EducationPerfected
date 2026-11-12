@@ -21,24 +21,18 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: linux-x64
-            build: build:linux-dev
           - runner: ubuntu-22.04-arm
             target: linux-arm64
-            build: build:linux-dev
           - runner: windows-2025
             target: windows-x64
-            build: build:windows-dev
           - runner: macos-15
             target: macos-arm64
-            build: build:macos-dev
           - runner: macos-15-intel
             target: macos-x64
-            build: build:macos-dev
     runs-on: ${{ matrix.runner }}
     env:
       CANDIDATE_VERSION: ${{ inputs.candidate_version }}
       CANDIDATE_TARGET: ${{ matrix.target }}
-      CANDIDATE_BUILD: ${{ matrix.build }}
     defaults:
       run:
         shell: bash
@@ -62,10 +56,8 @@ jobs:
           node scripts/build-preflight-test.js
       - name: Install pinned browser explicitly
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
-      - name: Build native development executable on disposable runner
-        run: npm run "$CANDIDATE_BUILD"
-      - name: Inventory exact candidate bytes without publishing
-        run: node scripts/beta-candidate.js inventory "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+      - name: Build fresh native candidate and inventory exact bytes
+        run: node scripts/beta-candidate.js build "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
       # Intentionally no upload-artifact, tag, release, saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
       # Executable and notices remain ephemeral in this runner's build directory.
