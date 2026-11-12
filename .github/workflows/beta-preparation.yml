@@ -79,6 +79,7 @@ jobs:
           npm run test:release-gate
           node scripts/sea-checksum-test.js
           node scripts/build-preflight-test.js
+          node scripts/packaged-startup-evidence-test.js
           if [ "$RUNNER_OS" = Windows ]; then python_bin=python; else python_bin=python3; fi
           "$python_bin" scripts/windows-conpty-test.py
           "$python_bin" scripts/downloadable-first-run-windows-test.py
@@ -86,6 +87,7 @@ jobs:
         if: inputs.browser_mode != 'direct-download-validation'
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
       - name: Build fresh native candidate and inventory exact bytes
+        id: candidate_build
         run: |
           set -euo pipefail
           if [ "$BROWSER_MODE" = direct-download-validation ]; then
@@ -116,10 +118,11 @@ jobs:
         if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
         run: python3 scripts/downloadable-first-run-posix.py
       - name: Windows actual SEA first-run public consent and direct acquisition
-        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows' }}
         run: python scripts/downloadable-first-run-windows.py
       - name: Select exact downloadable artifact for existing credential fixtures
-        if: inputs.browser_mode == 'direct-download-validation'
+        id: store_candidate
+        if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' }}
         run: node scripts/stage-downloadable-store-fixture.js
       - name: Prepare private Linux credential-store prerequisites
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
@@ -133,7 +136,7 @@ jobs:
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'macOS'
         run: python3 scripts/macos-isolated-store-test.py
       - name: Windows exact SEA hosted synthetic setup health and deletion
-        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        if: ${{ !cancelled() && steps.store_candidate.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows' }}
         shell: pwsh
         run: |
           $env:EP_FIXTURE_PYTHON = python -c "import sys; print(sys.executable)"

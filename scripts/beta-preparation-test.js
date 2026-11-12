@@ -105,6 +105,9 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
     assert.match(active,/contents: read/);assert.match(active,/persist-credentials: false/);
     assert.match(active,/if: github.ref == 'refs\/heads\/main'/);
     assert.match(active,/npm ci --ignore-scripts/);assert.match(active,/node-version: 22\.23\.4/);
+    assert.doesNotMatch(active,/continue-on-error/,'A failed probe must still fail the job');
+    assert.match(active,/steps\.candidate_build\.outcome == 'success'/);
+    assert.match(active,/steps\.store_candidate\.outcome == 'success'/);
     assert.doesNotMatch(active,/upload-artifact|contents: write|gh release|git tag|git push|actions\/cache|pull_request_target/);
     assert.doesNotMatch(active,/run:.*\$\{\{\s*inputs\./);
     assert.equal((active.match(/- uses:/g)||[]).length,4);

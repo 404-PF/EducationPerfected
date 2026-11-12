@@ -16,6 +16,7 @@ async function runPackagedFixture({directDownload=false}={}) {
  let acquiredPath;
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError, primaryError;
+ let text='';
  function reportResidue() {
   if (!isolated) return [];
   const residue = fs.readdirSync(isolated).filter(name=>name.startsWith('educationperfected-'));
@@ -61,7 +62,6 @@ async function runPackagedFixture({directDownload=false}={}) {
  const copy = path.join(isolated, filename); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
  if(directDownload)acquiredPath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
  child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
- let text='';
  child.once('error', error => { spawnError=error; });
  child.stdout.on('data',data=>{text+=data;}); child.stderr.on('data',data=>{text+=data;});
  closed = new Promise(resolve=>child.once('close',resolve));
@@ -103,6 +103,7 @@ async function runPackagedFixture({directDownload=false}={}) {
   primaryError = error;
   // Emit the original checkpoint failure before cleanup can fail separately.
   console.error('Original packaged fixture failure:', error);
+  console.error('Fixed packaged startup evidence: '+JSON.stringify(require('./packaged-startup-evidence').startupEvidence(text)));
   throw error;
  } finally {
   await finishFixtureCleanup(primaryError, [

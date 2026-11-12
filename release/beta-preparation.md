@@ -46,3 +46,9 @@ The follow-through workflow adds a fixed public-input Windows ConPTY first-run p
 A hosted-only bridge verifies candidate commit, target, mode, file length and hash, then copies exact candidate bytes under the existing fixture path without overwriting another artifact. Existing Linux private Secret Service, macOS owned-keychain and Windows disposable fixed-slot fixtures run against that copy. These are synthetic setup/health/deletion tests with source-side verification where supported. macOS exact source-pair access from the SEA and normal stored-login browser launch remain distinct gaps; the existing fixture must not be read as proof of either. No user credential record is used.
 
 All candidates and notices remain ephemeral. No uploads, release tags, publication, gate bypass, changed signing policy, normal account login or no-Node certification is added.
+
+### Windows failure evidence and independent lanes
+
+The beta.7 run on ed9547f built all targets and passed POSIX first-run/store fixtures. Windows cached local CLI exited1 before owner-login-ready in two attempts: https://github.com/404-PF/EducationPerfected/actions/runs/43183901438 . The actual Windows first-run and store fixtures were skipped, not failed or passed.
+
+The fixture now reports only fixed known startup-message presence booleans, never raw child output. A failed cached browser probe remains a failed job. Independent Windows first-run and synthetic credential-store checks may still run after it only if their candidate build/verified fixture copy succeeded and the run was not cancelled. This gathers separate evidence without hiding the cached probe failure or changing release gates.
