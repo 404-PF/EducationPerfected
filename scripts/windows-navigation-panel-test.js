@@ -1,6 +1,10 @@
-const assert=require('node:assert/strict'),{sample}=require('./windows-navigation-panel');
+const assert=require('node:assert/strict'),{sample,pathCases}=require('./windows-navigation-panel');
 const {browserStderr,browserLogFile,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=require('node:stream');
 (async()=>{
+ const cases=pathCases({PATH:'empty',HOME:'owned',Path:'conflict',NODE_OPTIONS:undefined},{Path:'host-tools'});
+ assert.deepEqual(cases.map(entry=>entry.pathKind),['empty','inherited','empty','inherited']);
+ for(const [index,entry] of cases.entries()){assert.equal(entry.env.PATH,index%2?'host-tools':'empty');assert.equal(entry.env.HOME,'owned');assert.equal(Object.keys(entry.env).filter(key=>key.toUpperCase()==='PATH').length,1);}
+ assert.throws(()=>pathCases({PATH:'empty'},{}));assert.throws(()=>pathCases({PATH:'empty'},{PATH:''}));
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-log-inert-')),logPath=path.join(root,'chrome.log');
  try{
