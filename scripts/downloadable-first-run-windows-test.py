@@ -51,7 +51,7 @@ assert len(js_literals)>=14 and js_literals<=python_literals
 assert m.first_run_evidence(b'First browser download needs an interactive terminal')['interactive_required']
 print('Windows first-run fixed marker table contains every packaged startup literal; interactive-terminal category covered (source parity only).')
 
-cause={'category':'other','name':'Error','code':'other','browserCreated':False,'controllerConnected':None,'browserExit':'unobserved',**dict.fromkeys(('frameDetached','targetClosed','browserLaunch','processSpawn','protocolTimeout','navigationNetwork','missingContext'),False)}
+cause={'networkCode':'unobserved','category':'other','name':'Error','code':'other','browserCreated':False,'controllerConnected':None,'browserExit':'unobserved',**dict.fromkeys(('frameDetached','targetClosed','browserLaunch','processSpawn','protocolTimeout','navigationNetwork','missingContext'),False)}
 STARTUP_PREFIX=b'EP_TEST_STARTUP_FAILURE='
 line=STARTUP_PREFIX+json.dumps(cause).encode()
 assert m.parse_startup_failure(line)==cause
@@ -61,3 +61,11 @@ print('Windows owner cause parser rejects duplicate/malformed/unknown/private re
 assert m.parse_startup_failure(line.replace(b'{',b'{"name":"Error",',1)) is None
 assert m.parse_startup_failure(line.replace(b'{',b'{"na\\u006de":"Error",',1)) is None
 for delta in ({'category':'private'},{'browserCreated':1},{'controllerConnected':0},{'browserExit':'private'},{'code':'private'}):assert m.parse_startup_failure(STARTUP_PREFIX+json.dumps({**cause,**delta}).encode()) is None
+server=m.http.server.ThreadingHTTPServer(('127.0.0.1',0),m.Handler)
+thread=m.threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+try:
+    with m.urllib.request.build_opener(m.urllib.request.ProxyHandler({})).open('http://127.0.0.1:'+str(server.server_port)+'/app/login',timeout=5) as response:
+        assert response.status==200 and b'id="loginId"' in response.read()
+    assert server.request_seen is True and server.response_written is True
+finally:server.shutdown();server.server_close();thread.join(3)
+print('Local HTTP listener responds with expected inert login form and only boolean request/response evidence.')

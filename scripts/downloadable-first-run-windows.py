@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Hosted Windows x64 first-run SEA/local-page test. No credentials or live EP."""
-import os,sys,pathlib,tempfile,shutil,threading,http.server,importlib.util,json,hashlib
+import os,sys,pathlib,tempfile,shutil,threading,http.server,importlib.util,json,hashlib,urllib.request
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('conpty',pathlib.Path(__file__).with_name('windows-conpty.py'))
 conpty=importlib.util.module_from_spec(spec);spec.loader.exec_module(conpty)
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        self.server.request_seen=True
         self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.end_headers()
         self.wfile.write(b'<form><input id="loginId"><input id="password" type="password"><button>Log in</button></form>')
+        self.server.response_written=True
     def log_message(self,*args):
         # Report only fixed checkpoints, never arbitrary HTTP request data.
         pass
@@ -105,17 +107,24 @@ def run_fixture():
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-download-ui-'));safe=True
     server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
+        # Verify the local listener before any browser/console work; no proxy.
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:'+str(server.server_port)+'/app/login',timeout=5) as response:
+            assert response.status==200 and b'id="loginId"' in response.read()
         home=root/'home';home.mkdir();temp=root/'tmp';temp.mkdir();empty=root/'empty';empty.mkdir()
         artifact=root/'educationperfected.exe';shutil.copy2(original,artifact);assert digest(artifact)==expected['sha256']
         env=child_environment(home,temp,empty,server.server_port)
         for accepted in (False,True):
             print('Windows first-run checkpoint: '+('consent-download' if accepted else 'decline'),flush=True)
             safe=False
+            server.request_seen=False;server.response_written=False
+            def drain(data):
+                report_drain(data)
+                print('Windows local HTTP evidence: '+json.dumps({'requestSeen':server.request_seen,'responseWritten':server.response_written}),flush=True)
             def closed():
                 nonlocal safe
                 safe=True
             prompts=[(b'Type download',b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')] if accepted else [(b'Type download',b'cancel\r')]
-            conpty.run_console(str(artifact),[],env,str(home),prompts,b'Browser download checksum verified' if accepted else b'Browser download cancelled',expected_exit=130 if accepted else 1,on_closed=closed,process_budget_ms=960000,public_browser_download=True,capability_diagnostics=True,on_drain=report_drain,forbidden_output=() if accepted else (b'EP_TEST_LOGIN_READY',b'Browser download checksum verified'))
+            conpty.run_console(str(artifact),[],env,str(home),prompts,b'Browser download checksum verified' if accepted else b'Browser download cancelled',expected_exit=130 if accepted else 1,on_closed=closed,process_budget_ms=960000,public_browser_download=True,capability_diagnostics=True,on_drain=drain,forbidden_output=() if accepted else (b'EP_TEST_LOGIN_READY',b'Browser download checksum verified'))
             verify_cache(home,accepted);assert not list(temp.glob('educationperfected-*'))
         print('Windows exact copied SEA fresh-home decline/download/checksum/local login-ready/raw ETX130 and owned job/EOF/extraction/cache-lock cleanup passed. Empty child PATH, not clean-machine no-Node or physical-console evidence.',flush=True)
     finally:

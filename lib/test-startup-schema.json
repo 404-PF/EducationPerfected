@@ -72,5 +72,25 @@
   "missingContext": [
     true,
     false
+  ],
+  "networkCode": [
+    "unobserved",
+    "ERR_CONNECTION_REFUSED",
+    "ERR_CONNECTION_RESET",
+    "ERR_CONNECTION_CLOSED",
+    "ERR_CONNECTION_ABORTED",
+    "ERR_FAILED",
+    "ERR_ABORTED",
+    "ERR_EMPTY_RESPONSE",
+    "ERR_ADDRESS_UNREACHABLE",
+    "ERR_NETWORK_CHANGED",
+    "ERR_INTERNET_DISCONNECTED",
+    "ERR_PROXY_CONNECTION_FAILED",
+    "ERR_TUNNEL_CONNECTION_FAILED",
+    "ERR_NAME_NOT_RESOLVED",
+    "ERR_TIMED_OUT",
+    "ERR_UNSAFE_PORT",
+    "ERR_BLOCKED_BY_CLIENT",
+    "other"
   ]
 }
