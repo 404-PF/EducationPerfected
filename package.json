@@ -3,7 +3,7 @@
   "version": "2026.0.0",
   "private": true,
   "description": "Automates Education Perfect language and Dash tasks with Puppeteer.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "start": "node bin/launch.js",
     "smoke": "node scripts/smoke-test.js",
