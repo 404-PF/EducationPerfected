@@ -2,9 +2,13 @@
 
 This is build preparation, not a published or certified beta. On November 12 Page chose a downloadable beta and re-authorized the release validation removed from the November 3 code-only board. Re-authorized work is not passed work. Source remains version 2026.0.0 until a separately reviewed version change.
 
-## Candidate label
+## Internal validation labels and public versions
 
-Use a dated SemVer prerelease label such as `2026.11.12-beta.1`, based on the candidate's intended date, with no zero-padded fields. Increment beta.N for another candidate on that date. This labels a candidate build, not a promised stable release date. It creates no tag and does not change package.json or package-lock.json. A version label is not release authority.
+CI validation uses a dated internal label such as `2026.11.12-validation.1`. The manually selected validation.N counter distinguishes local/CI builds, not releases. Workflow input `validation_label` is recorded as `validationLabel` with `labelKind: internal-validation-not-release` in schema2 candidate metadata. Public beta labels are rejected by this build-preparation command.
+
+Earlier logs used `2026.11.12-beta.1` through `beta.12` as internal candidate labels. That was misleading: none was a published beta, and those counters do not consume public release numbers. Historical evidence below retains its original labels so it can be reconciled to the actual runs.
+
+The first public beta on its actual publication date should use `YYYY.M.D-beta.1`, with later published betas on that date incrementing beta.N. The date, version change, tag and publication still require review/approval and completed release gates. Validation builds do not change package.json or package-lock.json, create a tag or approve publication.
 
 ## Build-only workflow
 

@@ -11,9 +11,9 @@ const targets={
     'macos-arm64':{platform:'darwin',arch:'arm64',executable:'educationperfected',builder:'build-macos.js'},
     'macos-x64':{platform:'darwin',arch:'x64',executable:'educationperfected',builder:'build-macos.js'},
 };
-function betaVersion(value){
-    const match=/^(2026)\.([1-9]|1[0-2])\.([1-9]|[12]\d|3[01])-beta\.([1-9]\d{0,3})$/.exec(value||'');
-    if(!match)throw new Error('Expected dated V2026 beta version: 2026.M.D-beta.N');
+function validationLabel(value){
+    const match=/^(2026)\.([1-9]|1[0-2])\.([1-9]|[12]\d|3[01])-validation\.([1-9]\d{0,3})$/.exec(value||'');
+    if(!match)throw new Error('Expected internal validation label (not a release version): 2026.M.D-validation.N');
     const [,year,month,day]=match;
     const date=new Date(Date.UTC(Number(year),Number(month)-1,Number(day)));
     if(date.getUTCMonth()+1!==Number(month)||date.getUTCDate()!==Number(day))throw new Error('Invalid beta calendar date');
@@ -34,7 +34,7 @@ function noticeFiles(directory,prefix='THIRD-PARTY-NOTICES'){
     });
 }
 async function inventory({directory,target,version,sourceCommit,sourceVersion,expectedBrowserVersion}){
-    betaVersion(version);
+    validationLabel(version);
     for(const dir of [directory,path.join(directory,'THIRD-PARTY-NOTICES')]){
         const stat=fs.lstatSync(dir);
         if(!stat.isDirectory()||stat.isSymbolicLink())throw new Error('Candidate roots must be real directories');
@@ -48,14 +48,14 @@ async function inventory({directory,target,version,sourceCommit,sourceVersion,ex
         records.push({path:file,...await hashFile(full)});
         return records;
     }),Promise.resolve([]));
-    return{schemaVersion:1,candidateVersion:version,sourceVersion,sourceCommit,target,expectedBrowserVersion,
+    return{schemaVersion:2,labelKind:'internal-validation-not-release',validationLabel:version,sourceVersion,sourceCommit,target,expectedBrowserVersion,
         status:'build-only-not-for-distribution',publicationAuthorized:false,
         limits:['No release clearance or certification','No signing/notarization or no-Node proof','No normal saved-login or live EP verification'],files:records};
 }
 async function main(){
     const [command,version,target]=process.argv.slice(2);
-    if(!['check','build','build-downloadable'].includes(command)||process.argv.length!==5)throw new Error('Usage: beta-candidate.js check|build|build-downloadable 2026.M.D-beta.N target');
-    betaVersion(version);
+    if(!['check','build','build-downloadable'].includes(command)||process.argv.length!==5)throw new Error('Usage: beta-candidate.js check|build|build-downloadable 2026.M.D-validation.N target');
+    validationLabel(version);
     if(!Object.hasOwn(targets,target))throw new Error('Unknown candidate target');
     const expected=targets[target];
     if(process.platform!==expected.platform||process.arch!==expected.arch)throw new Error('Candidate requires its native build host');
@@ -65,7 +65,7 @@ async function main(){
     if(expectedCommit&&sourceCommit!==expectedCommit)throw new Error('Candidate source differs from workflow commit');
     // Deliberately do not mutate package/lock versions or tracked files. The
     // candidate label names this build, not an already-published npm version.
-    const info={sourceCommit,sourceVersion:require('../package.json').version,candidateVersion:version,target};
+    const info={sourceCommit,sourceVersion:require('../package.json').version,validationLabel:version,target};
     if(command==='check'){console.log(JSON.stringify(info));return;}
     const directDownload=command==='build-downloadable';
     const directory=path.join(root,'build',target+(directDownload?'-downloadable':''));
@@ -88,5 +88,5 @@ async function main(){
     console.log(JSON.stringify(manifest,null,2));
     console.log(manifest.files.map(file=>file.sha256+'  '+file.path).join('\n'));
 }
-module.exports={betaVersion,inventory,targets,hashFile};
+module.exports={validationLabel,inventory,targets,hashFile};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});
