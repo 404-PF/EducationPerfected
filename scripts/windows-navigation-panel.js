@@ -15,7 +15,8 @@ async function sample({kind,executablePath,env,url,launch,requestSeen}){
   // The shared startup classifier assumes navigation; this panel also observes readiness.
   if(stage==='readiness'&&cause.category==='navigation-timeout')cause.category='readiness-timeout';
  }
- // Cleanup is attempted after every observation, including failed launch/navigation.
+ // Returned browser handles are closed after success or failure. A failed launch
+ // without a handle cannot confirm closure and retains the owned root.
  // Throw outside finally so closure uncertainty cannot be mistaken for an observed sample.
  if(!browser)throw new Error('Diagnostic launch closure unconfirmed');
  let timer;
