@@ -4,17 +4,18 @@ const path=require('node:path');
 const os=require('node:os');
 const {createHash}=require('node:crypto');
 const {execFileSync,spawnSync}=require('node:child_process');
-const {betaVersion,inventory,targets}=require('./beta-candidate');
+const {validationLabel,inventory,targets}=require('./beta-candidate');
 (async()=>{
-    assert.equal(betaVersion('2026.11.12-beta.1'),'2026.11.12-beta.1');
-    assert.equal(betaVersion('2026.2.28-beta.25'),'2026.2.28-beta.25');
-    for(const bad of ['2026.02.28-beta.1','2026.2.29-beta.1','2026.4.31-beta.1','2026.0.1-beta.1','2026.13.1-beta.1','2026.1.0-beta.1','2026.11.12','2026.11.12-beta.0','2026.11.12-beta.01','2026.11.12-beta.1;echo unsafe','2027.1.1-beta.1'])assert.throws(()=>betaVersion(bad));
+    assert.equal(validationLabel('2026.11.12-validation.1'),'2026.11.12-validation.1');
+    assert.equal(validationLabel('2026.2.28-validation.25'),'2026.2.28-validation.25');
+    assert.throws(()=>validationLabel('2026.11.12-beta.1'),/Expected internal validation label/,'Public beta labels must not be consumed by validation runs');
+    for(const bad of ['2026.02.28-validation.1','2026.2.29-validation.1','2026.4.31-validation.1','2026.0.1-validation.1','2026.13.1-validation.1','2026.1.0-validation.1','2026.11.12','2026.11.12-validation.0','2026.11.12-validation.01','2026.11.12-validation.1;echo unsafe','2027.1.1-validation.1'])assert.throws(()=>validationLabel(bad));
     const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-beta-contract-'));
     try{
         fs.mkdirSync(path.join(root,'THIRD-PARTY-NOTICES'));
         fs.writeFileSync(path.join(root,'educationperfected'),'synthetic executable, not native proof');
         fs.writeFileSync(path.join(root,'THIRD-PARTY-NOTICES','NOTICE.txt'),'synthetic notice');
-        const options={directory:root,target:'linux-x64',version:'2026.11.12-beta.1',sourceCommit:'a'.repeat(40),sourceVersion:'2026.0.0',expectedBrowserVersion:'synthetic-pin'};
+        const options={directory:root,target:'linux-x64',version:'2026.11.12-validation.1',sourceCommit:'a'.repeat(40),sourceVersion:'2026.0.0',expectedBrowserVersion:'synthetic-pin'};
         const first=await inventory(options),second=await inventory(options);
         assert.deepEqual(first,second,'inventory is deterministic for exact bytes');
         assert.equal(first.files.length,2);assert.equal(first.publicationAuthorized,false);assert.equal(first.status,'build-only-not-for-distribution');
@@ -73,26 +74,26 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
         git('init','--quiet');git('add','scripts','release','packaging','package.json');
         git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','Synthetic fixture');
         const commit=git('rev-parse','HEAD');
-        const command=(version='2026.11.12-beta.1',extra={})=>spawnSync(process.execPath,['scripts/beta-candidate.js','check',version,target],{cwd:checkout,env:{...env,...extra},encoding:'utf8'});
+        const command=(version='2026.11.12-validation.1',extra={})=>spawnSync(process.execPath,['scripts/beta-candidate.js','check',version,target],{cwd:checkout,env:{...env,...extra},encoding:'utf8'});
         const clean=command();assert.ifError(clean.error);assert.equal(clean.status,0,clean.stderr);assert.equal(JSON.parse(clean.stdout).sourceCommit,commit);
-        const invalid=command('2026.2.29-beta.1');assert.ifError(invalid.error);assert.equal(invalid.status,1);
+        const invalid=command('2026.2.29-validation.1');assert.ifError(invalid.error);assert.equal(invalid.status,1);
         const mismatch=command(undefined,{GITHUB_SHA:'b'.repeat(40)});assert.ifError(mismatch.error);assert.equal(mismatch.status,1);
-        const build=extra=>spawnSync(process.execPath,['scripts/beta-candidate.js','build','2026.11.12-beta.1',target],{cwd:checkout,env:{...env,...extra},encoding:'utf8'});
+        const build=extra=>spawnSync(process.execPath,['scripts/beta-candidate.js','build','2026.11.12-validation.1',target],{cwd:checkout,env:{...env,...extra},encoding:'utf8'});
         const directory=path.join(checkout,'build',target);
         fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(path.join(directory,'stale'),'old bytes');
         const built=build({});assert.ifError(built.error);assert.equal(built.status,0,built.stderr);
         assert.equal(fs.existsSync(path.join(directory,'stale')),false);
         const manifest=JSON.parse(fs.readFileSync(path.join(directory,'CANDIDATE.json'),'utf8'));assert.equal(manifest.sourceCommit,commit);
-        assert.equal(manifest.candidateVersion,'2026.11.12-beta.1');assert.equal(manifest.target,target);assert.equal(manifest.publicationAuthorized,false);
+        assert.equal(manifest.schemaVersion,2);assert.equal(manifest.labelKind,'internal-validation-not-release');assert.equal(manifest.validationLabel,'2026.11.12-validation.1');assert.equal(manifest.target,target);assert.equal(manifest.publicationAuthorized,false);
         assert.equal(manifest.files[0].size,Buffer.byteLength('synthetic fresh executable'));
         assert.equal(manifest.files[0].sha256,createHash('sha256').update('synthetic fresh executable').digest('hex'));
         const downloadableDirectory=path.join(checkout,'build',target+'-downloadable');
         fs.mkdirSync(downloadableDirectory,{recursive:true});fs.writeFileSync(path.join(downloadableDirectory,'stale'),'old');
-        const direct=spawnSync(process.execPath,['scripts/beta-candidate.js','build-downloadable','2026.11.12-beta.1',target],{cwd:checkout,env,encoding:'utf8'});
+        const direct=spawnSync(process.execPath,['scripts/beta-candidate.js','build-downloadable','2026.11.12-validation.1',target],{cwd:checkout,env,encoding:'utf8'});
         assert.equal(direct.status,0,direct.stderr);assert.equal(fs.existsSync(path.join(downloadableDirectory,'stale')),false);
         const directManifest=JSON.parse(fs.readFileSync(path.join(checkout,'build',target+'-downloadable','CANDIDATE.json')));
         assert.equal(directManifest.distributionMode,'direct-google-download');assert.equal(directManifest.browserBundled,false);
-        for(const control of ['EP_BAD_PIN','EP_BAD_ASSET']){const refused=spawnSync(process.execPath,['scripts/beta-candidate.js','build-downloadable','2026.11.12-beta.1',target],{cwd:checkout,env:{...env,[control]:'1'},encoding:'utf8'});assert.equal(refused.status,1);assert.match(refused.stderr,control==='EP_BAD_PIN'?/pin differs/:/unexpected browser assets/);assert.equal(fs.existsSync(path.join(downloadableDirectory,'CANDIDATE.json')),false);}
+        for(const control of ['EP_BAD_PIN','EP_BAD_ASSET']){const refused=spawnSync(process.execPath,['scripts/beta-candidate.js','build-downloadable','2026.11.12-validation.1',target],{cwd:checkout,env:{...env,[control]:'1'},encoding:'utf8'});assert.equal(refused.status,1);assert.match(refused.stderr,control==='EP_BAD_PIN'?/pin differs/:/unexpected browser assets/);assert.equal(fs.existsSync(path.join(downloadableDirectory,'CANDIDATE.json')),false);}
         const failed=build({EP_FIXTURE_FAIL:'1'});assert.ifError(failed.error);assert.equal(failed.status,1);
         assert.equal(fs.existsSync(path.join(directory,'CANDIDATE.json')),false,'failed builds cannot retain a candidate manifest');
         const drift=build({EP_FIXTURE_DIRTY:'1'});assert.ifError(drift.error);assert.equal(drift.status,1);
