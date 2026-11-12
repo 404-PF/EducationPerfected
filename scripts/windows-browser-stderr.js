@@ -10,8 +10,12 @@ function browserStderr(){
   encryptionFailure:/(?:os_crypt|app_bound_encryption|login_database)[^\r\n]{0,256}(?:Failed to encrypt|Unable to encrypt|Encryption is not available)/i,
  };
  function observe(chunk){
-  const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(String(chunk));
   const remaining=LIMIT-bytesExamined;
+  if(!Buffer.isBuffer(chunk)&&typeof chunk!=='string')return;
+  if(chunk.length>remaining)truncated=true;
+  if(remaining===0)return;
+  // Slice string code units before encoding; conversion is at most 3 * remaining bytes.
+  const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk.slice(0,remaining));
   if(bytes.length>remaining)truncated=true;
   const bounded=bytes.subarray(0,remaining);bytesExamined+=bounded.length;
   const text=tail+bounded.toString('utf8');

@@ -10,6 +10,8 @@ const {browserStderr,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=re
  assert.ok(!JSON.stringify(detail).includes('private'));detach();assert.equal(stream.listenerCount('data'),0);
  const bounded=browserStderr();bounded.observe(Buffer.alloc(LIMIT,120));bounded.observe('network_service.cc: Network service crashed');
  assert.equal(bounded.result().bytesExamined,LIMIT);assert.equal(bounded.result().truncated,true);assert.equal(bounded.result().networkServiceCrash,false);
+ const strings=browserStderr();strings.observe('é'.repeat(LIMIT*4));assert.equal(strings.result().bytesExamined,LIMIT);assert.equal(strings.result().truncated,true);
+ strings.observe({toString(){throw new Error('Must not coerce unknown objects');}});
  assert.equal(browserStderr().result().attached,false);
 
  for(const kind of ['initial-page','new-page'])for(const fail of [false,true]){
