@@ -23,7 +23,7 @@ const pins=require('../packaging/browser-downloads.json');
   assert.equal(await ensureBrowser({...base,consent:()=>{throw Error('No repeated consent');},install:()=>{throw Error('No repeated download');}}),file);assert.equal(calls,1);
   const directory=path.join(root,pins.version+'-linux64');
   const receipt=path.join(directory,'COMPLETE.json');const record=JSON.parse(fs.readFileSync(receipt));record.executable='../outside';fs.writeFileSync(receipt,JSON.stringify(record));await assert.rejects(ensureBrowser(base),/Invalid|Incomplete/);
-  fs.rmSync(directory,{recursive:true});fs.writeFileSync(directory+'.lock','');await assert.rejects(ensureBrowser(base),/lock/);
+  fs.rmSync(directory,{recursive:true});fs.writeFileSync(directory+'.lock','');await assert.rejects(ensureBrowser({...base,consent:()=>{throw Error('Must lock before prompting');}}),/lock/);
   console.log('Direct browser download:5target pins, unsupported targets, interactive consent, cancellation, failure cleanup, fixed Google/hash/no-system-deps options, containment, cache reuse and install-lock contracts passed (offline synthetic only).');
  } finally {fs.rmSync(home,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1});

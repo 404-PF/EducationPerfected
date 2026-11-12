@@ -23,7 +23,13 @@ The CfT dashboard repository's Apache license is not a license for Chrome binari
 
 The browser is retained under `~/.educationperfected/browsers` for later launches.
 An incomplete installation or install lock stops rather than using arbitrary
-host browsers. No automatic installed-browser fallback is provided. First run
+host browsers. The exclusive lock is acquired before prompting, so concurrent
+first runs do not both ask. If a crash/power loss leaves a lock, the error names
+its exact path and the cache directory. Close all EducationPerfected processes
+before removing that lock and orphaned `.download-*` staging directories there,
+then retry. Never delete a live installation's lock/staging. Successful normal
+cleanup removes owned staging; SIGKILL/power loss cannot guarantee cleanup.
+This explicit recovery avoids guessing whether another process still owns a lock. No automatic installed-browser fallback is provided. First run
 needs internet, about 200 MB download space plus extraction space, and the OS
 libraries/tools required by Chrome and its ZIP extractor. An already installed
 verified-cache browser is reused; this is not yet an offline-support claim.

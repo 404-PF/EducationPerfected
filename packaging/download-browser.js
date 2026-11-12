@@ -31,17 +31,18 @@ async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir
   return file;
  };
  const cached=existing();if(cached)return cached;
- if(!await consent())throw Error('Browser download cancelled; no browser started');
  const lock=directory+'.lock';let fd;
- try {fd=fs.openSync(lock,'wx',0o600);} catch {throw Error('Browser installation already active or interrupted; inspect the installation lock before retrying');}
+ try {fd=fs.openSync(lock,'wx',0o600);} catch {throw Error('Browser installation is active or was interrupted. Lock: '+lock+'. Close all EducationPerfected processes, then remove that lock and orphaned .download-* directories in '+root+' before retrying. Never remove them while an installation is running.');}
  let staging;
- try {staging=fs.mkdtempSync(path.join(root,'.download-'));fs.chmodSync(staging,0o700);} catch(error){fs.closeSync(fd);fs.rmSync(lock,{force:true});throw error;}
  let cleaned=false;
- const cleanup=()=>{if(cleaned)return;cleaned=true;try{fs.rmSync(staging,{recursive:true,force:true});}finally{fs.closeSync(fd);fs.rmSync(lock,{force:true});}};
+ const cleanup=()=>{if(cleaned)return;cleaned=true;try{if(staging)fs.rmSync(staging,{recursive:true,force:true});}finally{fs.closeSync(fd);fs.rmSync(lock,{force:true});}};
  process.once('exit',cleanup);
  // Fail closed, including a stalled network/extraction. The process exit hook cleans only owned staging/lock.
  const timer=setTimeout(()=>{output.write('Browser installation timed out. Restart to retry.\n');process.exit(1);},15*60*1000);timer.unref();
  try {
+  if(!await consent())throw Error('Browser download cancelled; no browser started');
+  staging=fs.mkdtempSync(path.join(root,'.download-'));fs.chmodSync(staging,0o700);
+  fs.writeFileSync(fd,JSON.stringify({pid:process.pid,staging:path.basename(staging)})+'\n');
   api ||= require('@puppeteer/browsers');install ||= api.install;
   const browserPlatform=({'linux64':api.BrowserPlatform.LINUX,'linux-arm64':api.BrowserPlatform.LINUX_ARM,'mac-arm64':api.BrowserPlatform.MAC_ARM,'mac-x64':api.BrowserPlatform.MAC,'win64':api.BrowserPlatform.WIN64})[pin.platform];
   output.write('Downloading the pinned browser directly from Google. No system packages will be installed.\n');

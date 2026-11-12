@@ -13,7 +13,7 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
  const base = require('./packaged-fixture-target').packagedFixtureTarget();
  const filename=base.filename, executable=path.join(path.dirname(base.executable)+'-downloadable',filename);
- let acquiredPath;
+ let acquiredPath,text='';
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError, primaryError;
  function reportResidue() {
@@ -61,7 +61,7 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
  const copy = path.join(isolated, filename); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
  child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
- let text='';
+
  child.once('error', error => { spawnError=error; });
  child.stdout.on('data',data=>{text+=data;}); child.stderr.on('data',data=>{text+=data;});
  closed = new Promise(resolve=>child.once('close',resolve));
@@ -95,6 +95,9 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
   console.log('Downloadable executable: copied outside source, private direct Google cache, empty PATH, observed pinned browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed (host-isolation surrogate only; not first-run UI/no-Node-machine proof).');
  } catch (error) {
   primaryError = error;
+  // Owned local fixture, synthetic credentials only. Restrict to fixed startup categories.
+  for(const category of ['Startup','Browser download cancelled','Invalid browser installation receipt','Incomplete browser installation','First browser download needs an interactive terminal','EducationPerfected could not start','Opening EducationPerfected','EP_WS_ENDPOINT','EP_TEST_LOGIN_READY'])console.error('Downloadable startup diagnostic '+category+'='+text.includes(category));
+  console.error('Downloadable controlled child output: '+text.slice(-5000));
   // Emit the original checkpoint failure before cleanup can fail separately.
   console.error('Original packaged fixture failure:', error);
   throw error;
