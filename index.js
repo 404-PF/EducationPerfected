@@ -2492,6 +2492,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             return controls;
         })
         .catch(async error => {
+            if (TEST_BOOT) require('./lib/test-startup-failure').recordStartupFailure(error, startupBrowser, true);
             if (startupSignal) {
                 if (startupBrowser) await shutdownStartup();
                 else { removeStartupSignals(); process.exit(exitCodeFor(startupSignal)); }

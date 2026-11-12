@@ -1,5 +1,9 @@
 // Fixed literal presence only. Never return arbitrary child text, paths or secrets.
 const markers={
+ endpointReported:'EP_WS_ENDPOINT=',
+ navigationStarted:'Opening EP page...',
+ loginWait:'Waiting for login page to load...',
+ startupCauseReported:'EP_TEST_STARTUP_FAILURE=',
  downloadVerified:'Browser download checksum verified',
  needsInteractiveDownload:'First browser download needs an interactive terminal',
  startupFailed:'EducationPerfected could not start.',
@@ -18,4 +22,21 @@ const markers={
 function startupEvidence(text){
  return Object.fromEntries(Object.entries(markers).map(([key,literal])=>[key,text.includes(literal)]));
 }
-module.exports={startupEvidence};
+function parseStartupFailure(text){
+ const lines=text.split(/\r?\n/).filter(line=>line.startsWith('EP_TEST_STARTUP_FAILURE='));
+ if(lines.length!==1)return null;
+ try{
+  const value=JSON.parse(lines[0].slice('EP_TEST_STARTUP_FAILURE='.length));
+  const {startupFailure}=require('../lib/test-startup-failure');
+  const shape=startupFailure({},null);
+  if(Object.keys(value).sort().join(',')!==Object.keys(shape).sort().join(','))return null;
+  if(!['navigation-timeout','target-detached','browser-disconnected','protocol-error','other'].includes(value.category))return null;
+  if(!['Error','TimeoutError','ProtocolError','TargetCloseError','TypeError','RangeError','ReferenceError','SyntaxError','other'].includes(value.name))return null;
+  if(!['ENOENT','EACCES','EPERM','EINVAL','UNKNOWN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EPIPE','other'].includes(value.code))return null;
+  if(!['unobserved','running','zero','nonzero'].includes(value.browserExit))return null;
+  if(![null,true,false].includes(value.controllerConnected))return null;
+  for(const key of Object.keys(shape).filter(key=>typeof shape[key]==='boolean'))if(typeof value[key]!=='boolean')return null;
+  return value;
+ }catch{return null;}
+}
+module.exports={startupEvidence,parseStartupFailure};

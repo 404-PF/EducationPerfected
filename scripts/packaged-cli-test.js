@@ -103,6 +103,7 @@ async function runPackagedFixture({directDownload=false}={}) {
   primaryError = error;
   // Emit the original checkpoint failure before cleanup can fail separately.
   console.error('Original packaged fixture failure:', error);
+  console.error('Fixed owner startup cause: '+JSON.stringify(require('./packaged-startup-evidence').parseStartupFailure(text)));
   console.error('Fixed packaged startup evidence: '+JSON.stringify(require('./packaged-startup-evidence').startupEvidence(text)));
   throw error;
  } finally {

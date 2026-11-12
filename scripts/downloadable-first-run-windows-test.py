@@ -50,3 +50,9 @@ js_literals={value.encode() for value in re.findall(r"^ [A-Za-z]+:'([^']+)',?$",
 assert len(js_literals)>=14 and js_literals<=python_literals
 assert m.first_run_evidence(b'First browser download needs an interactive terminal')['interactive_required']
 print('Windows first-run fixed marker table contains every packaged startup literal; interactive-terminal category covered (source parity only).')
+
+cause={'category':'other','name':'Error','code':'other','browserCreated':False,'controllerConnected':None,'browserExit':'unobserved',**{key:False for key in ('frameDetached','targetClosed','browserLaunch','processSpawn','protocolTimeout','navigationNetwork','missingContext')}}
+line=b'EP_TEST_STARTUP_FAILURE='+json.dumps(cause).encode()
+assert m.parse_startup_failure(line)==cause
+for bad in (line+b'\n'+line,b'EP_TEST_STARTUP_FAILURE={bad}',b'EP_TEST_STARTUP_FAILURE='+json.dumps({**cause,'name':'private'}).encode(),b'EP_TEST_STARTUP_FAILURE='+json.dumps({**cause,'private':'private'}).encode()):assert m.parse_startup_failure(bad) is None
+print('Windows owner cause parser rejects duplicate/malformed/unknown/private receipt data (inert only).')

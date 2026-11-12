@@ -45,6 +45,10 @@ def main():
 def first_run_evidence(data):
     # Literal-presence flags only. No arbitrary child text, paths or credentials.
     markers={
+        'endpoint_reported':b'EP_WS_ENDPOINT=',
+        'navigation_started':b'Opening EP page...',
+        'login_wait':b'Waiting for login page to load...',
+        'startup_cause_reported':b'EP_TEST_STARTUP_FAILURE=',
         'interactive_required':b'First browser download needs an interactive terminal',
         'opening':b'Opening EducationPerfected. Finish sign-in in the browser.',
         'integrity_failed':b'Browser payload integrity check failed (EP_BROWSER_CHECKSUM)',
@@ -65,7 +69,27 @@ def first_run_evidence(data):
     }
     return {name:literal in data for name,literal in markers.items()}
 
+def parse_startup_failure(data):
+    lines=[line for line in data.splitlines() if line.startswith(b'EP_TEST_STARTUP_FAILURE=')]
+    if len(lines)!=1:return None
+    try:
+        value=json.loads(lines[0].split(b'=',1)[1])
+        allowed={
+            'category':('navigation-timeout','target-detached','browser-disconnected','protocol-error','other'),
+            'name':('Error','TimeoutError','ProtocolError','TargetCloseError','TypeError','RangeError','ReferenceError','SyntaxError','other'),
+            'code':('ENOENT','EACCES','EPERM','EINVAL','UNKNOWN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EPIPE','other'),
+            'browserExit':('unobserved','running','zero','nonzero'),
+        }
+        flags=('browserCreated','frameDetached','targetClosed','browserLaunch','processSpawn','protocolTimeout','navigationNetwork','missingContext')
+        if set(value)!=set(allowed)|set(flags)|{'controllerConnected'}:return None
+        if any(value[key] not in options for key,options in allowed.items()):return None
+        if any(type(value[key]) is not bool for key in flags):return None
+        if value['controllerConnected'] is not None and type(value['controllerConnected']) is not bool:return None
+        return value
+    except (ValueError,TypeError,KeyError):return None
+
 def report_drain(data):
+    print('Windows fixed owner startup cause: '+json.dumps(parse_startup_failure(data),sort_keys=True),flush=True)
     print('Windows first-run fixed evidence: '+json.dumps(first_run_evidence(data),sort_keys=True),flush=True)
 
 def child_environment(home,temp,empty,port):
