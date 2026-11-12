@@ -357,8 +357,8 @@ whose rights holders have authorized that grant. The collective copyright line
 credits contributors; it does not claim sole authorship or permission on their
 behalf. Existing third-party rights and notices remain in force.
 
-akioweh's permission applies only to code he authored and owns (see the git
-history aliases in LICENSE). It does not cover
+akioweh's permission applies only to code he authored and owns. Other author
+names in git history are not assumed to be his aliases. It does not cover
 Garv, JoshAtticus, qubixal or other contributors' code, and those permissions
 remain unresolved. Adding this scoped license and package reference does not clear
 those rights or authorize distribution of the entire repository or bundled

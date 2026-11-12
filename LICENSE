@@ -3,10 +3,11 @@ License scope (separate from the MIT terms below)
 This MIT declaration applies only to contributions whose copyright holders
 have authorized the grant. It does not license the entire repository. The
 collective attribution below credits contributors; it does not claim authority
-to license their work. The authorized inherited contribution is code authored by akioweh (also
-credited as Yiqian Liu, KEN-2000l and KEN_2000 in git history), to the extent
-he owns it. His permission does not cover code by Garv, JoshAtticus, qubixal
-or other contributors; those rights remain unresolved. Third-party components retain their own licenses and notices.
+to license their work. The authorized inherited contribution is limited to
+code authored and owned by akioweh. This does not assume that other author
+names in git history identify akioweh. His permission does not cover code by
+Garv, JoshAtticus, qubixal or any other contributor; those rights remain
+unresolved. Third-party components retain their own licenses and notices.
 No repository-wide or bundled-browser distribution clearance is asserted.
 
 ---
