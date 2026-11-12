@@ -96,6 +96,8 @@ jobs:
       - name: Start virtual display for Linux local browser fixture
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils
           Xvfb :99 -screen 0 1280x1024x24 > "$RUNNER_TEMP/ep-xvfb.log" 2>&1 &
           ready=0
           for attempt in $(seq 1 50); do

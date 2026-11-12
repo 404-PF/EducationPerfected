@@ -27,7 +27,7 @@ async function probe(boot,diagnostic,badHash=false) {
  for(const pair of [['0','0'],['0','1'],['1','0']]) {const r=await probe(...pair);assert.equal(r.loads,0);assert.ok(!r.output.some(line=>line.startsWith('EP_TEST_BROWSER_IDENTITY=')));assert.deepEqual(r.order,['unpack','cli','cleanup']);}
  const good=await probe('1','1');assert.equal(good.loads,1);assert.deepEqual(good.order,['unpack','receipt','cli','cleanup']);assert.equal(good.output.length,1);assert.ok(!good.output[0].includes('/fixed-owned'));
  const bad=await probe('1','1',true);assert.equal(bad.loads,0);assert.deepEqual(bad.order,['cleanup']);assert.ok(bad.output[0].includes('EP_BROWSER_CHECKSUM'));
- const normalized=source.replace(/\r\n/g,'\n');const gate=normalized.slice(normalized.indexOf("        if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1')"),normalized.indexOf('        handoffSignals();\n        await require(\'../bin/cli\').runCli();'));
+ const normalized=source.replace(/\r\n/g,'\n');const start=normalized.indexOf("if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1')");const gate=normalized.slice(start,normalized.indexOf('\n    }',start));
  assert.ok(gate.includes('emitBrowserIdentity(manifest)'));assert.ok(!gate.includes('await '));
  assert.ok(normalized.indexOf('hash.digest(\'hex\') !== manifest.sha256')<normalized.indexOf('emitBrowserIdentity(manifest)'));
  console.log('Actual fixed bootstrap: dual gate excludes receipt imports on normal boot, checksum failure forbids receipt/unpack/CLI, receipt after unpack and before CLI, no new await/secret path (inert).');
