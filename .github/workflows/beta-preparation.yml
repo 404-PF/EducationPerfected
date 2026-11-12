@@ -6,6 +6,14 @@ on:
         description: 'Candidate label, 2026.M.D-beta.N (no tag or release created)'
         required: true
         type: string
+      browser_mode:
+        description: 'Embedded development build or direct-download native beta validation (no upload)'
+        required: true
+        default: embedded-development
+        type: choice
+        options:
+          - embedded-development
+          - direct-download-validation
 permissions:
   contents: read
 concurrency:
@@ -49,6 +57,7 @@ jobs:
     env:
       CANDIDATE_VERSION: ${{ inputs.candidate_version }}
       CANDIDATE_TARGET: ${{ matrix.target }}
+      BROWSER_MODE: ${{ inputs.browser_mode }}
     defaults:
       run:
         shell: bash
@@ -71,9 +80,38 @@ jobs:
           node scripts/sea-checksum-test.js
           node scripts/build-preflight-test.js
       - name: Install pinned browser explicitly
+        if: inputs.browser_mode != 'direct-download-validation'
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
       - name: Build fresh native candidate and inventory exact bytes
-        run: node scripts/beta-candidate.js build "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+        run: |
+          set -euo pipefail
+          if [ "$BROWSER_MODE" = direct-download-validation ]; then
+            node scripts/beta-candidate.js build-downloadable "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+          else
+            node scripts/beta-candidate.js build "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+          fi
+      - name: Direct-download offline contracts
+        if: inputs.browser_mode == 'direct-download-validation'
+        run: npm run test:browser-download
+      - name: Start virtual display for Linux local browser fixture
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils
+          Xvfb :99 -screen 0 1280x1024x24 > "$RUNNER_TEMP/ep-xvfb.log" 2>&1 &
+          ready=0
+          for attempt in $(seq 1 50); do
+            if DISPLAY=:99 xdpyinfo > "$RUNNER_TEMP/ep-display.log" 2>&1; then ready=1; break; fi
+            sleep 0.2
+          done
+          [ "$ready" -eq 1 ] || { echo 'Virtual display did not become ready'; exit 1; }
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+      - name: Observe exact downloadable SEA against local fixture
+        if: inputs.browser_mode == 'direct-download-validation'
+        run: node scripts/downloadable-cli-test.js
+      - name: Actual SEA first-run interactive consent and direct acquisition
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
+        run: python3 scripts/downloadable-first-run-posix.py
       # Intentionally no upload-artifact, tag, release, saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
       # Executable and notices remain ephemeral in this runner's build directory.

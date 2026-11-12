@@ -54,7 +54,7 @@ async function inventory({directory,target,version,sourceCommit,sourceVersion,ex
 }
 async function main(){
     const [command,version,target]=process.argv.slice(2);
-    if(!['check','build'].includes(command)||process.argv.length!==5)throw new Error('Usage: beta-candidate.js check|build 2026.M.D-beta.N target');
+    if(!['check','build','build-downloadable'].includes(command)||process.argv.length!==5)throw new Error('Usage: beta-candidate.js check|build|build-downloadable 2026.M.D-beta.N target');
     betaVersion(version);
     if(!Object.hasOwn(targets,target))throw new Error('Unknown candidate target');
     const expected=targets[target];
@@ -67,14 +67,22 @@ async function main(){
     // candidate label names this build, not an already-published npm version.
     const info={sourceCommit,sourceVersion:require('../package.json').version,candidateVersion:version,target};
     if(command==='check'){console.log(JSON.stringify(info));return;}
-    const directory=path.join(root,'build',target);
+    const directDownload=command==='build-downloadable';
+    const directory=path.join(root,'build',target+(directDownload?'-downloadable':''));
     // An arbitrary pre-existing binary must never be relabelled as this commit.
     // Own the fresh build and inventory in one process, with a fixed builder.
     fs.rmSync(directory,{recursive:true,force:true});
-    const result=spawnSync(process.execPath,[path.join(root,'packaging',expected.builder)],{cwd:root,stdio:'inherit'});
+    const result=spawnSync(process.execPath,[path.join(root,'packaging',directDownload?'build-downloadable.js':expected.builder)],{cwd:root,stdio:'inherit'});
     if(result.error||result.status!==0)throw new Error('Candidate build failed; no candidate manifest created');
     if(sourceState(root)!==sourceCommit)throw new Error('Source changed during candidate build');
     const manifest=await inventory({directory,target,version,sourceCommit,sourceVersion:info.sourceVersion,expectedBrowserVersion:require('puppeteer').PUPPETEER_REVISIONS.chrome});
+    if(directDownload){
+        const built=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json'),'utf8'));
+        const sea=JSON.parse(fs.readFileSync(path.join(directory,'sea.json'),'utf8'));
+        if(built.browserVersion!==manifest.expectedBrowserVersion)throw new Error('Direct-download pin differs from expected browser version');
+        if(built.browserMode!=='direct-google-download'||Object.hasOwn(sea.assets||{},'browser')||Object.keys(sea.assets||{}).sort((a,b)=>a.localeCompare(b,'en')).join(',')!=='manifest,native')throw new Error('Direct-download candidate has unexpected browser assets');
+        manifest.distributionMode='direct-google-download';manifest.browserBundled=false;
+    }
     fs.writeFileSync(path.join(directory,'CANDIDATE.json'),JSON.stringify(manifest,null,2)+'\n');
     fs.writeFileSync(path.join(directory,'SHA256SUMS'),manifest.files.map(file=>file.sha256+'  '+file.path).join('\n')+'\n');
     console.log(JSON.stringify(manifest,null,2));

@@ -7,22 +7,47 @@ const { getAsset, getRawAsset } = require('node:sea');
 const { Readable } = require('node:stream');
 const { setImmediate: nextTurn } = require('node:timers/promises');
 const { unpackTar } = require('modern-tar/fs');
-async function main() {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
-    fs.chmodSync(dir, 0o700);
-    let windowsBinding, cleanupPending = false;
-    const cleanup = () => {
-        if (windowsBinding?.hasLiveWorkers()) {
-            cleanupPending = true;
+function createCleanup(dir,getBinding,setPending){
+ return ()=>{
+        if (getBinding()?.hasLiveWorkers()) {
+            setPending(true);
             console.error('Native credential worker has not exited; owned extraction retained.');
             process.exitCode ||= 1;
             return;
         }
-        cleanupPending = false;
+        setPending(false);
         try { fs.rmSync(dir, { recursive: true, force: true }); } catch {
             console.error('Owned extraction cleanup failed; temporary files may remain.');
             process.exitCode ||= 1;
         } };
+}
+async function prepareEmbeddedBrowser(dir,manifest){
+    // Read-only view over the embedded asset. Never write to this memory.
+    const browserAsset = Buffer.from(getRawAsset('browser'));
+    const browserStream = () => Readable.from((async function* () {
+        for (let offset = 0; offset < browserAsset.length; offset += 65536) {
+            yield browserAsset.subarray(offset, offset + 65536);
+            // Keep startup signal handlers responsive during the full hash pass.
+            await nextTurn();
+        }
+    })());
+    if (browserAsset.length !== manifest.length) throw Error('Invalid browser payload size');
+    const hash = createHash('sha256');
+    for await (const chunk of browserStream()) hash.update(chunk);
+    if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
+    await pipeline(browserStream(), createGunzip(), unpackTar(dir));
+    process.env.PUPPETEER_EXECUTABLE_PATH = process.platform === 'darwin'
+        ? require('./macos-extracted-executable').macosExtractedExecutable(dir, manifest.executable)
+        : path.join(dir, manifest.executable);
+    if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1') {
+        require('../lib/test-browser-identity').emitBrowserIdentity(manifest);
+    }
+}
+async function main() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
+    fs.chmodSync(dir, 0o700);
+    let windowsBinding, cleanupPending = false;
+    const cleanup=createCleanup(dir,()=>windowsBinding,value=>{cleanupPending=value;});
     process.on('exit', cleanup);
     const onInt = () => process.exit(130), onTerm = () => process.exit(143), onHup = () => process.exit(129);
     process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
@@ -48,25 +73,12 @@ async function main() {
             catch { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode ||= 1; }
             return;
         }
-        // Read-only view over the embedded asset. Never write to this memory.
-        const browserAsset = Buffer.from(getRawAsset('browser'));
-        const browserStream = () => Readable.from((async function* () {
-            for (let offset = 0; offset < browserAsset.length; offset += 65536) {
-                yield browserAsset.subarray(offset, offset + 65536);
-                // Keep startup signal handlers responsive during the full hash pass.
-                await nextTurn();
-            }
-        })());
-        if (browserAsset.length !== manifest.length) throw Error('Invalid browser payload size');
-        const hash = createHash('sha256');
-        for await (const chunk of browserStream()) hash.update(chunk);
-        if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
-        await pipeline(browserStream(), createGunzip(), unpackTar(dir));
-        process.env.PUPPETEER_EXECUTABLE_PATH = process.platform === 'darwin'
-            ? require('./macos-extracted-executable').macosExtractedExecutable(dir, manifest.executable)
-            : path.join(dir, manifest.executable);
-        if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1') {
-            require('../lib/test-browser-identity').emitBrowserIdentity(manifest);
+        if(manifest.browserMode==='direct-google-download') {
+            if(manifest.browserVersion!==require('./browser-downloads.json').version)throw new Error('Browser download pin mismatch');
+            process.env.PUPPETEER_BROWSER='chrome';
+            process.env.PUPPETEER_EXECUTABLE_PATH=await require('./download-browser').ensureBrowser();
+        } else {
+            await prepareEmbeddedBrowser(dir,manifest);
         }
         handoffSignals();
         await require('../bin/cli').runCli();

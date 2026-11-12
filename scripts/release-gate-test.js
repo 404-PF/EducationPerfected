@@ -6,13 +6,16 @@ const criteria = require('../release/criteria.json');
 const commit = 'a'.repeat(40), label = 'windows-x64/console-shutdown';
 const record = () => ({status: criteria.acceptedStatus, sourceCommit: commit, evidence: 'https://example.invalid/fixture-report', reviewer: 'fixture-reviewer'});
 const complete = () => {
-    const evidence = {schemaVersion: criteria.schemaVersion, sourceCommit: commit, global: {}, targets: {}};
+    const evidence = {schemaVersion: criteria.schemaVersion, sourceCommit: commit, distributionMode: criteria.distributionMode, browserBundled:false, global: {}, targets: {}};
     for (const check of criteria.globalChecks) evidence.global[check] = record();
     for (const target of criteria.targets) { evidence.targets[target] = {}; for (const check of criteria.targetChecks) evidence.targets[target][check] = record(); }
     return evidence;
 };
 assert.ok(validate({}, commit).length);
 assert.deepEqual(validate(complete(), commit), []);
+for(const value of [true,undefined]){const e=complete();e.browserBundled=value;assert.ok(validate(e,commit).includes('Distribution mode/browser payload mismatch'));}
+const wrongMode=complete();wrongMode.distributionMode='embedded';assert.ok(validate(wrongMode,commit).includes('Distribution mode/browser payload mismatch'));
+const old=complete();old.schemaVersion=1;assert.ok(validate(old,commit).includes('Evidence schema/source commit mismatch'));
 for (const status of ['skipped', 'fixture-only', 'not-run', 'failed', 'pending']) {
     const evidence = complete(); evidence.targets['windows-x64']['console-shutdown'].status = status;
     assert.ok(validate(evidence, commit).includes(label + ': not passed (SKIP is not proof)'));
@@ -36,7 +39,7 @@ try {
     run(['add', '.gitignore']); run(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'ignore generated evidence']);
     fs.mkdirSync(path.join(dir, 'build')); fs.writeFileSync(path.join(dir, 'build/artifact'), 'fixture');
     fs.mkdirSync(path.join(dir, 'release')); fs.writeFileSync(path.join(dir, 'release/evidence.json'), '{}');
-    const evidence = complete(); evidence.global['project-rights'].evidence = './build/artifact'; assert.deepEqual(validate(evidence, commit, dir), []);
+    const evidence = complete(); evidence.global['project-rights-owner-risk-decision'].evidence = './build/artifact'; assert.deepEqual(validate(evidence, commit, dir), []);
     assert.equal(sourceState(dir), run(['rev-parse', 'HEAD']));
     const alternate = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-release-alternate-'));
     const overrides = {GIT_DIR: path.join(alternate, '.git'), GIT_WORK_TREE: alternate};
