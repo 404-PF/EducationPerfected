@@ -1,10 +1,13 @@
 // Controlled local experiment only, not a product retry or release attestation.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
 const {startupFailure}=require('../lib/test-startup-failure');
+const {browserStderr}=require('./windows-browser-stderr');
 async function sample({kind,executablePath,env,url,launch,requestSeen}){
+ const stderr=browserStderr();let detach=()=>{};
  let browser,cleanup=false,initialBlank=null,navigated=false,ready=false,cause=null,stage='launch';
  try{
   browser=await launch({headless:'shell',defaultViewport:null,handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false,executablePath,env});
+  detach=stderr.attach(browser.process()?.stderr);
   stage='page-selection';
   const initial=(await browser.pages())[0];initialBlank=initial.url()==='about:blank';
   const page=kind==='new-page'?await browser.newPage():initial;
@@ -22,9 +25,9 @@ async function sample({kind,executablePath,env,url,launch,requestSeen}){
  let timer;
  try{await Promise.race([browser.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Close deadline')),10000);})]);cleanup=true;}
  catch{try{browser.process()?.kill();}catch{ /* Retain uncertainty even if best-effort kill fails. */ }}
- finally{clearTimeout(timer);}
+ finally{clearTimeout(timer);detach();}
  if(!cleanup)throw new Error('Diagnostic browser cleanup unconfirmed');
- return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause};
+ return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,stderr:stderr.result()};
 }
 
 async function panel(){
