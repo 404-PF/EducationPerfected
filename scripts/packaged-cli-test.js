@@ -9,9 +9,11 @@ const puppeteer = require('puppeteer');
 const { boundedClose, stopChild } = require('./packaged-test-cleanup');
 const { finishFixtureCleanup } = require('./fixture-cleanup-errors');
 const { connectAfterLoginReady, selectLoginPage, disconnectController } = require('./packaged-fixture-page');
-(async () => {
+async function runPackagedFixture({directDownload=false}={}) {
  if (process.argv.length > 2) throw Error('No executable override arguments accepted');
- const { executable, filename } = require('./packaged-fixture-target').packagedFixtureTarget();
+ const base=require('./packaged-fixture-target').packagedFixtureTarget();
+ const filename=base.filename,executable=directDownload?path.join(path.dirname(base.executable)+'-downloadable',filename):base.executable;
+ let acquiredPath;
  const server = createServer();
  let isolated, child, closed, browser, spawnError, serverError, primaryError;
  function reportResidue() {
@@ -50,6 +52,8 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
  isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-packaged-test-'));
  const home = path.join(isolated, 'home'), emptyPath = path.join(isolated, 'empty-path'), runtime = path.join(isolated, 'runtime');
  for (const directory of [home, emptyPath, runtime]) fs.mkdirSync(directory, {mode: 0o700});
+ // Direct mode's source controller prepares a private cache; not first-run UI proof.
+ if(directDownload)acquiredPath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
  // A host-isolation surrogate, not certification on a separate no-Node machine.
  const env = {...process.env, HOME:home, USERPROFILE:home, XDG_CONFIG_HOME:path.join(home,'config'), XDG_CACHE_HOME:path.join(home,'cache'), XDG_DATA_HOME:path.join(home,'data'), XDG_RUNTIME_DIR:runtime, PATH:emptyPath, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
  if (process.platform === 'win32') { env.TEMP = isolated; env.TMP = isolated; }
@@ -72,9 +76,15 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
  console.log('Packaged owner login-ready checkpoint: '+JSON.stringify(ready.checkpoint)+' (instrumented sample only).');
   const command = await browser.target().createCDPSession();
   const { arguments: browserArgs } = await command.send('Browser.getBrowserCommandLine');
+  if(directDownload){
+   assert.equal(fs.realpathSync(browserArgs[0]),fs.realpathSync(acquiredPath),'SEA must use the exact direct-download cache');
+   assert.equal(await browser.version(),'Chrome/'+require('../packaging/browser-downloads.json').version);
+   console.log('Downloadable SEA browser path matches direct Google cache; observed version matches pin.');
+  } else {
   const { browserIsInOwnedExtraction, browserOriginEvidence } = require('./packaged-browser-origin');
   console.log('Packaged browser origin relationship: ' + JSON.stringify(browserOriginEvidence(isolated, browserArgs[0])));
   assert.ok(browserIsInOwnedExtraction(isolated, browserArgs[0]), 'Browser must launch from this executable extraction, never a host cache');
+  }
   await command.detach();
   const page=await selectLoginPage(browser,origin+'/app/login');
   await page.type('#loginId','fixture-user'); await page.type('#password','fixture-only'); await page.click('form button');
@@ -87,7 +97,7 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
   const residue = reportResidue();
   assert.equal(residue.length,0,'Owned extraction directory must be removed');
   if(serverError) throw serverError;
-  console.log('Packaged executable: copied outside source, fresh HOME/cache, empty PATH, embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed (host-isolation surrogate only).');
+  console.log(directDownload?'Downloadable SEA: private direct-download cache, observed pinned browser, copied artifact, empty PATH, local sign-in, semi-auto noSubmit, quit and extraction cleanup passed (host-isolation surrogate, not first-run UI/no-Node proof).':'Packaged executable: copied outside source, fresh HOME/cache, empty PATH, embedded browser, local sign-in, semi-auto without submission, stop/quit and extraction cleanup passed (host-isolation surrogate only).');
  } catch (error) {
   primaryError = error;
   // Emit the original checkpoint failure before cleanup can fail separately.
@@ -102,4 +112,6 @@ const { connectAfterLoginReady, selectLoginPage, disconnectController } = requir
    () => { if(isolated) fs.rmSync(isolated,{recursive:true,force:true}); },
   ]);
  }
-})().catch(error=>{console.error(error);process.exitCode=1;});
+}
+module.exports={runPackagedFixture};
+if(require.main===module)runPackagedFixture().catch(error=>{console.error(error);process.exitCode=1;});
