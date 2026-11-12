@@ -83,7 +83,7 @@ PUBLIC_DOWNLOAD_PROMPT=b'Type download'
 def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None,public_browser_download=False):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
     # Exact public browser-consent protocol only. Never an arbitrary echo waiver:
-    # setup callers keep the original secret-input checks and30s/120s budgets.
+    # setup callers keep the original secret-input checks and 30s/120s budgets.
     public_protocols=(
         ((PUBLIC_DOWNLOAD_PROMPT,b'cancel\r'),),
         ((PUBLIC_DOWNLOAD_PROMPT,b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')),

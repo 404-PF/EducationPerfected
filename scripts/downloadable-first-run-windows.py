@@ -42,6 +42,11 @@ def main():
     conpty.audit_abi()
     run_fixture()
 
+def child_environment(home,temp,empty,port):
+    env={k:v for k,v in os.environ.items() if k.upper() not in ('PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_EXECUTABLE_PATH','PUPPETEER_BROWSER')}
+    env.update(HOME=str(home),USERPROFILE=str(home),LOCALAPPDATA=str(home/'local'),APPDATA=str(home/'roaming'),TEMP=str(temp),TMP=str(temp),TMPDIR=str(temp),PATH=str(empty),EP_TEST_BOOT='1',EP_LOGIN_URL='http://127.0.0.1:'+str(port)+'/app/login',EP_LOGIN_HOST='127.0.0.1')
+    return env
+
 def run_fixture():
     source=pathlib.Path(__file__).resolve().parent.parent/'build'/'windows-x64-downloadable'
     candidate=json.loads((source/'CANDIDATE.json').read_text())
@@ -54,8 +59,7 @@ def run_fixture():
     try:
         home=root/'home';home.mkdir();temp=root/'tmp';temp.mkdir();empty=root/'empty';empty.mkdir()
         artifact=root/'educationperfected.exe';shutil.copy2(original,artifact);assert digest(artifact)==expected['sha256']
-        env={k:v for k,v in os.environ.items() if k.upper() not in ('PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_EXECUTABLE_PATH','PUPPETEER_BROWSER')}
-        env.update(HOME=str(home),USERPROFILE=str(home),LOCALAPPDATA=str(home/'local'),APPDATA=str(home/'roaming'),TEMP=str(temp),TMP=str(temp),TMPDIR=str(temp),PATH=str(empty),EP_TEST_BOOT='1',EP_LOGIN_URL='http://127.0.0.1:'+str(server.server_port)+'/app/login',EP_LOGIN_HOST='127.0.0.1')
+        env=child_environment(home,temp,empty,server.server_port)
         for accepted in (False,True):
             print('Windows first-run checkpoint: '+('consent-download' if accepted else 'decline'),flush=True)
             safe=False
