@@ -54,7 +54,7 @@ function installMultiChoiceFixture() {
         const submit = [...document.querySelectorAll('#sa-navigation-controls button')].find(b => b.textContent.trim() === 'Submit');
         submit.addEventListener('click', e => {
             e.stopImmediatePropagation(); fixture.submits++;
-            const ids = [...state.selectedOptions].sort((a,b) => a-b);
+            const ids = [...(state.selectedOptions === undefined ? [] : state.selectedOptions)].sort((a,b) => a-b);
             if (JSON.stringify(ids) === '[0,2]') {
                 q.questionIndex++;
                 if (fixture.completeOnSubmit) {

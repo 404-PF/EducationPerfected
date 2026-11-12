@@ -147,6 +147,16 @@ async function setup(page, origin) {
             assert.equal(r.status,'stopped',name+JSON.stringify(r));
             assert.deepEqual(await page.evaluate(()=>[multiFixture.clicks.length,multiFixture.submits]),[0,0],name);
         }
+        // The synthetic Submit listener also handles untouched state without
+        // throwing or initializing selection, and must not advance the question.
+        await setup(page,origin);
+        const pageErrors=[];
+        const captureError=error=>pageErrors.push(error.message);
+        page.on('pageerror',captureError);
+        await page.click('#sa-navigation-controls button');
+        assert.deepEqual(await page.evaluate(()=>[multiFixture.submits,multiFixture.q.questionIndex,multiFixture.state.selectedOptions===undefined,multiFixture.selectionWrites]),[1,0,true,0]);
+        assert.deepEqual(pageErrors,[]);
+        page.off('pageerror',captureError);
         // Explicit empty arrays remain supported alongside the unset default.
         await setup(page,origin);
         await page.evaluate(() => { multiFixture.state.selectedOptions=[]; });
