@@ -1,6 +1,6 @@
 # V2026 beta preparation
 
-This is build preparation, not a published or certified beta. The code-only scope from November 3 remains unchanged. Removed rights/signing and Mac/saved-login/no-Node work has not been re-added or marked passed. Source remains version 2026.0.0 until a separately reviewed version change.
+This is build preparation, not a published or certified beta. On November 12 Page chose a downloadable beta and re-authorized the release validation removed from the November 3 code-only board. Re-authorized work is not passed work. Source remains version 2026.0.0 until a separately reviewed version change.
 
 ## Candidate label
 
@@ -18,7 +18,7 @@ The existing builders may apply their existing development ad-hoc signing on mac
 
 The existing `npm run release:check` and release/criteria.json are unchanged. They require exact-commit evidence before distribution, including items removed from the work board. Building a candidate does not bypass these gates. Public Actions executable uploads also distribute the bundled browser and are deliberately absent.
 
-Before adding a downloadable executable or publishing any release/tag, Page must choose the publication scope. Options include re-adding the relevant release clearances or choosing a narrower source-only beta with its limits made explicit. Neither decision is implied by prioritizing preparation. Further merge approval is required for a publication path or changed version. Actual tag/release publication requires separate approval.
+Page chose the direct-Google-download candidate path in PR #133. This does not approve release publication or make its clearance records complete. Further merge approval is required for new validation code, a publication path or a changed version. Actual tag/release publication requires separate approval.
 
 ## Release-note outline
 
@@ -34,3 +34,15 @@ No beta publication date or stable-release date is committed here.
 ## First hosted build
 
 See [the 12 November build-only result](beta-build-2026-11-12.md) for exact commit, lane logs, hashes and limits. No downloadable executable was retained.
+
+## Direct-download native validation follow-through
+
+`direct-download-validation` builds candidates with only manifest and native binding SEA assets. The original embedded-browser builders remain development tools, not the selected beta distribution path.
+
+The merged-main beta.5 run on `51385b3615a27c5f052a0757c53ea35fcfecef99` passed five native build/cached local CLI lanes and four POSIX actual first-run consent/download/local-login/SIGINT cleanup lanes: https://github.com/404-PF/EducationPerfected/actions/runs/43179483052 . That run did not test Windows first-run consent or the exact downloadable artifact with native credential fixtures.
+
+The follow-through workflow adds a fixed public-input Windows ConPTY first-run probe. Its only echo exemption is the literal browser consent answer; credential prompts retain their original echo/closure protections. It owns a fresh home, local login page and job; decline must leave no cache, consent must verify the pinned browser and reach the local login-ready marker, and raw ETX must exit130 with job-zero, EOF and extraction/lock cleanup. This is hosted ConPTY evidence only when the native run passes, not a physical console or clean machine claim.
+
+A hosted-only bridge verifies candidate commit, target, mode, file length and hash, then copies exact candidate bytes under the existing fixture path without overwriting another artifact. Existing Linux private Secret Service, macOS owned-keychain and Windows disposable fixed-slot fixtures run against that copy. These are synthetic setup/health/deletion tests with source-side verification where supported. macOS exact source-pair access from the SEA and normal stored-login browser launch remain distinct gaps; the existing fixture must not be read as proof of either. No user credential record is used.
+
+All candidates and notices remain ephemeral. No uploads, release tags, publication, gate bypass, changed signing policy, normal account login or no-Node certification is added.

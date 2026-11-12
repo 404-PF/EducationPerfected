@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Inert cache assertions/host guard only. No Windows APIs or browser are opened."""
+import importlib.util,pathlib,tempfile,json,hashlib,os,sys
+sys.dont_write_bytecode=True
+spec=importlib.util.spec_from_file_location('first_run',pathlib.Path(__file__).with_name('downloadable-first-run-windows.py'))
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+saved=os.environ.get('GITHUB_ACTIONS');os.environ['GITHUB_ACTIONS']='false'
+try:
+    try:m.main()
+    except RuntimeError as error:assert str(error)=='host-guard'
+    else:raise AssertionError('Expected host guard before native use')
+finally:
+    if saved is None:del os.environ['GITHUB_ACTIONS']
+    else:os.environ['GITHUB_ACTIONS']=saved
+with tempfile.TemporaryDirectory(prefix='ep-first-run-inert-') as folder:
+    home=pathlib.Path(folder);cache=home/'.educationperfected'/'browsers';cache.mkdir(parents=True)
+    m.verify_cache(home,False)
+    pins=json.loads((pathlib.Path(__file__).resolve().parent.parent/'packaging'/'browser-downloads.json').read_text());pin=next(p for p in pins['archives'] if p['platform']=='win64')
+    install=cache/'synthetic';install.mkdir();exe=install/'inert.exe';exe.write_bytes(b'inert not executable')
+    receipt=install/'COMPLETE.json';record={'version':pins['version'],'sha256':pin['sha256'],'executable':exe.name,'executableSha256':hashlib.sha256(exe.read_bytes()).hexdigest()}
+    receipt.write_text(json.dumps(record));m.verify_cache(home,True)
+    def refuses():
+        try:m.verify_cache(home,True)
+        except (AssertionError,FileNotFoundError):pass
+        else:raise AssertionError('Cache tamper accepted')
+    for delta in ({'version':'wrong'},{'sha256':'wrong'},{'executableSha256':'wrong'},{'executable':'../../escape'}):
+        receipt.write_text(json.dumps({**record,**delta}));refuses()
+    receipt.write_text(json.dumps(record))
+    lock=cache/'synthetic.lock';lock.touch();refuses();lock.unlink()
+    staging=cache/'.download-inert';staging.mkdir();refuses();staging.rmdir()
+    exe.write_bytes(b'changed');refuses()
+print('Windows first-run driver host/cache/receipt/executable-hash/lock/staging controls passed (inert only).')

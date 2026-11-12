@@ -88,5 +88,5 @@ async function main(){
     console.log(JSON.stringify(manifest,null,2));
     console.log(manifest.files.map(file=>file.sha256+'  '+file.path).join('\n'));
 }
-module.exports={betaVersion,inventory,targets};
+module.exports={betaVersion,inventory,targets,hashFile};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});

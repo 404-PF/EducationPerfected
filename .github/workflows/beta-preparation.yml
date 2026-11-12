@@ -79,6 +79,8 @@ jobs:
           npm run test:release-gate
           node scripts/sea-checksum-test.js
           node scripts/build-preflight-test.js
+          python scripts/windows-conpty-test.py
+          python scripts/downloadable-first-run-windows-test.py
       - name: Install pinned browser explicitly
         if: inputs.browser_mode != 'direct-download-validation'
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
@@ -112,6 +114,31 @@ jobs:
       - name: Actual SEA first-run interactive consent and direct acquisition
         if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
         run: python3 scripts/downloadable-first-run-posix.py
-      # Intentionally no upload-artifact, tag, release, saved-login, no-Node or
+      - name: Windows actual SEA first-run public consent and direct acquisition
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        run: python scripts/downloadable-first-run-windows.py
+      - name: Select exact downloadable artifact for existing credential fixtures
+        if: inputs.browser_mode == 'direct-download-validation'
+        run: node scripts/stage-downloadable-store-fixture.js
+      - name: Prepare private Linux credential-store prerequisites
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus-x11 gnome-keyring libglib2.0-bin
+      - name: Linux exact SEA private native-store setup and deletion
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
+        run: sh scripts/packaged-store-integration.sh
+      - name: macOS exact SEA owned-keychain setup health and deletion
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'macOS'
+        run: python3 scripts/macos-isolated-store-test.py
+      - name: Windows exact SEA hosted synthetic setup health and deletion
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:EP_FIXTURE_PYTHON = python -c "import sys; print(sys.executable)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/windows-packaged-store-delete-test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Intentionally no upload-artifact, tag, release, normal saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
       # Executable and notices remain ephemeral in this runner's build directory.

@@ -78,9 +78,21 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None):
+def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None,public_browser_download=False):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
-    if type(process_budget_ms) is not int or process_budget_ms not in (30000,120000):raise RuntimeError('host-guard')
+    # Exact public browser-consent protocol only. Never an arbitrary echo waiver:
+    # setup callers keep the original secret-input checks and30s/120s budgets.
+    public_protocols=(
+        ((b'Type download',b'cancel\r'),),
+        ((b'Type download',b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')),
+    )
+    if type(public_browser_download) is not bool:raise RuntimeError('host-guard')
+    if public_browser_download:
+        if args or tuple(prompts) not in public_protocols or type(process_budget_ms) is not int or process_budget_ms!=900000:raise RuntimeError('host-guard')
+    elif type(process_budget_ms) is not int or process_budget_ms not in (30000,120000):raise RuntimeError('host-guard')
+    def echoed(data):
+        return any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in data
+                   for marker,answer in prompts if not (public_browser_download and marker==b'Type download'))
     api=api or kernel32()
     handles=[];pc=HANDLE();pi=PROCESS_INFORMATION();attributes=None;attribute_ready=False
     job=None;assigned=False;reader=None;writer=None
@@ -115,7 +127,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     def write_prompts():
         try:
             for index,(marker,answer) in enumerate(prompts):
-                deadline=clock()+10
+                deadline=clock()+(900 if public_browser_download and index==1 else 10)
                 with condition:
                     while not prompt_ready(index):
                         if eof.is_set() or clock()>=deadline:raise RuntimeError('console-prompt')
@@ -197,7 +209,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
         except BaseException:pass # Observation must not replace primary/cleanup outcomes.
     # Inspect the whole drained stream even when another operation failed. Input
     # appearance is a fixed primary and forbids native cleanup certification.
-    if any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in bytes(output) for _,answer in prompts):
+    if echoed(bytes(output)):
         raise ExitUnconfirmed('console-input-echoed') from RuntimeError('console-input-echoed')
     if cleanup:raise ExitUnconfirmed(fixed_stage(cleanup)) from primary
     if on_closed:on_closed()
@@ -215,5 +227,5 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     if expected not in captured:raise RuntimeError('console-status-missing')
     if any(token in captured for token in forbidden_output):raise RuntimeError('console-command-failed')
     if any(captured.count(token)!=1 for token,_ in prompts):raise RuntimeError('console-prompt-count')
-    if any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in captured for _,answer in prompts):raise RuntimeError('console-input-echoed')
+    if echoed(captured):raise RuntimeError('console-input-echoed')
     return True

@@ -221,3 +221,37 @@ for scenario in ('success','child-nonzero','process-create','job-live'):
     elif scenario=='child-nonzero':assert str(error)=='console-child-nonzero' and closed==[True]
     else:assert str(error)=='process-create' and closed==[True] and seen[0]==b''
 print('Observer exceptions cannot replace success, primary setup/child failure or unconfirmed cleanup outcome (inert).')
+# The one public-download protocol is opt-in and cannot waive setup secret echoes.
+class PublicAPI(BudgetAPI):
+    def __init__(self,decline=False):super().__init__(900000);self.decline=decline
+    def CreateProcessW(self,exe,command,*args):
+        assert command.value=='fixed.exe'
+        return super().CreateProcessW(exe,c.create_unicode_buffer('fixed.exe --setup'),*args)
+    def ReadFile(self,h,buf,size,count,overlap):
+        self.reads+=1
+        if self.reads==1:chunk=b'Type download'
+        elif self.reads==2:
+            assert self.ready.wait(2)
+            chunk=b'cancel' if self.decline else b'download\r\nBrowser download checksum verified\r\nEP_TEST_LOGIN_READY'
+        else:self.console_closed.wait(2);c.set_last_error(109);return 0
+        c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
+    def GetExitCodeProcess(self,h,code):code._obj.value=1 if self.decline else 130;return 1
+for decline in (False,True):
+    api=PublicAPI(decline)
+    prompts=[(b'Type download',b'cancel\r')] if decline else [(b'Type download',b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')]
+    assert m.run_console('fixed.exe',[],{'HOME':'owned'},'owned',prompts,b'cancel' if decline else b'Browser download checksum verified',api=api,process_budget_ms=900000,public_browser_download=True,expected_exit=1 if decline else 130)
+    assert api.writes==([b'cancel\r'] if decline else [b'download\r',b'\x03'])
+for kwargs in (
+    {'args':['--setup'],'prompts':[(b'EP email',b'public-answer\r')]},
+    {'args':[],'prompts':[(b'Type download',b'arbitrary-secret\r')]},
+    {'args':[],'prompts':[(b'Type download',b'download\r')]},
+):
+    with mock.patch.object(m,'kernel32',side_effect=AssertionError('No allocation')):
+        try:m.run_console('fixed.exe',env={},cwd='owned',process_budget_ms=900000,public_browser_download=True,**kwargs)
+        except RuntimeError as e:assert str(e)=='host-guard'
+        else:raise AssertionError('Public protocol widened')
+with mock.patch.object(m,'kernel32',side_effect=AssertionError('No allocation')):
+    try:m.run_console('fixed.exe',[],{},'owned',process_budget_ms=900000)
+    except RuntimeError as e:assert str(e)=='host-guard'
+    else:raise AssertionError('Default budget widened')
+print('Fixed public browser consent protocol permits public echo only; setup/default secret guards and default budgets unchanged (inert).')
