@@ -418,7 +418,7 @@ function createServer() {
         if (url.pathname === '/lesson') return send(lessonPage(false));
         if (url.pathname === '/lesson-dropdown') {
             const count = Number.parseInt(url.searchParams.get('count') || '5', 10) || 5;
-            const variant = url.searchParams.get('variant') === 'variables' ? 'variables' : '';
+            const variant = ['variables','annotated-text','sound'].includes(url.searchParams.get('variant')) ? url.searchParams.get('variant') : '';
             return send(lessonPage(false).replace('</body></html>', `<script>(${installDropdownFixture.toString()})(${count},${JSON.stringify(variant)});</script></body></html>`));
         }
         if (url.pathname === '/lesson-textbox') return send(lessonPage(false).replace('</body></html>', `<script>(${installInputBoxFixture.toString()})(${JSON.stringify(inputBoxFixtures.textbox)});</script></body></html>`));

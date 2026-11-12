@@ -53,7 +53,7 @@ for(const mutation of ['manual','assessment','mixed','unmarked','missing','dupli
  assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  const bad=await detectQuestion(page);assert.equal(bad.kind,'unsupported',mutation);
  if(mutation==='assessment')assert.equal(bad.diagnostic,undefined,mutation);
- else assert.deepEqual(bad.diagnostic,{kind:'dropdown-refusal',guard:expectedDropdownGuards[mutation],domSelectCount:mutation==='extraSelect'?6:5},mutation);
+ else assert.deepEqual(bad.diagnostic,{kind:'dropdown-refusal',guard:expectedDropdownGuards[mutation],domSelectCount:mutation==='extraSelect'?6:5,...(['mixed','extraSelect'].includes(mutation)?{definitionCount:mutation==='mixed'?6:5,dropdownDefinitionCount:5,companionDefinitionCount:0,unsupportedDefinitionCount:mutation==='mixed'?1:0}:{})},mutation);
  assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  assert.equal((await playDropdownRound(page,bad,{enter:true,timeout:50})).status,'stopped',mutation);
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[0,0,0],mutation);

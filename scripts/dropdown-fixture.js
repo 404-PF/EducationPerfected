@@ -29,6 +29,14 @@ function installDropdownFixture(count=5,variant){
         select.addEventListener('keydown',e=>{f.keys.push({id,key:e.key,trusted:e.isTrusted});f.beforeKey?.(e);});
         select.addEventListener('change',e=>{const text=select.options[select.selectedIndex].text;state._selectedOption=original.find(o=>o.Description.trim()===text.trim())||null;f.changes.push({id,index:select.selectedIndex,trusted:e.isTrusted});f.afterChange?.();});
     }
+    if(variant==='annotated-text'||variant==='sound'){
+        const id='invented-companion',code=variant==='sound'?'SOUND_COMPONENT':'ANNOTATED_TEXT_COMPONENT';
+        const def={ComponentTypeCode:code,ComponentID:id,Marked:1,TextTemplate:'Invented static companion'};
+        q.questionDef.Components.push(def);
+        const element=document.createElement('div');element.textContent='Invented static companion';group.append(element);
+        const state={componentID:id,metadataInstance:JSON.parse(JSON.stringify(def))};
+        base[id]=[{id,type:variant,isInput:false,marked:variant==='sound'?1:2,componentState:state,visualElement:element,renderingParameters:{mode:1}}];
+    }
     document.addEventListener('click',e=>{const b=e.target.closest('#sa-navigation-controls button');if(b&&b.textContent.trim()!=='Submit')f.nexts++;},true);
     const oldSubmit=[...document.querySelectorAll('#sa-navigation-controls button')].find(b=>b.textContent.trim()==='Submit');const submit=oldSubmit.cloneNode(true);oldSubmit.replaceWith(submit);
     submit.addEventListener('click',()=>{f.submittedSelections=[...group.querySelectorAll('select')].map(el=>[el.options[el.selectedIndex].textContent,base[el.id][0].componentState._selectedOption?.Description]);f.submits++;q.questionIndex++;if(f.followingUnsupported){group.textContent='Following unsupported question';q.questionDef.Components=[{ComponentTypeCode:'NUMBER_BOX_COMPONENT'}];}});
