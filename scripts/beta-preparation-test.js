@@ -107,7 +107,7 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
     assert.match(active,/npm ci --ignore-scripts/);assert.match(active,/node-version: 22\.23\.4/);
     assert.doesNotMatch(active,/continue-on-error/,'A failed probe must still fail the job');
     const stepGate=(content,name)=>{
-        const step=content.split('      - name: ').find(block=>block.startsWith(name+'\n'));
+        const step=content.replaceAll('\r\n','\n').split('      - name: ').find(block=>block.startsWith(name+'\n'));
         assert.ok(step,'Named native probe must exist');
         return step.split('\n').find(line=>line.trimStart().startsWith('if:'))||'';
     };
@@ -122,6 +122,7 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
         if(name.startsWith('Windows'))assert.ok(gate.includes("runner.os == 'Windows'"));
     }};
     verifyGates(active);
+    verifyGates(active.replaceAll('\r\n','\n').replaceAll('\n','\r\n'));
     for(const [name,prerequisite] of requiredGates){
         const gate=stepGate(active,name);
         await assert.rejects(async()=>verifyGates(active.replace(gate,gate.replace("steps."+prerequisite+".outcome == 'success'",'true'))));
