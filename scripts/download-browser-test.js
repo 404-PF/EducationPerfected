@@ -5,7 +5,7 @@ const pins=require('../packaging/browser-downloads.json');
 (async()=>{
  for(const [platform,arch] of [['linux','x64'],['linux','arm64'],['darwin','x64'],['darwin','arm64'],['win32','x64']])assert.ok(hostPin(platform,arch).url.startsWith('https://storage.googleapis.com/'));
  assert.throws(()=>hostPin('win32','arm64'));assert.throws(()=>hostPin('linux','ia32'));
- await assert.rejects(promptDownload({input:{isTTY:false},output:{isTTY:false}}),/interactive/);
+ await assert.rejects(promptDownload({input:{isTTY:false},output:{isTTY:false,write(){}}}),/interactive/);
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'ep-download-contract-'));
  const api={Browser:{CHROME:'chrome'},BrowserPlatform:{LINUX:'linux',LINUX_ARM:'linux_arm',MAC:'mac',MAC_ARM:'mac_arm',WIN64:'win64'}};
  const base={home,api,platform:'linux',arch:'x64',output:{write(){}},consent:async()=>true};

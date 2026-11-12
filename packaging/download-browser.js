@@ -10,7 +10,7 @@ function hostPin(platform=process.platform,arch=process.arch){
  return pin;
 }
 async function promptDownload({input=process.stdin,output=process.stdout}={}){
- if(!input.isTTY||!output.isTTY)throw Error('First browser download needs an interactive terminal');
+ if(!input.isTTY||!output.isTTY){output.write('First browser download needs an interactive terminal. Open this executable in a terminal and retry.\n');throw Error('First browser download needs an interactive terminal');}
  output.write('This beta does not include Chrome. Download Chrome for Testing '+pins.version+' directly from Google (about 200 MB)?\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/\nType download to fetch and use it under Google\'s terms, or anything else to cancel: ');
  const rl=require('node:readline').createInterface({input,output});
  try { return await new Promise(resolve=>{rl.once('line',line=>resolve(line.trim()==='download'));rl.once('close',()=>resolve(false));}); }
@@ -32,7 +32,7 @@ async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir
  };
  const cached=existing();if(cached)return cached;
  const lock=directory+'.lock';let fd;
- try {fd=fs.openSync(lock,'wx',0o600);} catch {throw Error('Browser installation is active or was interrupted. Lock: '+lock+'. Close all EducationPerfected processes, then remove that lock and orphaned .download-* directories in '+root+' before retrying. Never remove them while an installation is running.');}
+ try {fd=fs.openSync(lock,'wx',0o600);} catch {output.write('Browser installation is active or was interrupted. Lock: '+lock+'. Close all EducationPerfected processes, then remove that lock and orphaned .download-* directories in '+root+' before retrying. Never remove them while an installation is running.\n');throw Error('Browser installation lock requires inspection');}
  let staging;
  let cleaned=false;
  const cleanup=()=>{if(cleaned)return;cleaned=true;try{if(staging)fs.rmSync(staging,{recursive:true,force:true});}finally{fs.closeSync(fd);fs.rmSync(lock,{force:true});}};
@@ -40,7 +40,7 @@ async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir
  // Fail closed, including a stalled network/extraction. The process exit hook cleans only owned staging/lock.
  const timer=setTimeout(()=>{output.write('Browser installation timed out. Restart to retry.\n');process.exit(1);},15*60*1000);timer.unref();
  try {
-  if(!await consent())throw Error('Browser download cancelled; no browser started');
+  if(!await consent()){output.write('Browser download cancelled; no browser started.\n');throw Error('Browser download cancelled; no browser started');}
   staging=fs.mkdtempSync(path.join(root,'.download-'));fs.chmodSync(staging,0o700);
   fs.writeFileSync(fd,JSON.stringify({pid:process.pid,staging:path.basename(staging)})+'\n');
   api ||= require('@puppeteer/browsers');install ||= api.install;
