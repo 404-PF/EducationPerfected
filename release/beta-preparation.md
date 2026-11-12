@@ -24,9 +24,13 @@ Before adding a downloadable executable or publishing any release/tag, Page must
 
 - V2026 CLI beta candidate, exact commit and candidate label.
 - Source code and local fixture evidence only where that is what passed.
-- Task-support prose and Supported Contracts section in README; partial lesson support is not all-task support.
+- Task-support prose in README; partial lesson support is not all-task support.
 - Assessment mode remains refused. Manually/self-marked work and unimplemented maths editors remain refused.
 - Current source-ZIP run path requires Node >=22.12, `npm ci`, then `npm run cli`.
 - List actual shipped artifacts, verified platforms and known limitations only after those choices and evidence exist.
 
 No beta publication date or stable-release date is committed here.
+
+## First hosted build
+
+See [the 12 November build-only result](beta-build-2026-11-12.md) for exact commit, lane logs, hashes and limits. No downloadable executable was retained.
