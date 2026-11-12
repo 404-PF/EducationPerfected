@@ -26,16 +26,14 @@ function parseStartupFailure(text){
  const lines=text.split(/\r?\n/).filter(line=>line.startsWith('EP_TEST_STARTUP_FAILURE='));
  if(lines.length!==1)return null;
  try{
-  const value=JSON.parse(lines[0].slice('EP_TEST_STARTUP_FAILURE='.length));
-  const {startupFailure}=require('../lib/test-startup-failure');
-  const shape=startupFailure({},null);
-  if(Object.keys(value).sort().join(',')!==Object.keys(shape).sort().join(','))return null;
-  if(!['navigation-timeout','target-detached','browser-disconnected','protocol-error','other'].includes(value.category))return null;
-  if(!['Error','TimeoutError','ProtocolError','TargetCloseError','TypeError','RangeError','ReferenceError','SyntaxError','other'].includes(value.name))return null;
-  if(!['ENOENT','EACCES','EPERM','EINVAL','UNKNOWN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EPIPE','other'].includes(value.code))return null;
-  if(!['unobserved','running','zero','nonzero'].includes(value.browserExit))return null;
-  if(![null,true,false].includes(value.controllerConnected))return null;
-  for(const key of Object.keys(shape).filter(key=>typeof shape[key]==='boolean'))if(typeof value[key]!=='boolean')return null;
+  const raw=lines[0].slice('EP_TEST_STARTUP_FAILURE='.length);
+  const value=JSON.parse(raw),schema=require('../lib/test-startup-schema.json');
+  // This protocol is flat primitives only. Count decoded member names before
+  // accepting JSON.parse's last-key-wins result, including escaped-key aliases.
+  const keys=[...raw.matchAll(/"((?:[^"\\]|\\.)*)"\s*:/g)].map(match=>JSON.parse('"'+match[1]+'"'));
+  if(keys.length!==new Set(keys).size)return null;
+  if(Object.keys(value).sort((a,b)=>a.localeCompare(b,'en')).join(',')!==Object.keys(schema).sort((a,b)=>a.localeCompare(b,'en')).join(','))return null;
+  for(const [key,options] of Object.entries(schema))if(!options.some(option=>option===value[key]))return null;
   return value;
  }catch{return null;}
 }

@@ -1,0 +1,76 @@
+{
+  "category": [
+    "navigation-timeout",
+    "target-detached",
+    "browser-disconnected",
+    "protocol-error",
+    "other"
+  ],
+  "name": [
+    "Error",
+    "TimeoutError",
+    "ProtocolError",
+    "TargetCloseError",
+    "TypeError",
+    "RangeError",
+    "ReferenceError",
+    "SyntaxError",
+    "other"
+  ],
+  "code": [
+    "ENOENT",
+    "EACCES",
+    "EPERM",
+    "EINVAL",
+    "UNKNOWN",
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "ETIMEDOUT",
+    "EPIPE",
+    "other"
+  ],
+  "browserExit": [
+    "unobserved",
+    "running",
+    "zero",
+    "nonzero",
+    "signalled"
+  ],
+  "controllerConnected": [
+    null,
+    true,
+    false
+  ],
+  "browserCreated": [
+    true,
+    false
+  ],
+  "frameDetached": [
+    true,
+    false
+  ],
+  "targetClosed": [
+    true,
+    false
+  ],
+  "browserLaunch": [
+    true,
+    false
+  ],
+  "processSpawn": [
+    true,
+    false
+  ],
+  "protocolTimeout": [
+    true,
+    false
+  ],
+  "navigationNetwork": [
+    true,
+    false
+  ],
+  "missingContext": [
+    true,
+    false
+  ]
+}

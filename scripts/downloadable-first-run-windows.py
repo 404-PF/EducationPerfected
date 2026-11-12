@@ -73,18 +73,16 @@ def parse_startup_failure(data):
     lines=[line for line in data.splitlines() if line.startswith(b'EP_TEST_STARTUP_FAILURE=')]
     if len(lines)!=1:return None
     try:
-        value=json.loads(lines[0].split(b'=',1)[1])
-        allowed={
-            'category':('navigation-timeout','target-detached','browser-disconnected','protocol-error','other'),
-            'name':('Error','TimeoutError','ProtocolError','TargetCloseError','TypeError','RangeError','ReferenceError','SyntaxError','other'),
-            'code':('ENOENT','EACCES','EPERM','EINVAL','UNKNOWN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EPIPE','other'),
-            'browserExit':('unobserved','running','zero','nonzero'),
-        }
-        flags=('browserCreated','frameDetached','targetClosed','browserLaunch','processSpawn','protocolTimeout','navigationNetwork','missingContext')
-        if set(value)!=set(allowed)|set(flags)|{'controllerConnected'}:return None
-        if any(value[key] not in options for key,options in allowed.items()):return None
-        if any(type(value[key]) is not bool for key in flags):return None
-        if value['controllerConnected'] is not None and type(value['controllerConnected']) is not bool:return None
+        def unique_pairs(pairs):
+            result={}
+            for key,item in pairs:
+                if key in result:raise ValueError('Duplicate diagnostic field')
+                result[key]=item
+            return result
+        value=json.loads(lines[0].split(b'=',1)[1],object_pairs_hook=unique_pairs)
+        schema=json.loads((pathlib.Path(__file__).resolve().parent.parent/'lib'/'test-startup-schema.json').read_text())
+        if set(value)!=set(schema):return None
+        if any(not any(type(value[key]) is type(option) and value[key]==option for option in options) for key,options in schema.items()):return None
         return value
     except (ValueError,TypeError,KeyError):return None
 

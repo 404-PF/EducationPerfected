@@ -12,3 +12,7 @@ const cause=startupFailure(new Error('private'),null),line='EP_TEST_STARTUP_FAIL
 assert.deepEqual(parseStartupFailure(line),cause);
 for(const input of [line+'\n'+line,'EP_TEST_STARTUP_FAILURE='+JSON.stringify({...cause,name:'private'}),'EP_TEST_STARTUP_FAILURE='+JSON.stringify({...cause,private:'private'}),'EP_TEST_STARTUP_FAILURE={bad}'])assert.equal(parseStartupFailure(input),null);
 console.log('Owner cause parser enforces one exact bounded-field receipt, duplicate/unknown/private payloads rejected.');
+
+assert.equal(parseStartupFailure(line.replace('{','{"name":"Error",')),null);
+assert.equal(parseStartupFailure(line.replace('{','{"na\\u006de":"Error",')),null);
+for(const delta of [{category:'private'},{browserCreated:1},{controllerConnected:0},{browserExit:'private'},{code:'private'}])assert.equal(parseStartupFailure('EP_TEST_STARTUP_FAILURE='+JSON.stringify({...cause,...delta})),null);
