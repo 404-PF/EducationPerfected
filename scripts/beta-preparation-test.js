@@ -92,7 +92,7 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
         assert.equal(direct.status,0,direct.stderr);assert.equal(fs.existsSync(path.join(downloadableDirectory,'stale')),false);
         const directManifest=JSON.parse(fs.readFileSync(path.join(checkout,'build',target+'-downloadable','CANDIDATE.json')));
         assert.equal(directManifest.distributionMode,'direct-google-download');assert.equal(directManifest.browserBundled,false);
-        for(const control of ['EP_BAD_PIN','EP_BAD_ASSET']){const refused=spawnSync(process.execPath,['scripts/beta-candidate.js','build-downloadable','2026.11.12-beta.1',target],{cwd:checkout,env:{...env,[control]:'1'},encoding:'utf8'});assert.equal(refused.status,1);assert.equal(fs.existsSync(path.join(downloadableDirectory,'CANDIDATE.json')),false);}
+        for(const control of ['EP_BAD_PIN','EP_BAD_ASSET']){const refused=spawnSync(process.execPath,['scripts/beta-candidate.js','build-downloadable','2026.11.12-beta.1',target],{cwd:checkout,env:{...env,[control]:'1'},encoding:'utf8'});assert.equal(refused.status,1);assert.match(refused.stderr,control==='EP_BAD_PIN'?/pin differs/:/unexpected browser assets/);assert.equal(fs.existsSync(path.join(downloadableDirectory,'CANDIDATE.json')),false);}
         const failed=build({EP_FIXTURE_FAIL:'1'});assert.ifError(failed.error);assert.equal(failed.status,1);
         assert.equal(fs.existsSync(path.join(directory,'CANDIDATE.json')),false,'failed builds cannot retain a candidate manifest');
         const drift=build({EP_FIXTURE_DIRTY:'1'});assert.ifError(drift.error);assert.equal(drift.status,1);
