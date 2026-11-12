@@ -35,6 +35,10 @@ function noticeFiles(directory,prefix='THIRD-PARTY-NOTICES'){
 }
 async function inventory({directory,target,version,sourceCommit,sourceVersion,expectedBrowserVersion}){
     betaVersion(version);
+    for(const dir of [directory,path.join(directory,'THIRD-PARTY-NOTICES')]){
+        const stat=fs.lstatSync(dir);
+        if(!stat.isDirectory()||stat.isSymbolicLink())throw new Error('Candidate roots must be real directories');
+    }
     if(!Object.hasOwn(targets,target)||!(/^[a-f0-9]{40}$/).test(sourceCommit||''))throw new Error('Invalid candidate target/source commit');
     const executable=targets[target].executable;
     const files=[executable,...noticeFiles(path.join(directory,'THIRD-PARTY-NOTICES'))];
@@ -73,7 +77,8 @@ async function main(){
     const manifest=await inventory({directory,target,version,sourceCommit,sourceVersion:info.sourceVersion,expectedBrowserVersion:require('puppeteer').PUPPETEER_REVISIONS.chrome});
     fs.writeFileSync(path.join(directory,'CANDIDATE.json'),JSON.stringify(manifest,null,2)+'\n');
     fs.writeFileSync(path.join(directory,'SHA256SUMS'),manifest.files.map(file=>file.sha256+'  '+file.path).join('\n')+'\n');
-    console.log(JSON.stringify({...info,files:manifest.files.length,status:manifest.status}));
+    console.log(JSON.stringify(manifest,null,2));
+    console.log(manifest.files.map(file=>file.sha256+'  '+file.path).join('\n'));
 }
 module.exports={betaVersion,inventory,targets};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});
