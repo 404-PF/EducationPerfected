@@ -81,6 +81,7 @@ jobs:
           node scripts/build-preflight-test.js
           node scripts/packaged-startup-evidence-test.js
           node scripts/test-startup-failure-test.js
+          node scripts/windows-navigation-panel-test.js
           if [ "$RUNNER_OS" = Windows ]; then python_bin=python; else python_bin=python3; fi
           "$python_bin" scripts/windows-conpty-test.py
           "$python_bin" scripts/downloadable-first-run-windows-test.py
@@ -121,6 +122,9 @@ jobs:
       - name: Windows actual SEA first-run public consent and direct acquisition
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows' }}
         run: python scripts/downloadable-first-run-windows.py
+      - name: Windows independent initial versus new-page navigation comparison
+        if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows' }}
+        run: node scripts/windows-navigation-panel.js
       - name: Select exact downloadable artifact for existing credential fixtures
         id: store_candidate
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' }}
