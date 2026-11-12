@@ -6,17 +6,19 @@ const {detectQuestion}=require('../lib/detect-question');
 const {playDropdownRound}=require('../lib/dropdown-handler');
 const {readDropdownsInPage}=require('../lib/dropdown-state');
 const {bootFixtureCli}=require('./fixture-cli-session');
+// One page owns each fixture; cases must not race navigation or input.
+const series=(items,run)=>items.reduce((previous,item)=>previous.then(()=>run(item)),Promise.resolve());
 (async()=>{
     const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
     try{
-        browser=await puppeteer.launch({headless:true});const page=await browser.newPage();
+        browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage();
         const setup=variant=>page.goto('http://127.0.0.1:'+server.address().port+'/lesson-dropdown?count=1&variant='+variant);
-        for(const variant of ['annotated-text','sound']){
+        await series(['annotated-text','sound'],async variant=>{
             await setup(variant);
             const d=await detectQuestion(page);assert.equal(d.kind,'dropdown',JSON.stringify(d));assert.equal(d.dropdowns.length,1);
             assert.equal((await playDropdownRound(page,d,{enter:true,timeout:300})).status,'advanced');
             assert.deepEqual(await page.evaluate(()=>[dropdownFixture.submittedSelections,dropdownFixture.submits,dropdownFixture.nexts]),[[['Radius','Radius']],1,0]);
-        }
+        });
         const mutations={
             inputType:f=>{f.q.questionDef.Components[1].ComponentTypeCode='TEXT_BOX_COMPONENT';},
             unknownType:f=>{f.q.questionDef.Components[1].ComponentTypeCode='UNKNOWN_COMPONENT';},
@@ -40,13 +42,13 @@ const {bootFixtureCli}=require('./fixture-cli-session');
             manual:f=>{f.self.sectionData.activityGroup.isAutoMarked=false;},
             accessor:f=>{Object.defineProperty(f.base['invented-companion'][0],'isInput',{get(){f.getterCalls=(f.getterCalls||0)+1;return false;}});},
         };
-        for(const [name,mutate]of Object.entries(mutations)){
+        await series(Object.entries(mutations),async ([name,mutate])=>{
             await setup('annotated-text');
             await page.evaluate(fn=>(0,eval)('('+fn+')')(dropdownFixture),mutate.toString());
             const d=await detectQuestion(page);assert.equal(d.kind,'unsupported',name);
             assert.equal((await playDropdownRound(page,d,{enter:true,timeout:50})).status,'stopped',name);
             assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts,dropdownFixture.getterCalls||0]),[0,0,0,0],name);
-        }
+        });
         // Counts explain a one-select refusal without exposing content or IDs.
         await setup('annotated-text');await page.evaluate(()=>{dropdownFixture.q.questionDef.Components[1].ComponentTypeCode='PRIVATE TYPE';});
         const bad=await detectQuestion(page);
@@ -54,7 +56,7 @@ const {bootFixtureCli}=require('./fixture-cli-session');
         assert.doesNotMatch(JSON.stringify(bad),/PRIVATE|invented|Radius/);
         const diagnostic=await page.evaluate(readDropdownsInPage,null,'diagnostic');assert.equal(diagnostic.fields.definitionCount,2);
         // Replacing even an otherwise identical companion during input must stop.
-        for(const change of ['component','element','metadata','definition']){
+        await series(['component','element','metadata','definition'],async change=>{
             await setup('annotated-text');const d=await detectQuestion(page);
             await page.evaluate(change=>{const f=dropdownFixture;f.afterChange=()=>{
                 const c=f.base['invented-companion'][0];
@@ -65,7 +67,7 @@ const {bootFixtureCli}=require('./fixture-cli-session');
             };},change);
             assert.equal((await playDropdownRound(page,d,{enter:true,timeout:100})).status,'stopped',change);
             assert.equal(await page.evaluate(()=>dropdownFixture.submits),0,change);
-        }
+        });
     }finally{await browser?.close();await new Promise(r=>server.close(r));}
     const session=await bootFixtureCli('cli.js','Commands: start');
     try{

@@ -8,7 +8,7 @@ The replacement compares dropdown definitions with selects while retaining compl
 
 The failing cardinality diagnostic now includes bounded numeric counts for definitions, dropdowns, recognized companions and unsupported definitions. It contains no component IDs, types, question text or answers. A future unsupported mismatch is actionable without guessing.
 
-Offline evidence only: new synthetic fixtures reproduce the old exact guard with one select plus a companion; new reader fills/submits once after normal CLI approval. This is not proof of the makeup of Page's actual slide. Assessment refusal and full exact-answer final checks remain in force.
+Offline evidence only: new synthetic fixtures reproduce the old exact guard with one select plus a companion; the handler/CLI integration fills/submits once after normal CLI approval. This is not proof of the makeup of Page's actual slide. Assessment refusal and full exact-answer final checks remain in force.
 
 Source: https://mfe-student-app.educationperfect.com/main/mfe-hashed-assets-606-c22c0eb5e341ef24b769.js
 SHA256 e72b68b8c06508dbfdef365f2bb8edf23bc2085c077acb48c32c5f40a934352a
