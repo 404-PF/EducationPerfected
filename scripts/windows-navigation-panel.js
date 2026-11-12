@@ -30,11 +30,9 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
  return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
-function pathCases(env,parentEnv){
- const inherited=Object.entries(parentEnv).find(([key])=>key.toUpperCase()==='PATH')?.[1];
- assert.equal(typeof inherited,'string');assert.ok(inherited.length>0);
- const clean=Object.fromEntries(Object.entries(env).filter(([key])=>key.toUpperCase()!=='PATH'));
- return ['empty','inherited','empty','inherited'].map(pathKind=>({pathKind,env:{...clean,PATH:pathKind==='empty'?env.PATH:inherited}}));
+function environmentCases(isolated,parentEnv){
+ const inherited=Object.fromEntries(Object.entries(parentEnv).filter(([key])=>!['NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_BROWSER','PUPPETEER_EXECUTABLE_PATH'].includes(key.toUpperCase())));
+ return ['isolated','inherited','isolated','inherited'].map(environmentKind=>({environmentKind,env:environmentKind==='isolated'?{...isolated}:{...inherited}}));
 }
 async function panel(){
  assert.equal(process.platform,'win32');assert.equal(process.arch,'x64');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(process.argv.length,2);
@@ -48,12 +46,13 @@ async function panel(){
   const executablePath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
   const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!['PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_BROWSER','PUPPETEER_EXECUTABLE_PATH'].includes(key.toUpperCase())));
   Object.assign(env,{HOME:home,USERPROFILE:home,PATH:empty,TEMP:tmp,TMP:tmp,TMPDIR:tmp});
-  // Fresh independent launches, not retries. This diagnostic varies only child PATH.
-  // Inherited PATH includes host tools: it is not no-Node or release evidence.
-  for(const [index,entry] of pathCases(env,process.env).entries()){
+  // Fresh independent launches, not retries. Compare the whole child environment.
+  // Puppeteer still creates a fresh disposable browser profile per launch.
+  // Inherited home/PATH/temp include host state: diagnostic only, not no-Node evidence.
+  for(const [index,entry] of environmentCases(env,process.env).entries()){
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',executablePath,env:entry.env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
-   safe=result.cleanup;console.log('Windows local PATH comparison: '+JSON.stringify({pathKind:entry.pathKind,...result}));
+   safe=result.cleanup;console.log('Windows local environment comparison: '+JSON.stringify({environmentKind:entry.environmentKind,...result}));
   }
  }finally{
   if(server.listening)await new Promise(resolve=>server.close(resolve));
@@ -61,4 +60,4 @@ async function panel(){
   else console.error('Diagnostic browser closure uncertain; owned root retained until hosted VM destruction.');
  }
 }
-module.exports={sample,panel,pathCases};if(require.main===module)panel().catch(()=>{console.error('Windows local navigation comparison failed outside an observed sample.');process.exitCode=1;});
+module.exports={sample,panel,environmentCases};if(require.main===module)panel().catch(()=>{console.error('Windows local navigation comparison failed outside an observed sample.');process.exitCode=1;});

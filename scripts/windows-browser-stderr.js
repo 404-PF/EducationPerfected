@@ -30,16 +30,18 @@ function browserStderr(){
  return{observe,attach,result:()=>({attached,bytesExamined,truncated,...flags})};
 }
 function browserLogFile(file){
- const fs=require('node:fs'),diagnostic=browserStderr();let fd,state='unreadable';
+ const fs=require('node:fs'),diagnostic=browserStderr();let fd,state='unreadable',networkServiceRestartCount=null;
  try{
   fd=fs.openSync(file,'r');
   const stat=fs.fstatSync(fd);
   if(!stat.isFile())throw new Error('Expected owned regular log file');
   // One extra byte lets the collector distinguish a complete prefix from a capped read.
   const buffer=Buffer.alloc(LIMIT+1),count=fs.readSync(fd,buffer,0,buffer.length,0);
-  diagnostic.observe(buffer.subarray(0,count));state='read';
+  diagnostic.observe(buffer.subarray(0,count));
+  const text=buffer.subarray(0,Math.min(count,LIMIT)).toString('utf8');
+  networkServiceRestartCount=Math.min(32,(text.match(/network_service[^\r\n]{0,256}Network service crashed/gi)||[]).length);state='read';
  }catch(error){if(error.code==='ENOENT')state='absent';}
  finally{if(fd!==undefined)fs.closeSync(fd);}
- const flags=diagnostic.result();delete flags.attached;return{state,...flags};
+ const flags=diagnostic.result();delete flags.attached;return{state,networkServiceRestartCount,...flags};
 }
 module.exports={browserStderr,browserLogFile,LIMIT};

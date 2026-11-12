@@ -122,7 +122,7 @@ jobs:
       - name: Windows actual SEA first-run public consent and direct acquisition
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows' }}
         run: python scripts/downloadable-first-run-windows.py
-      - name: Windows independent empty versus inherited PATH navigation comparison
+      - name: Windows independent isolated versus inherited environment comparison
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows' }}
         run: node scripts/windows-navigation-panel.js
       - name: Select exact downloadable artifact for existing credential fixtures

@@ -1,16 +1,17 @@
-const assert=require('node:assert/strict'),{sample,pathCases}=require('./windows-navigation-panel');
+const assert=require('node:assert/strict'),{sample,environmentCases}=require('./windows-navigation-panel');
 const {browserStderr,browserLogFile,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=require('node:stream');
 (async()=>{
- const cases=pathCases({PATH:'empty',HOME:'owned',Path:'conflict',NODE_OPTIONS:undefined},{Path:'host-tools'});
- assert.deepEqual(cases.map(entry=>entry.pathKind),['empty','inherited','empty','inherited']);
- for(const [index,entry] of cases.entries()){assert.equal(entry.env.PATH,index%2?'host-tools':'empty');assert.equal(entry.env.HOME,'owned');assert.equal(Object.keys(entry.env).filter(key=>key.toUpperCase()==='PATH').length,1);}
- assert.throws(()=>pathCases({PATH:'empty'},{}));assert.throws(()=>pathCases({PATH:'empty'},{PATH:''}));
+ const environments=environmentCases({HOME:'owned',PATH:'empty'},{HOME:'host',Path:'host-tools',EP_PASSWORD:'private',NODE_OPTIONS:'private'});
+ assert.deepEqual(environments.map(entry=>entry.environmentKind),['isolated','inherited','isolated','inherited']);
+ assert.deepEqual(environments[0].env,{HOME:'owned',PATH:'empty'});assert.deepEqual(environments[1].env,{HOME:'host',Path:'host-tools'});
+ assert.notEqual(environments[0].env,environments[2].env);
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-log-inert-')),logPath=path.join(root,'chrome.log');
  try{
-  assert.equal(browserLogFile(logPath).state,'absent');assert.equal(browserLogFile(root).state,'unreadable');
+  assert.equal(browserLogFile(logPath).state,'absent');assert.equal(browserLogFile(logPath).networkServiceRestartCount,null);assert.equal(browserLogFile(root).state,'unreadable');
   fs.writeFileSync(logPath,'private-path network_service_instance_impl.cc: Network service crashed private\n'+'x'.repeat(LIMIT));
-  const file=browserLogFile(logPath);assert.equal(file.state,'read');assert.equal(file.bytesExamined,LIMIT);assert.equal(file.truncated,true);assert.equal(file.networkServiceCrash,true);assert.ok(!JSON.stringify(file).includes('private'));
+  const file=browserLogFile(logPath);assert.equal(file.state,'read');assert.equal(file.bytesExamined,LIMIT);assert.equal(file.truncated,true);assert.equal(file.networkServiceCrash,true);assert.equal(file.networkServiceRestartCount,1);assert.ok(!JSON.stringify(file).includes('private'));
+  fs.writeFileSync(logPath,('network_service_instance_impl.cc: Network service crashed\n').repeat(40));assert.equal(browserLogFile(logPath).networkServiceRestartCount,32);
   const page={url:()=> 'about:blank',goto:async()=>{},waitForSelector:async()=>{}};
   let options;const browser={pages:async()=>[page],close:async()=>{},process:()=>null};
   const result=await sample({kind:'initial-page',logPath,launch:async value=>{options=value;return browser;},requestSeen:()=>true});
