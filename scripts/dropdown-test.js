@@ -2,6 +2,11 @@ const assert=require('node:assert/strict'),puppeteer=require('puppeteer');
 const {createServer}=require('./mock-ep');const {installDropdownFixture}=require('./dropdown-fixture');
 const {detectQuestion}=require('../lib/detect-question');const {playDropdownRound}=require('../lib/dropdown-handler');
 const {readDropdownsInPage}=require('../lib/dropdown-state');
+const countFields=mutation=>{
+ if(!['mixed','extraSelect'].includes(mutation))return {};
+ const extra=Number(mutation==='mixed');
+ return{definitionCount:5+extra,dropdownDefinitionCount:5,companionDefinitionCount:0,unsupportedDefinitionCount:extra};
+};
 (async()=>{const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{browser=await puppeteer.launch({headless:true,executablePath:process.env.HANDLER_EXECUTABLE_PATH||undefined});const page=await browser.newPage(),origin='http://127.0.0.1:'+server.address().port;
 const setup=async()=>{await page.goto(origin+'/lesson');await page.evaluate(installDropdownFixture);
@@ -53,7 +58,7 @@ for(const mutation of ['manual','assessment','mixed','unmarked','missing','dupli
  assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  const bad=await detectQuestion(page);assert.equal(bad.kind,'unsupported',mutation);
  if(mutation==='assessment')assert.equal(bad.diagnostic,undefined,mutation);
- else assert.deepEqual(bad.diagnostic,{kind:'dropdown-refusal',guard:expectedDropdownGuards[mutation],domSelectCount:mutation==='extraSelect'?6:5},mutation);
+ else assert.deepEqual(bad.diagnostic,{kind:'dropdown-refusal',guard:expectedDropdownGuards[mutation],domSelectCount:mutation==='extraSelect'?6:5,...countFields(mutation)},mutation);
  assert.equal(await page.evaluate(()=>dropdownFixture.getterCalls||0),0);
  assert.equal((await playDropdownRound(page,bad,{enter:true,timeout:50})).status,'stopped',mutation);
  assert.deepEqual(await page.evaluate(()=>[dropdownFixture.keys.length,dropdownFixture.submits,dropdownFixture.nexts]),[0,0,0],mutation);
