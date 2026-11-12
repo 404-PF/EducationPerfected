@@ -13,6 +13,8 @@
     "release:check": "node scripts/release-gate.js",
     "test:beta-preparation": "node scripts/beta-preparation-test.js",
     "test:release-gate": "node scripts/release-gate-test.js",
+    "build:downloadable-candidate": "node packaging/build-downloadable.js",
+    "test:browser-download": "node scripts/download-browser-test.js && node scripts/download-bootstrap-test.js",
     "build:linux-dev": "node packaging/build-linux.js",
     "test:packaged": "node scripts/sea-checksum-test.js && node scripts/packaged-cli-test.js && node scripts/packaged-integrity-test.js",
     "test:store:integration": "sh scripts/native-store-integration.sh",

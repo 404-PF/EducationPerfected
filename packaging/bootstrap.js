@@ -48,6 +48,10 @@ async function main() {
             catch { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode ||= 1; }
             return;
         }
+        if(manifest.browserMode==='direct-google-download') {
+            if(manifest.browserVersion!==require('./browser-downloads.json').version)throw Error('Browser download pin mismatch');
+            process.env.PUPPETEER_EXECUTABLE_PATH=await require('./download-browser').ensureBrowser();
+        } else {
         // Read-only view over the embedded asset. Never write to this memory.
         const browserAsset = Buffer.from(getRawAsset('browser'));
         const browserStream = () => Readable.from((async function* () {
@@ -67,6 +71,7 @@ async function main() {
             : path.join(dir, manifest.executable);
         if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1') {
             require('../lib/test-browser-identity').emitBrowserIdentity(manifest);
+        }
         }
         handoffSignals();
         await require('../bin/cli').runCli();

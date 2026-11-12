@@ -489,3 +489,14 @@ EP's source renders separate template lines as adjacent paragraph nodes, without
 ### Plain-block inline style tokens
 
 EP InlineTextElement consumes the style toggles `**`, `__`, `//` and `~~` rather than displaying them. Plain-block choices accept balanced occurrences of those exact tokens (including mixed styles and existing color spans) only with an exact source-shaped paragraph/span text association. Unknown descendants, missing/extra paragraphs, changed text, unbalanced toggles and style-token escapes stop. Highlight, sub/sup and heading syntax remain unsupported here. Render-text diagnostics add fixed token-family booleans, never option text or answer values, so a further mismatch can identify the still-unsupported family. The one-line/one-paragraph live failure did not include its template, so this fixes a source-proven formatting gap, not a confirmed cause of that exact report. No live EP validation.
+
+## Downloadable beta preparation
+
+A separate [downloadable-beta policy](release/downloadable-beta-policy.md) defines
+an unsigned executable candidate that does not bundle Chrome. It asks on first
+run before downloading a fixed Chrome for Testing version directly from Google,
+then retains it in a local cache. It needs internet for that first download and
+is not an offline all-in-one bundle. This is not a published beta: five-target
+native validation, exact-artifact notices/integrity evidence and release approval
+remain required. Existing development builds that embed Chrome are not eligible
+for this publication path. Source ZIP use is unchanged: `npm ci`, then `npm run cli`.

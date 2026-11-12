@@ -9,14 +9,18 @@ async function buildDevelopment(target) {
  if (process.argv.length > 2) throw Error('This development builder accepts no output path arguments');
  if (process.env.PUPPETEER_EXECUTABLE_PATH) throw Error('Custom browser paths are not accepted by this development builder');
  const out = path.resolve(__dirname, '../build', target.directory); fs.mkdirSync(out, { recursive: true });
- const browser = await require('puppeteer').executablePath(), browserDir = path.dirname(browser);
+ const directDownload=target.browserMode==='direct-google-download';
+ let browserDir,archiveRoot,browserExecutable;
+ if(!directDownload){
+ const browser = await require('puppeteer').executablePath();browserDir = path.dirname(browser);
  if (!fs.existsSync(browser)) throw Error('Chrome for Testing is not installed; run npx puppeteer browsers install chrome');
- let archiveRoot=browserDir, browserExecutable=path.basename(browser);
+ archiveRoot=browserDir;browserExecutable=path.basename(browser);
  if(target.macosLayout) {
   if(process.platform!=='darwin' || !['arm64','x64'].includes(process.arch))throw Error('macOS archive preparation requires native macOS arm64 or x64');
   const layout=require('./macos-browser-layout').macosBrowserLayout(browser,process.arch);
   archiveRoot=layout.archiveRoot; browserExecutable=layout.executable;
  } else if (path.basename(browserDir) !== target.browserDirectory || target.browserFiles.some(file => !fs.existsSync(path.join(browserDir,file)))) throw Error('Expected a Chrome for Testing payload directory');
+ }
  // Inventory every installed production dependency, including missing notice files.
  // This is an audit aid, not permission to redistribute an incomplete notice set.
  const notices = path.join(out, 'THIRD-PARTY-NOTICES'); fs.rmSync(notices, {recursive:true,force:true}); fs.mkdirSync(notices, { recursive: true });
@@ -60,14 +64,20 @@ async function buildDevelopment(target) {
  const missing = inventory.filter(item => !item.files.length);
  fs.writeFileSync(path.join(notices, 'NOT-FOR-DISTRIBUTION.txt'), 'Development artifact only. License/notice completeness and project rights are NOT cleared. Missing notices: ' + missing.map(item => item.name).join(', ') + '\n');
  if (missing.length) console.warn('Development build has missing third-party notice files; distribution is blocked. See DEPENDENCY-INVENTORY.json.');
- const archive = path.join(out, 'browser.tar.gz');
+ let archive;
+ if(!directDownload){
+ archive = path.join(out, 'browser.tar.gz');
  await pipeline(packTar(archiveRoot), createGzip(), fs.createWriteStream(archive));
  const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(archive)) hash.update(chunk);
  // browserVersion is the expected public pin, not an observed cached-binary version.
  // The diagnostic observer must compare the actual post-ready version separately.
  fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ length: fs.statSync(archive).size, sha256: hash.digest('hex'), executable: browserExecutable, browserVersion: require('puppeteer').PUPPETEER_REVISIONS.chrome }));
+ } else {
+ fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify({browserMode:'direct-google-download',browserVersion:require('./browser-downloads.json').version}));
+ fs.writeFileSync(path.join(notices,'BROWSER.txt'),'No browser binary is included. First run offers a fixed-version direct Google download under Google terms; checksum pins are in browser-downloads.json. Browser notices remain with that download.\n');
+ }
  await esbuild.build({ entryPoints: [path.join(__dirname, 'bootstrap.js')], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(out, 'main.cjs'), external: ['keytar', '@napi-rs/keyring'], define: { 'process.env.NODE_ENV': '"production"' } });
- const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { browser: archive, manifest: path.join(out, 'manifest.json'), native: require.resolve(target.nativePackage) } };
+ const config = { main: path.join(out, 'main.cjs'), output: path.join(out, 'main.blob'), disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none', assets: { ...(directDownload?{}:{browser:archive}), manifest: path.join(out, 'manifest.json'), native: require.resolve(target.nativePackage) } };
  fs.writeFileSync(path.join(out, 'sea.json'), JSON.stringify(config));
  cp.execFileSync(process.execPath, ['--experimental-sea-config', path.join(out, 'sea.json')], { stdio: 'inherit' });
  const executable = path.join(out, target.executable); fs.copyFileSync(process.execPath, executable); fs.chmodSync(executable, 0o700);

@@ -1,0 +1,80 @@
+# Downloadable beta candidate policy
+
+This is preparation, not release approval or a statement that native checks pass.
+
+## Distribution boundary
+
+The downloadable candidate is a Node SEA executable plus its dependency/runtime
+notices. It contains no Chrome/Chromium archive or executable. Build with
+`npm run build:downloadable-candidate` on the matching native host with Node
+22.23.4. Existing `*-dev` builders still embed a browser and are NOT this
+publication path. Do not upload their artifacts by mistake.
+
+On first ordinary launch the candidate asks in an interactive terminal before
+fetching Chrome for Testing 156.0.8078.47 directly from Google's fixed HTTPS
+source. It shows Google's terms links. Declining stops before browser launch.
+The five platform archive SHA-256 pins were independently measured from the
+exact Google downloads listed by the official version manifest; these are our
+observations, not Google-published checksums. The installer verifies that hash
+before extraction. It does not run npm, install Node, or install system packages.
+No browser binary is mirrored or included in our release. Browser terms and
+notices remain Google's, accessible in the downloaded payload and chrome://credits.
+The CfT dashboard repository's Apache license is not a license for Chrome binaries.
+
+The browser is retained under `~/.educationperfected/browsers` for later launches.
+An incomplete installation or install lock stops rather than using arbitrary
+host browsers. No automatic installed-browser fallback is provided. First run
+needs internet, about 200 MB download space plus extraction space, and the OS
+libraries/tools required by Chrome and its ZIP extractor. An already installed
+verified-cache browser is reused; this is not yet an offline-support claim.
+Browser launch and sandbox requirements are not waived. No sandbox-disabling
+flag is added by the downloader. Linux distribution/library compatibility is
+limited to the hosts actually validated.
+
+## Unsigned beta
+
+Use an explicit unsigned beta policy: no paid code-signing identity, Windows
+publisher certificate, Apple Developer ID or notarization is promised. macOS
+SEA construction still needs its existing ad-hoc integrity signature; that is
+not publisher authentication. Final macOS bytes must pass their ad-hoc signature
+check. Windows/Linux files are unsigned. Publish SHA-256 hashes for the exact
+files and keep platform warnings explicit. Do not promise that Gatekeeper,
+SmartScreen, antivirus or organization policies will permit them. Do not advise
+users to disable OS-wide protections. Native downloaded-file launch behavior
+must be tested before supplying any platform-specific exception instructions.
+
+## Contributor risk decision, not legal clearance
+
+Page elected to proceed despite unresolved other-contributor rights on
+12 November 2026 after reviewing the limits of akioweh's permission. Record the
+owner decision, not a claim that akioweh can authorize others' contributions.
+LICENSE and its public rights limits remain unchanged. Schema2 calls this
+`project-rights-owner-risk-decision`, explicitly distinct from legal clearance.
+A reviewer must establish that the decision covers the proposed release scope;
+its presence does not supply tag/release/upload approval.
+
+## Evidence required
+
+Schema2 keeps four global records and six records for each of five targets.
+`browser-acquisition-policy` replaces bundled-browser redistribution review:
+verify no Chrome bytes are shipped and document direct Google acquisition terms.
+`browser-acquisition-launch` replaces the embedded-browser check: prove a fresh
+first-run consent/download/hash path, correct native browser launch, cache reuse,
+cancellation/failure behavior and cleanup for the exact executable. The other
+native/store/shutdown/no-Node checks remain. No old fixture is relabeled passed.
+Evidence states `distributionMode: direct-google-download` and
+`browserBundled: false`; bundled artifacts cannot use this schema to pass.
+
+No release/evidence.json is populated by this policy. Final-commit build,
+artifact/notices review, native credential save/read/delete, real console
+shutdown, and clean-machine no-Node evidence remain required on all five targets.
+Build success is not no-Node launch proof. Target narrowing needs a new decision.
+A future reviewed publication workflow must run release:check before upload.
+Every merge and every tag/release/publication still needs Page's separate approval.
+
+## Source references
+
+- https://googlechromelabs.github.io/chrome-for-testing/156.0.8078.47.json
+- https://developer.chrome.com/docs/automation-and-testing/chrome-for-testing
+- https://www.google.com/chrome/terms/
+- https://policies.google.com/terms

@@ -18,6 +18,7 @@ function validate(evidence, commit, base = root) {
     const failures = [];
     if (!/^[a-f0-9]{40}$/.test(commit || '')) failures.push('Expected exact source commit');
     if (evidence?.schemaVersion !== criteria.schemaVersion || evidence?.sourceCommit !== commit) failures.push('Evidence schema/source commit mismatch');
+    if(evidence?.distributionMode!==criteria.distributionMode||evidence?.browserBundled!==false)failures.push('Distribution mode/browser payload mismatch');
     const inspect = (record, label) => {
         if (record?.status !== criteria.acceptedStatus) failures.push(label + ': not passed (SKIP is not proof)');
         if (record?.sourceCommit !== commit) failures.push(label + ': source commit mismatch');
