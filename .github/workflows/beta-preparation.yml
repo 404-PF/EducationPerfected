@@ -101,6 +101,9 @@ jobs:
       - name: Observe exact downloadable SEA against local fixture
         if: inputs.browser_mode == 'direct-download-validation'
         run: node scripts/downloadable-cli-test.js
+      - name: Actual SEA first-run interactive consent and direct acquisition
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
+        run: python3 scripts/downloadable-first-run-posix.py
       # Intentionally no upload-artifact, tag, release, saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
       # Executable and notices remain ephemeral in this runner's build directory.
