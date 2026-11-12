@@ -1,6 +1,6 @@
 # Phase 3 release evidence
 
-No release workflow currently exists. `npm run build:linux-dev` and `npm run build:windows-dev` are local development builds, not releases. The Windows experiment has no final valid signing or distribution policy. `npm run release:check` is a fail-closed evidence checklist, not an upload command or permission to publish.
+A build-only [beta preparation workflow](beta-preparation.md) is available in source. It creates no tag, upload or release; no publication workflow currently exists. `npm run build:linux-dev` and `npm run build:windows-dev` are local development builds, not releases. The Windows experiment has no final valid signing or distribution policy. `npm run release:check` is a fail-closed evidence checklist, not an upload command or permission to publish.
 
 Create an untracked `release/evidence.json` from the example only after evidence is reviewed. Every global and per-target check must be `passed`, name the exact current source commit, link its evidence and name its reviewer. A skipped Windows child-signal fixture, another platform's result or package availability is not native proof. The validator checks completeness and freshness, not evidence authenticity or legal clearance. A future release workflow must invoke this check before any artifact publication, and still require owner authority.
 
