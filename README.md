@@ -488,4 +488,3 @@ EP's source renders separate template lines as adjacent paragraph nodes, without
 ### Plain-block inline style tokens
 
 EP InlineTextElement consumes the style toggles `**`, `__`, `//` and `~~` rather than displaying them. Plain-block choices accept balanced occurrences of those exact tokens (including mixed styles and existing color spans) only with an exact source-shaped paragraph/span text association. Unknown descendants, missing/extra paragraphs, changed text, unbalanced toggles and style-token escapes stop. Highlight, sub/sup and heading syntax remain unsupported here. Render-text diagnostics add fixed token-family booleans, never option text or answer values, so a further mismatch can identify the still-unsupported family. The one-line/one-paragraph live failure did not include its template, so this fixes a source-proven formatting gap, not a confirmed cause of that exact report. No live EP validation.
-
