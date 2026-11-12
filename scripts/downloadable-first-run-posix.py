@@ -9,6 +9,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # Suppress request logs: this fixture reports only fixed checkpoints.
         pass
 
+def verify_result(response,text,sent,ready,returncode,home):
+    if response.startswith(b'cancel'):
+        assert sent and returncode==1 and not ready
+        assert b'Browser download checksum verified' not in text
+        cache=home/'.educationperfected'/'browsers';assert not list(cache.iterdir())
+    else:
+        assert sent and ready and b'Browser download checksum verified' in text and returncode==130
+        cache=home/'.educationperfected'/'browsers';assert len(list(cache.glob('*/COMPLETE.json')))==1
+        assert not list(cache.glob('*.lock')) and not list(cache.glob('.download-*'))
+
 def run_probe(artifact,env,home,response):
     master,slave=pty.openpty();child=None
     try:
@@ -22,14 +32,7 @@ def run_probe(artifact,env,home,response):
             if b'EP_TEST_LOGIN_READY' in text:
                 ready=True;os.kill(child.pid,signal.SIGINT);break
         child.wait(timeout=15)
-        if response.startswith(b'cancel'):
-            assert sent and child.returncode==1 and not ready
-            assert b'Browser download checksum verified' not in text
-            cache=home/'.educationperfected'/'browsers';assert not list(cache.iterdir())
-        else:
-            assert sent and ready and b'Browser download checksum verified' in text and child.returncode==130
-            cache=home/'.educationperfected'/'browsers';assert len(list(cache.glob('*/COMPLETE.json')))==1
-            assert not list(cache.glob('*.lock')) and not list(cache.glob('.download-*'))
+        verify_result(response,text,sent,ready,child.returncode,home)
     finally:
         if child is not None and child.poll() is None:
             os.killpg(child.pid,signal.SIGKILL);child.wait(timeout=10)

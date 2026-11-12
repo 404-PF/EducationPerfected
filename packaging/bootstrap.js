@@ -21,6 +21,28 @@ function createCleanup(dir,getBinding,setPending){
             process.exitCode ||= 1;
         } };
 }
+async function prepareEmbeddedBrowser(dir,manifest){
+    // Read-only view over the embedded asset. Never write to this memory.
+    const browserAsset = Buffer.from(getRawAsset('browser'));
+    const browserStream = () => Readable.from((async function* () {
+        for (let offset = 0; offset < browserAsset.length; offset += 65536) {
+            yield browserAsset.subarray(offset, offset + 65536);
+            // Keep startup signal handlers responsive during the full hash pass.
+            await nextTurn();
+        }
+    })());
+    if (browserAsset.length !== manifest.length) throw Error('Invalid browser payload size');
+    const hash = createHash('sha256');
+    for await (const chunk of browserStream()) hash.update(chunk);
+    if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
+    await pipeline(browserStream(), createGunzip(), unpackTar(dir));
+    process.env.PUPPETEER_EXECUTABLE_PATH = process.platform === 'darwin'
+        ? require('./macos-extracted-executable').macosExtractedExecutable(dir, manifest.executable)
+        : path.join(dir, manifest.executable);
+    if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1') {
+        require('../lib/test-browser-identity').emitBrowserIdentity(manifest);
+    }
+}
 async function main() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
     fs.chmodSync(dir, 0o700);
@@ -56,26 +78,7 @@ async function main() {
             process.env.PUPPETEER_BROWSER='chrome';
             process.env.PUPPETEER_EXECUTABLE_PATH=await require('./download-browser').ensureBrowser();
         } else {
-            // Read-only view over the embedded asset. Never write to this memory.
-            const browserAsset = Buffer.from(getRawAsset('browser'));
-            const browserStream = () => Readable.from((async function* () {
-                for (let offset = 0; offset < browserAsset.length; offset += 65536) {
-                    yield browserAsset.subarray(offset, offset + 65536);
-                    // Keep startup signal handlers responsive during the full hash pass.
-                    await nextTurn();
-                }
-            })());
-            if (browserAsset.length !== manifest.length) throw Error('Invalid browser payload size');
-            const hash = createHash('sha256');
-            for await (const chunk of browserStream()) hash.update(chunk);
-            if (hash.digest('hex') !== manifest.sha256) throw Object.assign(new Error('Browser payload checksum mismatch'), {code:'EP_BROWSER_CHECKSUM'});
-            await pipeline(browserStream(), createGunzip(), unpackTar(dir));
-            process.env.PUPPETEER_EXECUTABLE_PATH = process.platform === 'darwin'
-                ? require('./macos-extracted-executable').macosExtractedExecutable(dir, manifest.executable)
-                : path.join(dir, manifest.executable);
-            if (process.env.EP_TEST_BOOT === '1' && process.env.EP_TEST_BROWSER_IDENTITY === '1') {
-                require('../lib/test-browser-identity').emitBrowserIdentity(manifest);
-            }
+            await prepareEmbeddedBrowser(dir,manifest);
         }
         handoffSignals();
         await require('../bin/cli').runCli();

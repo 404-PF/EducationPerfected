@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const pins=require('./browser-downloads.json');
 const {createHash}=require('node:crypto');
-async function fileHash(file){const hash=createHash('sha256');for await(const chunk of fs.createReadStream(file))hash.update(chunk);return hash.digest('hex');}
+async function fileHash(file){const hash=createHash('sha256');for await(const chunk of fs.createReadStream(file)){hash.update(chunk);}return hash.digest('hex');}
 const platforms={'linux-x64':'linux64','linux-arm64':'linux-arm64','darwin-arm64':'mac-arm64','darwin-x64':'mac-x64','win32-x64':'win64'};
 function checkExtractor(platform=process.platform,run=require('node:child_process').spawnSync){
  const command=platform==='win32'?path.join(process.env.SystemRoot||String.raw`C:\Windows`,'System32','tar.exe'):'/usr/bin/unzip';
