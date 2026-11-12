@@ -106,8 +106,27 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
     assert.match(active,/if: github.ref == 'refs\/heads\/main'/);
     assert.match(active,/npm ci --ignore-scripts/);assert.match(active,/node-version: 22\.23\.4/);
     assert.doesNotMatch(active,/continue-on-error/,'A failed probe must still fail the job');
-    assert.match(active,/steps\.candidate_build\.outcome == 'success'/);
-    assert.match(active,/steps\.store_candidate\.outcome == 'success'/);
+    const stepGate=(content,name)=>{
+        const step=content.split('      - name: ').find(block=>block.startsWith(name+'\n'));
+        assert.ok(step,'Named native probe must exist');
+        return step.split('\n').find(line=>line.trimStart().startsWith('if:'))||'';
+    };
+    const requiredGates=[
+        ['Windows actual SEA first-run public consent and direct acquisition','candidate_build'],
+        ['Select exact downloadable artifact for existing credential fixtures','candidate_build'],
+        ['Windows exact SEA hosted synthetic setup health and deletion','store_candidate'],
+    ];
+    const verifyGates=content=>{for(const [name,prerequisite] of requiredGates){
+        const gate=stepGate(content,name);
+        assert.ok(gate.includes('!cancelled()')&&gate.includes("steps."+prerequisite+".outcome == 'success'")&&gate.includes("inputs.browser_mode == 'direct-download-validation'"),'Each independent step needs its own prerequisite');
+        if(name.startsWith('Windows'))assert.ok(gate.includes("runner.os == 'Windows'"));
+    }};
+    verifyGates(active);
+    for(const [name,prerequisite] of requiredGates){
+        const gate=stepGate(active,name);
+        await assert.rejects(async()=>verifyGates(active.replace(gate,gate.replace("steps."+prerequisite+".outcome == 'success'",'true'))));
+        await assert.rejects(async()=>verifyGates(active.replace(gate,gate.replace('!cancelled()','true'))));
+    }
     assert.doesNotMatch(active,/upload-artifact|contents: write|gh release|git tag|git push|actions\/cache|pull_request_target/);
     assert.doesNotMatch(active,/run:.*\$\{\{\s*inputs\./);
     assert.equal((active.match(/- uses:/g)||[]).length,4);

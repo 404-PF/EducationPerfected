@@ -11,6 +11,7 @@ const markers={
  connectionClosed:'The browser connection closed.',
  connectionRefused:'The browser connection was refused.',
  timedOut:'The browser or sign-in step timed out.',
+ sandboxBlocked:'The browser sandbox was blocked by operating-system policy.',
  genericFailure:'The operation failed; check the browser, sign-in state and installed runtime.',
  integrityFailed:'Browser payload integrity check failed (EP_BROWSER_CHECKSUM)',
 };
