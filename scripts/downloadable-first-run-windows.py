@@ -42,6 +42,29 @@ def main():
     conpty.audit_abi()
     run_fixture()
 
+def first_run_evidence(data):
+    # Literal-presence flags only. No arbitrary child text, paths or credentials.
+    markers={
+        'archive_verified':b'Browser download checksum verified',
+        'owner_ready':b'EP_TEST_LOGIN_READY',
+        'commands_ready':b'Commands: start',
+        'startup_failed':b'EducationPerfected could not start.',
+        'missing_file':b'A required browser or runtime file is missing.',
+        'access_denied':b'The operating system denied access.',
+        'launch_failed':b'The browser could not launch; check display and system browser dependencies.',
+        'connection_closed':b'The browser connection closed.',
+        'timed_out':b'The browser or sign-in step timed out.',
+        'connection_refused':b'The browser connection was refused.',
+        'sandbox_blocked':b'The browser sandbox was blocked by operating-system policy.',
+        'generic_failed':b'The operation failed; check the browser, sign-in state and installed runtime.',
+        'extractor_missing':b'ZIP extraction needs unzip on PATH',
+        'checksum_failed':b'EP_BROWSER_CHECKSUM',
+    }
+    return {name:literal in data for name,literal in markers.items()}
+
+def report_drain(data):
+    print('Windows first-run fixed evidence: '+json.dumps(first_run_evidence(data),sort_keys=True),flush=True)
+
 def child_environment(home,temp,empty,port):
     env={k:v for k,v in os.environ.items() if k.upper() not in ('PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_EXECUTABLE_PATH','PUPPETEER_BROWSER')}
     env.update(HOME=str(home),USERPROFILE=str(home),LOCALAPPDATA=str(home/'local'),APPDATA=str(home/'roaming'),TEMP=str(temp),TMP=str(temp),TMPDIR=str(temp),PATH=str(empty),EP_TEST_BOOT='1',EP_LOGIN_URL='http://127.0.0.1:'+str(port)+'/app/login',EP_LOGIN_HOST='127.0.0.1')
@@ -67,7 +90,7 @@ def run_fixture():
                 nonlocal safe
                 safe=True
             prompts=[(b'Type download',b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')] if accepted else [(b'Type download',b'cancel\r')]
-            conpty.run_console(str(artifact),[],env,str(home),prompts,b'Browser download checksum verified' if accepted else b'Browser download cancelled',expected_exit=130 if accepted else 1,on_closed=closed,process_budget_ms=960000,public_browser_download=True,forbidden_output=() if accepted else (b'EP_TEST_LOGIN_READY',b'Browser download checksum verified'))
+            conpty.run_console(str(artifact),[],env,str(home),prompts,b'Browser download checksum verified' if accepted else b'Browser download cancelled',expected_exit=130 if accepted else 1,on_closed=closed,process_budget_ms=960000,public_browser_download=True,capability_diagnostics=True,on_drain=report_drain,forbidden_output=() if accepted else (b'EP_TEST_LOGIN_READY',b'Browser download checksum verified'))
             verify_cache(home,accepted);assert not list(temp.glob('educationperfected-*'))
         print('Windows exact copied SEA fresh-home decline/download/checksum/local login-ready/raw ETX130 and owned job/EOF/extraction/cache-lock cleanup passed. Empty child PATH, not clean-machine no-Node or physical-console evidence.',flush=True)
     finally:

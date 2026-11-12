@@ -31,3 +31,10 @@ with tempfile.TemporaryDirectory(prefix='ep-first-run-inert-') as folder:
     wrong=cache/'wrong-directory';install.rename(wrong);refuses();wrong.rename(install)
     exe.write_bytes(b'changed');refuses()
 print('Windows first-run driver host/cache/receipt/executable-hash/lock/staging controls passed (inert only).')
+
+evidence=m.first_run_evidence(b'private@example.test C:\\private\\token EP_TEST_LOGIN_READY Browser download checksum verified')
+assert evidence['owner_ready'] and evidence['archive_verified'] and not evidence['startup_failed']
+assert all(type(value) is bool for value in evidence.values())
+assert not any(value in json.dumps(evidence) for value in ('private@example.test','private','token'))
+assert not any(m.first_run_evidence(b'arbitrary child output').values())
+print('Windows first-run fixed drain evidence excludes private and arbitrary child data (inert only).')
