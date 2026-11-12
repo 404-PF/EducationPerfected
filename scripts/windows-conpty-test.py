@@ -223,7 +223,7 @@ for scenario in ('success','child-nonzero','process-create','job-live'):
 print('Observer exceptions cannot replace success, primary setup/child failure or unconfirmed cleanup outcome (inert).')
 # The one public-download protocol is opt-in and cannot waive setup secret echoes.
 class PublicAPI(BudgetAPI):
-    def __init__(self,decline=False):super().__init__(900000);self.decline=decline
+    def __init__(self,decline=False):super().__init__(960000);self.decline=decline
     def CreateProcessW(self,exe,command,*args):
         assert command.value=='fixed.exe'
         return super().CreateProcessW(exe,c.create_unicode_buffer('fixed.exe --setup'),*args)
@@ -239,7 +239,8 @@ class PublicAPI(BudgetAPI):
 for decline in (False,True):
     api=PublicAPI(decline)
     prompts=[(b'Type download',b'cancel\r')] if decline else [(b'Type download',b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')]
-    assert m.run_console('fixed.exe',[],{'HOME':'owned'},'owned',prompts,b'cancel' if decline else b'Browser download checksum verified',api=api,process_budget_ms=900000,public_browser_download=True,expected_exit=1 if decline else 130)
+    assert m.run_console('fixed.exe',[],{'HOME':'owned'},'owned',prompts,b'cancel' if decline else b'Browser download checksum verified',api=api,process_budget_ms=960000,public_browser_download=True,expected_exit=1 if decline else 130)
+    assert api.waits[0]==960000 and api.waits.count(960000)==1
     assert api.writes==([b'cancel\r'] if decline else [b'download\r',b'\x03'])
 for kwargs in (
     {'args':['--setup'],'prompts':[(b'EP email',b'public-answer\r')]},
@@ -247,11 +248,11 @@ for kwargs in (
     {'args':[],'prompts':[(b'Type download',b'download\r')]},
 ):
     with mock.patch.object(m,'kernel32',side_effect=AssertionError('No allocation')):
-        try:m.run_console('fixed.exe',env={},cwd='owned',process_budget_ms=900000,public_browser_download=True,**kwargs)
+        try:m.run_console('fixed.exe',env={},cwd='owned',process_budget_ms=960000,public_browser_download=True,**kwargs)
         except RuntimeError as e:assert str(e)=='host-guard'
         else:raise AssertionError('Public protocol widened')
 with mock.patch.object(m,'kernel32',side_effect=AssertionError('No allocation')):
-    try:m.run_console('fixed.exe',[],{},'owned',process_budget_ms=900000)
+    try:m.run_console('fixed.exe',[],{},'owned',process_budget_ms=960000)
     except RuntimeError as e:assert str(e)=='host-guard'
     else:raise AssertionError('Default budget widened')
 print('Fixed public browser consent protocol permits public echo only; setup/default secret guards and default budgets unchanged (inert).')

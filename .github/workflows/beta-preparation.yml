@@ -79,8 +79,9 @@ jobs:
           npm run test:release-gate
           node scripts/sea-checksum-test.js
           node scripts/build-preflight-test.js
-          python scripts/windows-conpty-test.py
-          python scripts/downloadable-first-run-windows-test.py
+          if [ "$RUNNER_OS" = Windows ]; then python_bin=python; else python_bin=python3; fi
+          "$python_bin" scripts/windows-conpty-test.py
+          "$python_bin" scripts/downloadable-first-run-windows-test.py
       - name: Install pinned browser explicitly
         if: inputs.browser_mode != 'direct-download-validation'
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome

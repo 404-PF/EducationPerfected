@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix='ep-first-run-inert-') as folder:
     home=pathlib.Path(folder);cache=home/'.educationperfected'/'browsers';cache.mkdir(parents=True)
     m.verify_cache(home,False)
     pins=json.loads((pathlib.Path(__file__).resolve().parent.parent/'packaging'/'browser-downloads.json').read_text());pin=next(p for p in pins['archives'] if p['platform']=='win64')
-    install=cache/'synthetic';install.mkdir();exe=install/'inert.exe';exe.write_bytes(b'inert not executable')
+    install=cache/(pins['version']+'-win64');install.mkdir();exe=install/'inert.exe';exe.write_bytes(b'inert not executable')
     receipt=install/'COMPLETE.json';record={'version':pins['version'],'sha256':pin['sha256'],'executable':exe.name,'executableSha256':hashlib.sha256(exe.read_bytes()).hexdigest()}
     receipt.write_text(json.dumps(record));m.verify_cache(home,True)
     def refuses():
@@ -28,5 +28,6 @@ with tempfile.TemporaryDirectory(prefix='ep-first-run-inert-') as folder:
     receipt.write_text(json.dumps(record))
     lock=cache/'synthetic.lock';lock.touch();refuses();lock.unlink()
     staging=cache/'.download-inert';staging.mkdir();refuses();staging.rmdir()
+    wrong=cache/'wrong-directory';install.rename(wrong);refuses();wrong.rename(install)
     exe.write_bytes(b'changed');refuses()
 print('Windows first-run driver host/cache/receipt/executable-hash/lock/staging controls passed (inert only).')

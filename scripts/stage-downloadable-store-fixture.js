@@ -15,7 +15,7 @@ async function verify(directoryPath,filename,target,sourceCommit){
  return {source,expected};
 }
 async function stage(){
- assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
+ assert.equal(process.env.GITHUB_ACTIONS,'true','GITHUB_ACTIONS host guard');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted','RUNNER_ENVIRONMENT host guard');
  const base=require('./packaged-fixture-target').packagedFixtureTarget();
  const target=path.basename(path.dirname(base.executable)),sourceDirectory=path.dirname(base.executable)+'-downloadable';
  const {source,expected}=await verify(sourceDirectory,base.filename,target,process.env.GITHUB_SHA);
