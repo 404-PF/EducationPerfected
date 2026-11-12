@@ -17,11 +17,11 @@ Candidate label: `2026.11.12-beta.1`. Source: `352bf6ada59d97f6e7691397781cc478b
 - The exact source builds on the five selected hosted native targets using the existing development builders.
 - Candidate contracts, release-gate unit tests, synthetic bootstrap checksum tests and builder preflight contracts passed in each lane.
 - Each lane produced an executable/notice inventory and streamed SHA-256 values. No missing-notice warnings appeared in these logs. Notice files being present does not settle their adequacy or distribution rights.
-- The run uploaded zero Actions artifacts. No release or tag was created. Executables were discarded with the runners; only logs retain the hashes.
+- The run uploaded zero Actions artifacts. No release or tag was created. Executables were discarded with the runners; hashes remain in the logs and this record.
 
 ## What this does not prove
 
-This was not a native app launch, normal saved-login test, clean-machine/no-Node test, Ubuntu 24 sandbox check, Windows startup fix, release signing/notarization check or live EP run. It is not platform certification or authority to distribute. Each manifest states `build-only-not-for-distribution` and `publicationAuthorized:false`.
+This was not a native app launch, normal saved-login test, clean-machine/no-Node test, Ubuntu 24 sandbox check, Windows startup fix, release signing/notarization check or live EP run. It is not platform certification or authority to distribute. Each candidate manifest (`CANDIDATE.json`, not the embedded-browser `manifest.json`) states `build-only-not-for-distribution` and `publicationAuthorized:false`.
 
 The local Linux SEA build before this run was killed by SIGKILL. The hosted Linux build results above are separate successful evidence; they do not explain that local resource failure.
 
