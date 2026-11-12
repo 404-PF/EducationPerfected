@@ -97,6 +97,20 @@ def child_environment(home,temp,empty,port):
     env.update(HOME=str(home),USERPROFILE=str(home),LOCALAPPDATA=str(home/'local'),APPDATA=str(home/'roaming'),TEMP=str(temp),TMP=str(temp),TMPDIR=str(temp),PATH=str(empty),EP_TEST_BOOT='1',EP_LOGIN_URL='http://127.0.0.1:'+str(port)+'/app/login',EP_LOGIN_HOST='127.0.0.1')
     return env
 
+def listener_preflight(port):
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:'+str(port)+'/app/login',timeout=5) as response:
+            assert response.status==200
+            assert b'id="loginId"' in response.read()
+    except BaseException:
+        print('Windows first-run checkpoint: listener-preflight-failed',flush=True)
+        raise
+
+def http_evidence(server):
+    # Positive observations are monotonic within a probe. An absent observation
+    # is unknown, not false, because handler work may still be outstanding.
+    return {'requestSeen':True if server.request_seen else None,'responseWritten':True if server.response_written else None}
+
 def run_fixture():
     source=pathlib.Path(__file__).resolve().parent.parent/'build'/'windows-x64-downloadable'
     candidate=json.loads((source/'CANDIDATE.json').read_text())
@@ -108,8 +122,7 @@ def run_fixture():
     server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         # Verify the local listener before any browser/console work; no proxy.
-        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:'+str(server.server_port)+'/app/login',timeout=5) as response:
-            assert response.status==200 and b'id="loginId"' in response.read()
+        listener_preflight(server.server_port)
         home=root/'home';home.mkdir();temp=root/'tmp';temp.mkdir();empty=root/'empty';empty.mkdir()
         artifact=root/'educationperfected.exe';shutil.copy2(original,artifact);assert digest(artifact)==expected['sha256']
         env=child_environment(home,temp,empty,server.server_port)
@@ -119,7 +132,7 @@ def run_fixture():
             server.request_seen=False;server.response_written=False
             def drain(data):
                 report_drain(data)
-                print('Windows local HTTP evidence: '+json.dumps({'requestSeen':server.request_seen,'responseWritten':server.response_written}),flush=True)
+                print('Windows local HTTP evidence: '+json.dumps(http_evidence(server)),flush=True)
             def closed():
                 nonlocal safe
                 safe=True

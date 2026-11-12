@@ -14,3 +14,5 @@ console.log('Catch-only startup evidence: bounded names/codes/booleans, private 
 assert.equal(startupFailure({}, {process:()=>({exitCode:null,signalCode:'SIGTERM'})}).browserExit,'signalled');
 
 assert.equal(value.networkCode,'ERR_FAILED');assert.equal(startupFailure(new Error('net::ERR_PRIVATE_SECRET'),null).networkCode,'other');
+
+for(const code of ['ERR_FAILED2','ERR_FAILED-variant','ERR_FAILEDprivate'])assert.equal(startupFailure(new Error('net::'+code),null).networkCode,'other');

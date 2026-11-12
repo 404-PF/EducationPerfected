@@ -69,3 +69,17 @@ try:
     assert server.request_seen is True and server.response_written is True
 finally:server.shutdown();server.server_close();thread.join(3)
 print('Local HTTP listener responds with expected inert login form and only boolean request/response evidence.')
+
+from types import SimpleNamespace
+assert m.http_evidence(SimpleNamespace(request_seen=False,response_written=False))=={'requestSeen':None,'responseWritten':None}
+assert m.http_evidence(SimpleNamespace(request_seen=True,response_written=False))=={'requestSeen':True,'responseWritten':None}
+assert m.http_evidence(SimpleNamespace(request_seen=True,response_written=True))=={'requestSeen':True,'responseWritten':True}
+from unittest.mock import patch
+import contextlib,io
+output=io.StringIO()
+with patch.object(m.urllib.request,'build_opener',side_effect=RuntimeError('private')),contextlib.redirect_stdout(output):
+    try:m.listener_preflight(1)
+    except RuntimeError as error:assert str(error)=='private'
+    else:raise AssertionError('Preflight failure swallowed')
+assert output.getvalue()=='Windows first-run checkpoint: listener-preflight-failed\n'
+print('Local listener failures identify fixed stage; outstanding HTTP observations remain unknown, not false.')
