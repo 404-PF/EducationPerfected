@@ -6,6 +6,14 @@ on:
         description: 'Candidate label, 2026.M.D-beta.N (no tag or release created)'
         required: true
         type: string
+      browser_mode:
+        description: 'Embedded development build or direct-download native beta validation (no upload)'
+        required: true
+        default: embedded-development
+        type: choice
+        options:
+          - embedded-development
+          - direct-download-validation
 permissions:
   contents: read
 concurrency:
@@ -13,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/downloadable-beta-plan'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     env:
@@ -29,7 +37,7 @@ jobs:
         run: node scripts/beta-candidate.js check "$CANDIDATE_VERSION" linux-x64
   candidate:
     needs: validate
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/downloadable-beta-plan'
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -49,6 +57,7 @@ jobs:
     env:
       CANDIDATE_VERSION: ${{ inputs.candidate_version }}
       CANDIDATE_TARGET: ${{ matrix.target }}
+      BROWSER_MODE: ${{ inputs.browser_mode }}
     defaults:
       run:
         shell: bash
@@ -71,9 +80,27 @@ jobs:
           node scripts/sea-checksum-test.js
           node scripts/build-preflight-test.js
       - name: Install pinned browser explicitly
+        if: inputs.browser_mode != 'direct-download-validation'
         run: node node_modules/puppeteer/lib/puppeteer/node/cli.js browsers install chrome
       - name: Build fresh native candidate and inventory exact bytes
-        run: node scripts/beta-candidate.js build "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+        run: |
+          set -euo pipefail
+          if [ "$BROWSER_MODE" = direct-download-validation ]; then
+            node scripts/beta-candidate.js build-downloadable "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+          else
+            node scripts/beta-candidate.js build "$CANDIDATE_VERSION" "$CANDIDATE_TARGET"
+          fi
+      - name: Direct-download offline contracts
+        if: inputs.browser_mode == 'direct-download-validation'
+        run: npm run test:browser-download
+      - name: Start virtual display for Linux local browser fixture
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
+        run: |
+          Xvfb :99 -screen 0 1280x1024x24 > "$RUNNER_TEMP/ep-xvfb.log" 2>&1 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+      - name: Observe exact downloadable SEA against local fixture
+        if: inputs.browser_mode == 'direct-download-validation'
+        run: node scripts/downloadable-cli-test.js
       # Intentionally no upload-artifact, tag, release, saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
       # Executable and notices remain ephemeral in this runner's build directory.
