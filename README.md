@@ -493,8 +493,8 @@ EP InlineTextElement consumes the style toggles `**`, `__`, `//` and `~~` rather
 ## Downloadable beta preparation
 
 A separate [downloadable-beta policy](release/downloadable-beta-policy.md) defines
-an unsigned executable candidate that does not bundle Chrome. It asks on first
-run before downloading a fixed Chrome for Testing version directly from Google,
+an unsigned executable candidate that does not bundle Chrome. It requires an interactive terminal on first
+run and asks before downloading a fixed Chrome for Testing version directly from Google,
 then retains it in a local cache. It needs internet for that first download and
 is not an offline all-in-one bundle. This is not a published beta: five-target
 native validation, exact-artifact notices/integrity evidence and release approval

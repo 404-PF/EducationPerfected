@@ -97,6 +97,12 @@ jobs:
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
         run: |
           Xvfb :99 -screen 0 1280x1024x24 > "$RUNNER_TEMP/ep-xvfb.log" 2>&1 &
+          ready=0
+          for attempt in $(seq 1 50); do
+            if DISPLAY=:99 xdpyinfo > "$RUNNER_TEMP/ep-display.log" 2>&1; then ready=1; break; fi
+            sleep 0.2
+          done
+          [ "$ready" -eq 1 ] || { echo 'Virtual display did not become ready'; exit 1; }
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
       - name: Observe exact downloadable SEA against local fixture
         if: inputs.browser_mode == 'direct-download-validation'

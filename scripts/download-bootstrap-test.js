@@ -18,6 +18,6 @@ async function probe(fail,mismatch=false){
   return require(id);
  };
  vm.runInNewContext(source,{require:load,process:fake,Buffer,console:{error(){events.push('error');finished();}}}); // NOSONAR: fixed repository source with inert synthetic dependencies only.
- let timer;try{await Promise.race([done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Bootstrap probe timeout')),3000);})]);}finally{clearTimeout(timer);}await new Promise(resolve=>setImmediate(resolve));assert.equal(events.includes('acquire'),!mismatch);assert.equal(events.includes('cli'),!fail&&!mismatch);assert.ok(events.includes('cleanup'));assert.equal(fake.exitCode,fail||mismatch?1:undefined);
+ let timer;try{await Promise.race([done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Bootstrap probe timeout')),3000);})]);}finally{clearTimeout(timer);}await new Promise(resolve=>setImmediate(resolve));assert.equal(events.includes('acquire'),!mismatch);assert.equal(events.includes('cli'),!fail&&!mismatch);assert.ok(events.includes('cleanup'));assert.equal(fake.exitCode,fail||mismatch?1:undefined);
 }
 (async()=>{await probe(false);await probe(true);await probe(false,true);console.log('Downloadable bootstrap bypasses browser SEA asset/unpack, overwrites inherited browser path, and blocks CLI on failed acquisition (synthetic only).');})().catch(e=>{console.error(e);process.exitCode=1});

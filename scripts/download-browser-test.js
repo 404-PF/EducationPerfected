@@ -7,7 +7,7 @@ const pins=require('../packaging/browser-downloads.json');
  assert.throws(()=>hostPin('win32','arm64'));assert.throws(()=>hostPin('linux','ia32'));
  await assert.rejects(promptDownload({input:{isTTY:false},output:{isTTY:false,write(){}}}),/interactive/);
  const {PassThrough}=require('node:stream');
- for(const [answer,expected] of [['download',true],['no',false]]){const input=new PassThrough();input.isTTY=true;const output=new PassThrough();output.isTTY=true;const pending=promptDownload({input,output});input.write(answer+'\n');assert.equal(await pending,expected);}
+ await Promise.all([['download',true],['no',false]].map(async([answer,expected])=>{const input=new PassThrough();input.isTTY=true;const output=new PassThrough();output.isTTY=true;const pending=promptDownload({input,output});input.write(answer+'\n');assert.equal(await pending,expected);}));
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'ep-download-contract-'));
  const api={Browser:{CHROME:'chrome'},BrowserPlatform:{LINUX:'linux',LINUX_ARM:'linux_arm',MAC:'mac',MAC_ARM:'mac_arm',WIN64:'win64'}};
  const base={home,api,extractor(){},platform:'linux',arch:'x64',output:{write(){}},consent:async()=>true};
@@ -23,6 +23,7 @@ const pins=require('../packaging/browser-downloads.json');
   }});
   assert.equal(fs.readFileSync(file,'utf8'),'inert-not-browser');
   assert.equal(await ensureBrowser({...base,consent:()=>{throw new Error('No repeated consent');},install:()=>{throw new Error('No repeated download');}}),file);assert.equal(calls,1);
+  fs.appendFileSync(file,'corrupt');await assert.rejects(ensureBrowser(base),/changed/);fs.writeFileSync(file,'inert-not-browser');
   const directory=path.join(root,pins.version+'-linux64');
   const receipt=path.join(directory,'COMPLETE.json');const record=JSON.parse(fs.readFileSync(receipt));record.executable='../outside';fs.writeFileSync(receipt,JSON.stringify(record));await assert.rejects(ensureBrowser(base),/Invalid|Incomplete/);
   fs.rmSync(directory,{recursive:true});fs.writeFileSync(directory+'.lock','');await assert.rejects(ensureBrowser({...base,consent:()=>{throw new Error('Must lock before prompting');}}),/lock/);

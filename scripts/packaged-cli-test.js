@@ -53,12 +53,13 @@ async function runPackagedFixture({directDownload=false}={}) {
  const home = path.join(isolated, 'home'), emptyPath = path.join(isolated, 'empty-path'), runtime = path.join(isolated, 'runtime');
  for (const directory of [home, emptyPath, runtime]) fs.mkdirSync(directory, {mode: 0o700});
  // Direct mode's source controller prepares a private cache; not first-run UI proof.
- if(directDownload)acquiredPath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
+
  // A host-isolation surrogate, not certification on a separate no-Node machine.
  const env = {...process.env, HOME:home, USERPROFILE:home, XDG_CONFIG_HOME:path.join(home,'config'), XDG_CACHE_HOME:path.join(home,'cache'), XDG_DATA_HOME:path.join(home,'data'), XDG_RUNTIME_DIR:runtime, PATH:emptyPath, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
  if (process.platform === 'win32') { env.TEMP = isolated; env.TMP = isolated; }
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
  const copy = path.join(isolated, filename); fs.copyFileSync(executable,copy); fs.chmodSync(copy,0o700);
+ if(directDownload)acquiredPath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
  child = spawn(copy, [], {env,cwd:home,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
  let text='';
  child.once('error', error => { spawnError=error; });

@@ -32,8 +32,11 @@ then retry. Never delete a live installation's lock/staging. Successful normal
 cleanup removes owned staging; SIGKILL/power loss cannot guarantee cleanup.
 This explicit recovery avoids guessing whether another process still owns a lock. No automatic installed-browser fallback is provided. First run
 needs internet, about 200 MB download space plus extraction space, and the OS
-libraries/tools required by Chrome and its ZIP extractor. An already installed
-verified-cache browser is reused; this is not yet an offline-support claim.
+libraries/tools required by Chrome and its ZIP extractor. The archive hash is verified at download time; on cache reuse the executable
+is rehashed against its locally recorded post-extraction hash to detect corruption.
+That receipt is not a signature or protection against an attacker controlling the
+user account. Other browser resources retain normal user-directory permissions.
+An unchanged cached executable is reused; this is not yet an offline-support claim.
 Browser launch and sandbox requirements are not waived. No sandbox-disabling
 flag is added by the downloader. Linux distribution/library compatibility is
 limited to the hosts actually validated.

@@ -58,7 +58,7 @@ if(process.env.EP_FIXTURE_DIRTY==='1')fs.appendFileSync('package.json','\n');
 `);
         fs.mkdirSync(path.join(checkout,'node_modules','puppeteer'),{recursive:true});
         fs.writeFileSync(path.join(checkout,'node_modules','puppeteer','index.js'),'exports.PUPPETEER_REVISIONS={chrome: "synthetic"};');
-        fs.writeFileSync(path.join(checkout,'packaging','build-downloadable.js'),String.raw`
+        fs.writeFileSync(path.join(checkout,'packaging','build-downloadable.js'),`
 const fs=require('node:fs'),path=require('node:path');
 const out=path.join(process.cwd(),'build',${JSON.stringify(target+'-downloadable')});
 if(fs.existsSync(out))throw Error('Stale downloadable build');

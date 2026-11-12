@@ -7,22 +7,25 @@ const { getAsset, getRawAsset } = require('node:sea');
 const { Readable } = require('node:stream');
 const { setImmediate: nextTurn } = require('node:timers/promises');
 const { unpackTar } = require('modern-tar/fs');
-async function main() {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
-    fs.chmodSync(dir, 0o700);
-    let windowsBinding, cleanupPending = false;
-    const cleanup = () => {
-        if (windowsBinding?.hasLiveWorkers()) {
-            cleanupPending = true;
+function createCleanup(dir,getBinding,setPending){
+ return ()=>{
+        if (getBinding()?.hasLiveWorkers()) {
+            setPending(true);
             console.error('Native credential worker has not exited; owned extraction retained.');
             process.exitCode ||= 1;
             return;
         }
-        cleanupPending = false;
+        setPending(false);
         try { fs.rmSync(dir, { recursive: true, force: true }); } catch {
             console.error('Owned extraction cleanup failed; temporary files may remain.');
             process.exitCode ||= 1;
         } };
+}
+async function main() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
+    fs.chmodSync(dir, 0o700);
+    let windowsBinding, cleanupPending = false;
+    const cleanup=createCleanup(dir,()=>windowsBinding,value=>{cleanupPending=value;});
     process.on('exit', cleanup);
     const onInt = () => process.exit(130), onTerm = () => process.exit(143), onHup = () => process.exit(129);
     process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
