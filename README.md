@@ -350,11 +350,22 @@ A dedicated desktop app has also been floated as a possible future direction; it
 and is not part of this repository.
 
 
-## License and permission
+## License and rights status
 
-This project does not claim any license and does not grant any permission for the use of Education Perfect's services
-or for automated access to them. Use of the service may be subject to [Education Perfect's terms of service](https://www.educationperfect.com/).
-The code and documentation here are provided as-is for educational and hobby purposes.
+The [MIT license](LICENSE) is the continuation's chosen license for contributions
+whose rights holders have authorized that grant. The collective copyright line
+credits contributors; it does not claim sole authorship or permission on their
+behalf. Existing third-party rights and notices remain in force.
+
+The original author's permission applies to his own code. It does not cover
+Garv, JoshAtticus, qubixal or other contributors' code, and those permissions
+remain unresolved. Adding this scoped license and package reference does not clear
+those rights or authorize distribution of the entire repository or bundled
+browser. Release rights checks remain unchanged.
+
+This license does not grant permission to use Education Perfect's services or
+access them automatically. Service use may be subject to
+[Education Perfect's terms of service](https://www.educationperfect.com/).
 
 
 ## CLI credential setup (source build)
@@ -478,15 +489,3 @@ EP's source renders separate template lines as adjacent paragraph nodes, without
 
 EP InlineTextElement consumes the style toggles `**`, `__`, `//` and `~~` rather than displaying them. Plain-block choices accept balanced occurrences of those exact tokens (including mixed styles and existing color spans) only with an exact source-shaped paragraph/span text association. Unknown descendants, missing/extra paragraphs, changed text, unbalanced toggles and style-token escapes stop. Highlight, sub/sup and heading syntax remain unsupported here. Render-text diagnostics add fixed token-family booleans, never option text or answer values, so a further mismatch can identify the still-unsupported family. The one-line/one-paragraph live failure did not include its template, so this fixes a source-proven formatting gap, not a confirmed cause of that exact report. No live EP validation.
 
-## License and rights status
-
-The [MIT license](LICENSE) is the continuation's chosen license for contributions
-whose rights holders have authorized that grant. The collective copyright line
-credits contributors; it does not claim sole authorship or permission on their
-behalf. Existing third-party rights and notices remain in force.
-
-The original author's permission applies to his own code. It does not cover
-Garv, JoshAtticus, qubixal or other contributors' code, and those permissions
-remain unresolved. Adding this license and MIT package metadata does not clear
-those rights or authorize distribution of the entire repository or bundled
-browser. Release rights checks remain unchanged.
