@@ -6,7 +6,8 @@ This is preparation, not release approval or a statement that native checks pass
 
 The downloadable candidate is a Node SEA executable plus its dependency/runtime
 notices. It contains no Chrome/Chromium archive or executable. Build with
-`npm run build:downloadable-candidate` on the matching native host with Node
+`npm run build:downloadable-candidate -- 2026.11.12-beta.1 linux-x64`
+(replace the candidate date/number and native target as appropriate) on the matching native host with Node
 22.23.4. Existing `*-dev` builders still embed a browser and are NOT this
 publication path. Do not upload their artifacts by mistake.
 
@@ -69,7 +70,10 @@ first-run consent/download/hash path, correct native browser launch, cache reuse
 cancellation/failure behavior and cleanup for the exact executable. The other
 native/store/shutdown/no-Node checks remain. No old fixture is relabeled passed.
 Evidence states `distributionMode: direct-google-download` and
-`browserBundled: false`; bundled artifacts cannot use this schema to pass.
+`browserBundled: false`; the field alone is not binary inspection. Candidate construction checks the
+builder manifest and exact SEA asset keys before claiming no browser. Independent
+artifact-integrity review must verify the shipped executable matches that candidate,
+not trust self-reported evidence fields.
 
 No release/evidence.json is populated by this policy. Final-commit build,
 artifact/notices review, native credential save/read/delete, real console

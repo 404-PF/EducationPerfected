@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/downloadable-beta-plan'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     env:
@@ -37,7 +37,7 @@ jobs:
         run: node scripts/beta-candidate.js check "$CANDIDATE_VERSION" linux-x64
   candidate:
     needs: validate
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/downloadable-beta-plan'
+    if: github.ref == 'refs/heads/main'
     timeout-minutes: 30
     strategy:
       fail-fast: false

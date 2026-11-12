@@ -76,7 +76,12 @@ async function main(){
     if(result.error||result.status!==0)throw new Error('Candidate build failed; no candidate manifest created');
     if(sourceState(root)!==sourceCommit)throw new Error('Source changed during candidate build');
     const manifest=await inventory({directory,target,version,sourceCommit,sourceVersion:info.sourceVersion,expectedBrowserVersion:require('puppeteer').PUPPETEER_REVISIONS.chrome});
-    if(directDownload){manifest.distributionMode='direct-google-download';manifest.browserBundled=false;}
+    if(directDownload){
+        const built=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json'),'utf8'));
+        const sea=JSON.parse(fs.readFileSync(path.join(directory,'sea.json'),'utf8'));
+        if(built.browserMode!=='direct-google-download'||Object.hasOwn(sea.assets||{},'browser')||Object.keys(sea.assets||{}).sort().join(',')!=='manifest,native')throw Error('Direct-download candidate has unexpected browser assets');
+        manifest.distributionMode='direct-google-download';manifest.browserBundled=false;
+    }
     fs.writeFileSync(path.join(directory,'CANDIDATE.json'),JSON.stringify(manifest,null,2)+'\n');
     fs.writeFileSync(path.join(directory,'SHA256SUMS'),manifest.files.map(file=>file.sha256+'  '+file.path).join('\n')+'\n');
     console.log(JSON.stringify(manifest,null,2));

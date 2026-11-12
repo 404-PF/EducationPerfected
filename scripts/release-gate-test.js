@@ -14,6 +14,7 @@ const complete = () => {
 assert.ok(validate({}, commit).length);
 assert.deepEqual(validate(complete(), commit), []);
 for(const value of [true,undefined]){const e=complete();e.browserBundled=value;assert.ok(validate(e,commit).includes('Distribution mode/browser payload mismatch'));}
+const wrongMode=complete();wrongMode.distributionMode='embedded';assert.ok(validate(wrongMode,commit).includes('Distribution mode/browser payload mismatch'));
 const old=complete();old.schemaVersion=1;assert.ok(validate(old,commit).length);
 for (const status of ['skipped', 'fixture-only', 'not-run', 'failed', 'pending']) {
     const evidence = complete(); evidence.targets['windows-x64']['console-shutdown'].status = status;

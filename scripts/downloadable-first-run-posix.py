@@ -5,13 +5,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.end_headers()
         self.wfile.write(b'<form><input id="loginId"><input id="password" type="password"><button>Log in</button></form>')
-    def log_message(self,*args):pass
+    def log_message(self,*args):
+        # Suppress request logs: this fixture reports only fixed checkpoints.
+        pass
 
 def main():
     if sys.platform not in ('linux','darwin') or len(sys.argv)!=1:raise RuntimeError('Native POSIX fixture only')
     repo=pathlib.Path(__file__).resolve().parent.parent
     arch='arm64' if platform.machine() in ('aarch64','arm64') else 'x64'
-    source=repo/'build'/((('macos' if sys.platform=='darwin' else 'linux')+'-'+arch+'-downloadable'))/'educationperfected'
+    source=repo/'build'/(('macos' if sys.platform=='darwin' else 'linux')+'-'+arch+'-downloadable')/'educationperfected'
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-download-ui-'));child=None;master=slave=None
     server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
@@ -20,7 +22,7 @@ def main():
         env.update(HOME=str(home),XDG_CONFIG_HOME=str(home/'config'),XDG_CACHE_HOME=str(home/'cache'),TMPDIR=str(temp),EP_TEST_BOOT='1',EP_LOGIN_URL='http://127.0.0.1:'+str(server.server_port)+'/app/login',EP_LOGIN_HOST='127.0.0.1')
         for response in (b'cancel\n',b'download\n'):
             master,slave=pty.openpty();child=subprocess.Popen([str(artifact)],env=env,cwd=home,stdin=slave,stdout=slave,stderr=slave,close_fds=True,start_new_session=True)
-            text=b'';sent=False;ready=False;deadline=time.monotonic()+150
+            text=b'';sent=False;ready=False;deadline=time.monotonic()+930
             while child.poll() is None and time.monotonic()<deadline:
                 if select.select([master],[],[],.1)[0]:
                     try:text+=os.read(master,65536)

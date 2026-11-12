@@ -13,7 +13,7 @@
     "release:check": "node scripts/release-gate.js",
     "test:beta-preparation": "node scripts/beta-preparation-test.js",
     "test:release-gate": "node scripts/release-gate-test.js",
-    "build:downloadable-candidate": "node packaging/build-downloadable.js",
+    "build:downloadable-candidate": "node scripts/beta-candidate.js build-downloadable",
     "test:browser-download": "node scripts/download-browser-test.js && node scripts/download-bootstrap-test.js",
     "build:linux-dev": "node packaging/build-linux.js",
     "test:packaged": "node scripts/sea-checksum-test.js && node scripts/packaged-cli-test.js && node scripts/packaged-integrity-test.js",
@@ -37,7 +37,8 @@
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
     "modern-tar": "0.8.6",
-    "puppeteer": "25.16.0"
+    "puppeteer": "25.16.0",
+    "@puppeteer/browsers": "3.2.6"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
