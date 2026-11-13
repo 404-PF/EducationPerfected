@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
 const {startupFailure}=require('../lib/test-startup-failure');
 const {browserStderr,browserLogFile}=require('./windows-browser-stderr');
-async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
+async function sample({kind,executablePath,env,url,launch,requestSeen,logPath,recover=false}){
  const stderr=browserStderr();let detach=()=>{};
  let browser,cleanup=false,initialBlank=null,navigated=false,ready=false,cause=null,stage='launch';
  try{
@@ -11,7 +11,7 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
   stage='page-selection';
   const initial=(await browser.pages())[0];initialBlank=initial.url()==='about:blank';
   const page=kind==='new-page'?await browser.newPage():initial;
-  stage='navigation';await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});navigated=true;
+  stage='navigation';if(recover)await require('../lib/initial-login-navigation').navigateInitialLogin(page,url);else await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});navigated=true;
   stage='readiness';await page.waitForSelector('#loginId',{timeout:5000});ready=true;
  }catch(error){
   cause=startupFailure(error,browser);
@@ -29,7 +29,7 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
  catch{try{browser.process()?.kill();}catch{ /* Retain uncertainty even if best-effort kill fails. */ }}
  finally{clearTimeout(timer);detach();}
  if(!cleanup)throw new Error('Diagnostic browser cleanup unconfirmed');
- return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
+ return {kind,recover,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
 async function panel(){
@@ -56,6 +56,12 @@ async function panel(){
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',executablePath,env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
    safe=result.cleanup;console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));
+  }
+  for(let index=0;index<6;index++){
+   const before=requests;safe=false;
+   const result=await sample({kind:'initial-page',recover:true,executablePath,env,logPath:path.join(root,'recovery-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
+   safe=result.cleanup;console.log('Windows bounded initial-login recovery: '+JSON.stringify(result));
+   assert.equal(result.ready,true,'Bounded recovery did not reach local login');
   }
  }finally{
   if(server.listening)await new Promise(resolve=>server.close(resolve));
