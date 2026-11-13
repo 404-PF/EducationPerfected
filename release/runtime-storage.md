@@ -36,7 +36,9 @@ path operations; they are not a new OS security boundary or Windows ACL proof.
 Synthetic fixtures do not establish Windows cleanup or clean-machine evidence.
 Source `npm run cli` storage is unchanged; this is the packaged bootstrap policy.
 
-A graceful startup Ctrl+C/TERM/HUP now reports browser closure to bootstrap only
+After bootstrap hands signals to launchProgram, graceful startup Ctrl+C/TERM/HUP
+reports browser closure to bootstrap only
 after its awaited browser close succeeds. It may then remove or mark the runtime
-safe for retry, preserving signal exit codes. Forced/failed close or a second
-interrupt does not report closure and leaves the running marker retained.
+safe for retry, preserving signal exit codes. Failed close or forced exit before confirmation leaves the running marker retained.
+An already confirmed close remains safe if another signal arrives afterward.
+Signals before handoff have no browser owner and use bootstrap's existing cleanup.
