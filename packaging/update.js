@@ -237,7 +237,7 @@ async function applyPosixUpdate({ executable, staged, backup, version, healthche
         try {
             fs.rmSync(executable, { force: true });
             fs.renameSync(backup, executable);
-        } catch (failure) { restoreError = failure; }
+        } catch (error_) { restoreError = error_; }
         if (restoreError) throw new Error('Update failed (' + error.message + ') AND rollback failed (' + restoreError.message + '). Previous build is kept as ' + backup + '; rename it back over ' + executable + ' manually.');
         write('New build failed its version check; the previous build was restored automatically. Nothing else changed.');
         throw new Error('Update rolled back: ' + error.message);
