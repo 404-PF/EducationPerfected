@@ -558,9 +558,9 @@ async function launchProgram({ onBrowserClosed = () => {}, legacySignals = false
                 console.log('Opening EP page...');
                 const navigationStartedAt = TEST_BOOT ? Date.now() : null;
                 try {
-                    await page.goto(DIR.login_url, { waitUntil: 'domcontentloaded' });
+                    await require('./lib/initial-login-navigation').navigateInitialLogin(page, DIR.login_url);
                 } catch (error) {
-                    // Diagnostic only: no added pre-navigation await, observer or retry.
+                    // Report only after the bounded initial-login policy fails.
                     if (TEST_BOOT) require('./lib/test-navigation-cause').recordNavigationFailure(error, true, navigationStartedAt);
                     throw error; // Preserve the owner's original failure before cleanup.
                 }

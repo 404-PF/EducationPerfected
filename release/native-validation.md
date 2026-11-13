@@ -271,3 +271,24 @@ Hosted source-regression pass for tested commit172ea0705ebc27923e5e48c48a69d458b
 https://github.com/404-PF/EducationPerfected/actions/runs/43361167760 .
 The main-integration head below needs its own checks; this cited pass is not
 claimed as native certification or coverage of later source changes.
+
+
+### Bounded Windows initial-login recovery
+
+Validation11 source31600846f87dd0ca1a9d0c8e9d3965593ad59a49 built all5
+targets, passed4POSIX jobs and Windows credential setup/health/delete, but
+Windows initial navigation failed. Plain failed-job rerun did not clear all
+Windows checks: https://github.com/404-PF/EducationPerfected/actions/runs/43365224412 .
+
+Dormant helper experiment at7866aecc394ad4bd4685062f8288c066ab8b42fc:
+https://github.com/404-PF/EducationPerfected/actions/runs/43366580232 .
+Baseline3/4 independent launches failed ERR_ABORTED. All6 guarded-recovery
+launches reached the local synthetic login,4 after retry. Error44/NetworkService
+restart markers persisted, so lower-level AppContainer creation is not fixed.
+The product policy now tries one750ms-delayed retry only for initial untouched
+Windows about:blank ERR_ABORTED. It refuses retry after any mainframe response,
+redirect/nonGET request, navigation, page close or other failure. No answer,
+authentication response or submission is retried. Sandbox settings unchanged.
+The source experiment is not packaged SEA proof; that requires another native
+validation. Upstream restart mechanism:
+https://github.com/chromium/chromium/commit/66b7f8a3ea8cc19a726665c83dabd717aaaa129d .

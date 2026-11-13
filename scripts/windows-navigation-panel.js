@@ -57,12 +57,14 @@ async function panel(){
    const result=await sample({kind:'initial-page',executablePath,env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
    safe=result.cleanup;console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));
   }
+  const recovered=[];
   for(let index=0;index<6;index++){
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',recover:true,executablePath,env,logPath:path.join(root,'recovery-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
    safe=result.cleanup;console.log('Windows bounded initial-login recovery: '+JSON.stringify(result));
-   assert.equal(result.ready,true,'Bounded recovery did not reach local login');
+   recovered.push(result.ready);
   }
+  assert.ok(recovered.every(Boolean),'Bounded recovery did not reach local login in every independent sample');
  }finally{
   if(server.listening)await new Promise(resolve=>server.close(resolve));
   if(safe)fs.rmSync(root,{recursive:true,force:true});
