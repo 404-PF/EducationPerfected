@@ -1,13 +1,19 @@
-const assert=require('node:assert/strict'),{sample,environmentCases}=require('./windows-navigation-panel');
+const assert=require('node:assert/strict'),{sample}=require('./windows-navigation-panel');
 const {browserStderr,browserLogFile,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=require('node:stream');
 (async()=>{
- const environments=environmentCases({HOME:'owned',PATH:'empty'},{HOME:'host',Path:'host-tools',EP_PASSWORD:'private',NODE_OPTIONS:'private'});
- assert.deepEqual(environments.map(entry=>entry.environmentKind),['isolated','inherited','isolated','inherited']);
- assert.deepEqual(environments[0].env,{HOME:'owned',PATH:'empty'});assert.deepEqual(environments[1].env,{HOME:'host',Path:'host-tools'});
- assert.notEqual(environments[0].env,environments[2].env);
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-log-inert-')),logPath=path.join(root,'chrome.log');
  try{
+  const {sandboxSetup}=require('./windows-sandbox-setup');
+  const executable=path.join(root,'chrome.exe'),setup=path.join(root,'setup.exe');
+  assert.equal(sandboxSetup(executable).state,'absent');fs.writeFileSync(setup,'inert');
+  for(const [status,state] of [[78,'configured'],[79,'configuration-failed'],[0,'other-exit'],[-1,'other-exit']]){
+   const result=sandboxSetup(executable,(command,args,options)=>{assert.equal(command,setup);assert.deepEqual(args,['--configure-browser-in-directory='+root]);assert.equal(options.shell,false);assert.equal(options.stdio,'ignore');assert.equal(options.timeout,30000);return{status};});
+   assert.equal(result.state,state);assert.equal(result.exitCode,status<0?null:status);
+  }
+  assert.equal(sandboxSetup(executable,()=>({error:{code:'ETIMEDOUT'}})).state,'timeout');
+  assert.equal(sandboxSetup(executable,()=>({error:{code:'EACCES'}})).state,'spawn-error');
+  fs.unlinkSync(setup);fs.mkdirSync(setup);assert.equal(sandboxSetup(executable).state,'unsafe');fs.rmdirSync(setup);
   assert.equal(browserLogFile(logPath).state,'absent');assert.equal(browserLogFile(logPath).networkServiceRestartCount,null);assert.equal(browserLogFile(root).state,'unreadable');
   fs.writeFileSync(logPath,'private-path network_service_instance_impl.cc: Network service crashed private\n'+'x'.repeat(LIMIT));
   const file=browserLogFile(logPath);assert.equal(file.state,'read');assert.equal(file.bytesExamined,LIMIT);assert.equal(file.truncated,true);assert.equal(file.networkServiceCrash,true);assert.equal(file.networkServiceRestartCount,1);assert.ok(!JSON.stringify(file).includes('private'));

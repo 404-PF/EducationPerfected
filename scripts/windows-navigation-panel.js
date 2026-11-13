@@ -30,10 +30,6 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
  return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
-function environmentCases(isolated,parentEnv){
- const inherited=Object.fromEntries(Object.entries(parentEnv).filter(([key])=>!['NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_BROWSER','PUPPETEER_EXECUTABLE_PATH'].includes(key.toUpperCase())));
- return ['isolated','inherited','isolated','inherited'].map(environmentKind=>({environmentKind,env:environmentKind==='isolated'?{...isolated}:{...inherited}}));
-}
 async function panel(){
  assert.equal(process.platform,'win32');assert.equal(process.arch,'x64');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(process.argv.length,2);
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ep-navigation-panel-'));let safe=true;
@@ -46,13 +42,18 @@ async function panel(){
   const executablePath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
   const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!['PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_BROWSER','PUPPETEER_EXECUTABLE_PATH'].includes(key.toUpperCase())));
   Object.assign(env,{HOME:home,USERPROFILE:home,PATH:empty,TEMP:tmp,TMP:tmp,TMPDIR:tmp});
-  // Fresh independent launches, not retries. Compare the whole child environment.
-  // Puppeteer still creates a fresh disposable browser profile per launch.
-  // Inherited home/PATH/temp include host state: diagnostic only, not no-Node evidence.
-  for(const [index,entry] of environmentCases(env,process.env).entries()){
+  // Two independent baseline launches, then configure the owned browser sandbox,
+  // then two independent launches. Order/warm-up remains a possible confound.
+  for(const [index,setupKind] of ['installer-attempted','installer-attempted','explicit-final-setup','explicit-final-setup'].entries()){
+   if(index===2){
+    safe=false;
+    const setup=require('./windows-sandbox-setup').sandboxSetup(executablePath);
+    console.log('Windows owned Chrome sandbox setup: '+JSON.stringify(setup));
+    assert.equal(setup.state,'configured','Owned Chrome sandbox setup was not confirmed');safe=true;
+   }
    const before=requests;safe=false;
-   const result=await sample({kind:'initial-page',executablePath,env:entry.env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
-   safe=result.cleanup;console.log('Windows local environment comparison: '+JSON.stringify({environmentKind:entry.environmentKind,...result}));
+   const result=await sample({kind:'initial-page',executablePath,env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
+   safe=result.cleanup;console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));
   }
  }finally{
   if(server.listening)await new Promise(resolve=>server.close(resolve));
@@ -60,4 +61,4 @@ async function panel(){
   else console.error('Diagnostic browser closure uncertain; owned root retained until hosted VM destruction.');
  }
 }
-module.exports={sample,panel,environmentCases};if(require.main===module)panel().catch(()=>{console.error('Windows local navigation comparison failed outside an observed sample.');process.exitCode=1;});
+module.exports={sample,panel};if(require.main===module)panel().catch(()=>{console.error('Windows local navigation comparison failed outside an observed sample.');process.exitCode=1;});
