@@ -7,7 +7,7 @@ const pins=require('../packaging/browser-downloads.json');
  assert.throws(()=>hostPin('win32','arm64'));assert.throws(()=>hostPin('linux','ia32'));
  await assert.rejects(promptDownload({input:{isTTY:false},output:{isTTY:false,write(){}}}),/interactive/);
  const {PassThrough}=require('node:stream');
- await Promise.all([['download',true],['no',false]].map(async([answer,expected])=>{const input=new PassThrough();input.isTTY=true;const output=new PassThrough();output.isTTY=true;const pending=promptDownload({input,output});input.write(answer+'\n');assert.equal(await pending,expected);}));
+ await Promise.all([['download',true],['no',false]].map(async([answer,expected])=>{const input=new PassThrough();input.isTTY=true;const output=new PassThrough();output.isTTY=true;let prompt='';output.on('data',chunk=>{prompt+=chunk.toString();});const pending=promptDownload({input,output});assert.match(prompt,/This test build does not include Chrome/);assert.doesNotMatch(prompt,/beta/i);input.write(answer+'\n');assert.equal(await pending,expected);}));
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'ep-download-contract-'));
  const api={Browser:{CHROME:'chrome'},BrowserPlatform:{LINUX:'linux',LINUX_ARM:'linux_arm',MAC:'mac',MAC_ARM:'mac_arm',WIN64:'win64'}};
  const base={home,api,extractor(){},platform:'linux',arch:'x64',output:{write(){}},consent:async()=>true};

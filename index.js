@@ -77,6 +77,9 @@ function cleanPassword(value) {
  * @returns {Object|null} The keytar module or null if unavailable
  */
 function loadKeytar() {
+    // The SEA supplies @napi-rs/keyring through native-binding. Legacy keytar
+    // migration is source-only; SEA require cannot load optional npm modules.
+    if (require('node:sea').isSea()) return null;
     try {
         return require('keytar');
     } catch (e) {

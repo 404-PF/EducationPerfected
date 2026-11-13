@@ -18,7 +18,7 @@ function hostPin(platform=process.platform,arch=process.arch){
 }
 async function promptDownload({input=process.stdin,output=process.stdout}={}){
  if(!input.isTTY||!output.isTTY){output.write('First browser download needs an interactive terminal. Open this executable in a terminal and retry.\n');throw new Error('First browser download needs an interactive terminal');}
- output.write('This beta does not include Chrome. Download Chrome for Testing '+pins.version+' directly from Google (about 200 MB)?\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/\nType download to fetch and use it under Google\'s terms, or anything else to cancel: ');
+ output.write('This test build does not include Chrome. Download Chrome for Testing '+pins.version+' directly from Google (about 200 MB)?\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/\nType download to fetch and use it under Google\'s terms, or anything else to cancel: ');
  const rl=require('node:readline').createInterface({input,output});
  try { return await new Promise(resolve=>{rl.once('line',line=>resolve(line.trim()==='download'));rl.once('close',()=>resolve(false));}); }
  finally {rl.close();}
