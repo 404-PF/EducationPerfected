@@ -10,6 +10,8 @@ async function run(mode,fail,path){
  const server=new EventEmitter();server.listen=(port,host,cb)=>{assert.equal(host,'127.0.0.1');fault('listen');cb();};server.address=()=>({port:43188});server.close=cb=>{fault('server-close');cb();};
  const browser={target:()=>({createCDPSession:async()=>({send:async()=>{fault('argv');return {arguments:[path.join(root,'tmp','educationperfected-source-ABC','chrome.exe')]};},detach:async()=>{fault('detach');}})}),version:async()=>{fault('version');return 'Chrome/'+identity.browserVersion;}};
  function req(name){
+  if(name==='./windows-fixture-profile')return {prepareWindowsFixtureProfile:()=>{fault('profile');}};
+  if(name==='./windows-network-sandbox')return {observeNetworkSandbox:async()=>{fault('network-sandbox');return {sandbox:'Network',appContainer:true,launchFailures:0};}};
   if(name==='node:path')return path;
   if(name==='node:assert/strict')return {...assert,deepEqual:(a,b)=>assert.equal(JSON.stringify(a),JSON.stringify(b))};if(name==='node:fs')return fakefs;if(name==='node:os')return {tmpdir:()=>parent};
   if(name==='node:child_process')return {spawn:(exe,args,opts)=>{assert.ok(opts.cwd.startsWith(root+path.sep));fault('spawn');return child;}};
@@ -40,7 +42,7 @@ async function run(mode,fail,path){
  if(!fail){assert.equal(removed,true);assert.equal(closed,true);assert.ok(calls.indexOf('remove-root')>calls.indexOf('disconnect'));}
  else assert.equal(removed,false,'failure must not claim root removed: '+fail);
 }
-(async()=>{for(const paths of [path.posix,path.win32])for(const mode of ['source','sea'])for(const fail of ['', 'allocate','mkdir','manifest','archive','listen','spawn','ready','argv','detach','version','receipt','identity','page','type','click','cli-ready','quit','owner-close','owner-exit','disconnect','stop','server-close','residue','remove-root',...(mode==='source'?['extract','unpack','origin','remove-extraction']:['copy'])])await run(mode,fail,paths);exclusiveCopy();console.log('Actual driver predicate/lifecycle migration inert matrix passed');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{for(const paths of [path.posix,path.win32])for(const mode of ['source','sea'])for(const fail of ['', 'allocate','mkdir','manifest','profile','archive','listen','spawn','ready','network-sandbox','argv','detach','version','receipt','identity','page','type','click','cli-ready','quit','owner-close','owner-exit','disconnect','stop','server-close','residue','remove-root',...(mode==='source'?['extract','unpack','origin','remove-extraction']:['copy'])])await run(mode,fail,paths);exclusiveCopy();console.log('Actual driver predicate/lifecycle migration inert matrix passed');})().catch(error=>{console.error(error);process.exitCode=1;});
 
 
 function exclusiveCopy(){

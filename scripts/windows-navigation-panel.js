@@ -23,13 +23,14 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath,re
  // Throw outside finally so closure uncertainty cannot be mistaken for an observed sample.
  if(!browser)throw new Error('Diagnostic launch closure unconfirmed');
  // Read only after navigation/readiness was observed, never before goto.
+ const networkSandbox=await require('./windows-network-sandbox').observeNetworkSandbox(browser).catch(()=>null);
  const utilityHistograms=await require('./windows-utility-histograms').utilityHistograms(browser);
  let timer;
  try{await Promise.race([browser.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Close deadline')),10000);})]);cleanup=true;}
  catch{try{browser.process()?.kill();}catch{ /* Retain uncertainty even if best-effort kill fails. */ }}
  finally{clearTimeout(timer);detach();}
  if(!cleanup)throw new Error('Diagnostic browser cleanup unconfirmed');
- return {kind,recover,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
+ return {networkSandbox,kind,recover,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
 async function panel(){
@@ -40,6 +41,7 @@ async function panel(){
  try{
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   const home=path.join(root,'home'),tmp=path.join(root,'tmp'),empty=path.join(root,'empty');for(const dir of [home,tmp,empty])fs.mkdirSync(dir);
+ require('./windows-fixture-profile').prepareWindowsFixtureProfile(home);
   // Hosted CI diagnostic authorizes its own pinned Chrome download. Product consent is unchanged.
   const executablePath=await require('../packaging/download-browser').ensureBrowser({home,consent:async()=>true});
   const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!['PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','PUPPETEER_BROWSER','PUPPETEER_EXECUTABLE_PATH'].includes(key.toUpperCase())));
@@ -55,13 +57,13 @@ async function panel(){
    }
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',executablePath,env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
-   safe=result.cleanup;console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));
+   safe=result.cleanup;assert.ok(result.networkSandbox,'Windows Network sandbox acceptance failed');console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));
   }
   const recovered=[];
   for(let index=0;index<6;index++){
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',recover:true,executablePath,env,logPath:path.join(root,'recovery-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
-   safe=result.cleanup;console.log('Windows bounded initial-login recovery: '+JSON.stringify(result));
+   safe=result.cleanup;assert.ok(result.networkSandbox,'Windows Network sandbox acceptance failed');console.log('Windows bounded initial-login recovery: '+JSON.stringify(result));
    recovered.push(result.ready);
   }
   assert.ok(recovered.every(Boolean),'Bounded recovery did not reach local login in every independent sample');

@@ -56,6 +56,7 @@ async function runPackagedFixture({directDownload=false}={}) {
  // Direct mode's source controller prepares a private cache; not first-run UI proof.
 
  // A host-isolation surrogate, not certification on a separate no-Node machine.
+ require('./windows-fixture-profile').prepareWindowsFixtureProfile(home);
  const env = {...process.env, HOME:home, USERPROFILE:home, XDG_CONFIG_HOME:path.join(home,'config'), XDG_CACHE_HOME:path.join(home,'cache'), XDG_DATA_HOME:path.join(home,'data'), XDG_RUNTIME_DIR:runtime, PATH:emptyPath, EP_TEST_BOOT:'1', EP_LOGIN_URL:origin+'/app/login', EP_LOGIN_HOST:'127.0.0.1', TMPDIR:isolated, PUPPETEER_EXECUTABLE_PATH:''};
  if (process.platform === 'win32') { env.TEMP = isolated; env.TMP = isolated; }
  delete env.EP_EMAIL; delete env.EP_PASSWORD;
@@ -74,6 +75,7 @@ async function runPackagedFixture({directDownload=false}={}) {
  const ready = await connectAfterLoginReady({text:()=>text,child,failure:()=>serverError||spawnError,
   connect:options=>puppeteer.connect(options)});
  browser = ready.browser;
+ if(process.platform==='win32')console.log('Windows sandbox acceptance: '+JSON.stringify(await require('./windows-network-sandbox').observeNetworkSandbox(browser)));
  console.log('Packaged owner login-ready checkpoint: '+JSON.stringify(ready.checkpoint)+' (instrumented sample only).');
   const command = await browser.target().createCDPSession();
   const { arguments: browserArgs } = await command.send('Browser.getBrowserCommandLine');

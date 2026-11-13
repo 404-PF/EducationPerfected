@@ -32,6 +32,7 @@ async function runLeg(mode,nonce,expectedIdentity) {
  assert.equal(expected.browserVersion,require('puppeteer').PUPPETEER_REVISIONS.chrome);
  for(const name of ['home','tmp','empty','runtime'])fs.mkdirSync(path.join(root,name),{mode:0o700});
  const home=path.join(root,'home'),tmp=path.join(root,'tmp');
+ require('./windows-fixture-profile').prepareWindowsFixtureProfile(home);
  let sourceExecutable;
  assert.equal(manifest.executable,path.basename(manifest.executable));
  assert.equal(path.isAbsolute(manifest.executable),false);
@@ -59,7 +60,7 @@ async function runLeg(mode,nonce,expectedIdentity) {
   const capture=chunk=>{if(spawnError)return;text+=chunk.toString();if(Buffer.byteLength(text)>65536){text='';spawnError=Error('Diagnostic output limit');}};
   child.stdout.on('data',capture);child.stderr.on('data',capture);
   const ready=await connectAfterLoginReady({text:()=>text,child,failure:()=>spawnError||serverError,connect:options=>require('puppeteer').connect(options)});
-  browser=ready.browser;result.ready=true;driverStage(mode,nonce,'ready-observed');
+  browser=ready.browser;result.networkSandbox=await require('./windows-network-sandbox').observeNetworkSandbox(browser);result.ready=true;driverStage(mode,nonce,'ready-observed');
   // Readiness semantics retained; do not relay dynamic observer data.
   // All observer calls are after owner marker, never on endpoint availability.
   const command=await browser.target().createCDPSession();let argv;

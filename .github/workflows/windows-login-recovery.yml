@@ -2,6 +2,9 @@ name: Windows initial login recovery experiment
 on:
   pull_request:
     paths:
+      - scripts/windows-fixture-profile.js
+      - scripts/windows-network-sandbox.js
+      - scripts/windows-fixture-profile-test.js
       - lib/initial-login-navigation.js
       - scripts/initial-login-navigation-test.js
       - scripts/windows-navigation-panel.js
@@ -21,6 +24,7 @@ jobs:
         with:
           node-version: 22.23.4
       - run: npm ci --ignore-scripts
+      - run: node scripts/windows-fixture-profile-test.js
       - name: Inert recovery boundaries
         run: node scripts/initial-login-navigation-test.js
       - name: Local-only baseline and six independent recovered starts
