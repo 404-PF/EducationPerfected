@@ -9,7 +9,7 @@ function boundedHistogram(value,name){
  if(!value||value.name!==name||!integer(value.count)||value.count<0||!Array.isArray(value.buckets)||value.buckets.length>16)return{state:'invalid'};
  const buckets=[];
  for(const bucket of value.buckets){
-  if(!integer(bucket.low)||!integer(bucket.high)||!integer(bucket.count)||bucket.count<0||bucket.high<=bucket.low)return{state:'invalid'};
+  if(!bucket||typeof bucket!=='object'||!integer(bucket.low)||!integer(bucket.high)||!integer(bucket.count)||bucket.count<0||bucket.high<=bucket.low)return{state:'invalid'};
   buckets.push({low:bucket.low,high:bucket.high,count:bucket.count});
  }
  return{state:'read',count:value.count,buckets};
@@ -19,10 +19,20 @@ async function boundedCall(operation){
  try{return await Promise.race([operation,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Diagnostic metric deadline')),2000);})]);}
  finally{clearTimeout(timer);}
 }
+async function createSession(browser,deadlineMs=2000){
+ let expired=false;
+ const operation=browser.target().createCDPSession().then(async session=>{
+  if(expired){try{await boundedCall(session.detach());}catch{}throw new Error('Late diagnostic session');}
+  return session;
+ });
+ let timer;
+ try{return await Promise.race([operation,new Promise((_,reject)=>{timer=setTimeout(()=>{expired=true;reject(new Error('Diagnostic session deadline'));},deadlineMs);})]);}
+ finally{clearTimeout(timer);}
+}
 async function utilityHistograms(browser){
  const result=Object.fromEntries(names.map(name=>[name,{state:'unavailable'}]));let session;
  try{
-  session=await boundedCall(browser.target().createCDPSession());
+  session=await createSession(browser);
   for(const name of names){
    try{const response=await session.send('Browser.getHistogram',{name,delta:false},{timeout:2000});result[name]=boundedHistogram(response.histogram,name);}catch{ /* Missing metric is unknown, not zero. */ }
   }
@@ -30,4 +40,4 @@ async function utilityHistograms(browser){
  finally{if(session)try{await boundedCall(session.detach());}catch{ /* Browser closure remains separately checked. */ }}
  return result;
 }
-module.exports={names,boundedHistogram,utilityHistograms};
+module.exports={names,boundedHistogram,utilityHistograms,createSession};

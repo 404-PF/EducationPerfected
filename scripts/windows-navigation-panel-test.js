@@ -1,10 +1,14 @@
 const assert=require('node:assert/strict'),{sample}=require('./windows-navigation-panel');
 const {browserStderr,browserLogFile,LIMIT}=require('./windows-browser-stderr'),{PassThrough}=require('node:stream');
 (async()=>{
- const {names,boundedHistogram,utilityHistograms}=require('./windows-utility-histograms');
+ const {names,boundedHistogram,utilityHistograms,createSession}=require('./windows-utility-histograms');
  const metric={name:names[0],count:1,buckets:[{low:5,high:6,count:1}],private:'must-not-print'};
  assert.deepEqual(boundedHistogram(metric,names[0]),{state:'read',count:1,buckets:[{low:5,high:6,count:1}]});
- for(const bad of [{...metric,name:'private'},{...metric,count:NaN},{...metric,buckets:Array(17).fill(metric.buckets[0])},{...metric,buckets:[{low:5,high:5,count:1}]}])assert.equal(boundedHistogram(bad,names[0]).state,'invalid');
+ for(const bad of [{...metric,buckets:[null]},{...metric,buckets:[7]},{...metric,name:'private'},{...metric,count:NaN},{...metric,buckets:Array(17).fill(metric.buckets[0])},{...metric,buckets:[{low:5,high:5,count:1}]}])assert.equal(boundedHistogram(bad,names[0]).state,'invalid');
+ let resolveLate,lateDetached=false;
+ const late=createSession({target:()=>({createCDPSession:()=>new Promise(resolve=>{resolveLate=resolve;})})},1);
+ await assert.rejects(late,/session deadline/);resolveLate({detach:async()=>{lateDetached=true;}});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(lateDetached,true);
  let detached=false;const calls=[];
  const metrics=await utilityHistograms({target:()=>({createCDPSession:async()=>({send:async(command,args,options)=>{calls.push(command);assert.equal(options.timeout,2000);assert.equal(args.delta,false);if(args.name!==names[0])throw Error('private');return{histogram:metric};},detach:async()=>{detached=true;}})})});
  assert.equal(detached,true);assert.deepEqual(calls,Array(3).fill('Browser.getHistogram'));assert.equal(metrics[names[0]].state,'read');assert.equal(metrics[names[1]].state,'unavailable');assert.ok(!JSON.stringify(metrics).includes('private'));
