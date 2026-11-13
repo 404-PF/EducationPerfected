@@ -12,7 +12,7 @@ on:
         default: false
         type: boolean
       browser_mode:
-        description: 'Embedded development build or direct-download native beta validation (no upload)'
+        description: 'Embedded development build or direct-download native validation (test upload is a separate opt-in)'
         required: true
         default: embedded-development
         type: choice
@@ -168,4 +168,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # No tag, release, normal saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
-      # Executable and notices remain ephemeral in this runner's build directory.
+      # Only the explicitly requested Windows test package is retained for 7 days.
+      # Other build files remain ephemeral in this runner's build directory.

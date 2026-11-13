@@ -7,6 +7,10 @@ async function stage(source,destination,commit){
  directory(source);directory(path.join(source,'THIRD-PARTY-NOTICES'));
  for(const name of ['CANDIDATE.json','SHA256SUMS'])regular(path.join(source,name));
  const candidate=JSON.parse(fs.readFileSync(path.join(source,'CANDIDATE.json'),'utf8'));
+ assert.equal(candidate.schemaVersion,2);
+ assert.equal(candidate.labelKind,'internal-validation-not-release');
+ assert.equal(candidate.status,'build-only-not-for-distribution');
+ assert.equal(candidate.publicationAuthorized,false);
  assert.match(commit,/^[a-f0-9]{40}$/);assert.equal(candidate.sourceCommit,commit);assert.equal(candidate.target,'windows-x64');validationLabel(candidate.validationLabel);
  assert.equal(candidate.distributionMode,'direct-google-download');assert.equal(candidate.browserBundled,false);
  assert.ok(Array.isArray(candidate.files)&&candidate.files.length>1&&candidate.files.length<2000);

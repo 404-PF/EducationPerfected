@@ -131,6 +131,7 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
     }
     assert.doesNotMatch(active,/contents: write|gh release|git tag|git push|actions\/cache|pull_request_target/);
     assert.equal((active.match(/uses: actions\/upload-artifact@/g)||[]).length,1);
+    assert.match(active,/uses: actions\/upload-artifact@[a-f0-9]{40}(?:\s|$)/);
     const upload=active.split('      - name: Upload explicitly requested unsigned Windows test package')[1].split('      - name:')[0];
     assert.match(upload,/inputs.upload_windows_test && steps.test_package.outcome == 'success'/);assert.match(upload,/runner.os == 'Windows'/);
     assert.match(upload,/retention-days: 7/);assert.match(upload,/path: build\/windows-internal-test\//);assert.match(upload,/if-no-files-found: error/);
