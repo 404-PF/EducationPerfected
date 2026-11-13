@@ -1,0 +1,32 @@
+name: Windows AppContainer profile API diagnostic
+on:
+  pull_request:
+    paths:
+      - scripts/diagnostics/windows-profile-trace.py
+      - scripts/diagnostics/windows-profile-observe.js
+      - .github/workflows/windows-profile-trace.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.4
+      - run: npm ci --ignore-scripts
+      - name: Download exact verified Chrome into owned disposable home
+        shell: pwsh
+        run: |
+          $homeRoot = Join-Path $env:RUNNER_TEMP 'ep-approved-profile-trace'
+          New-Item -ItemType Directory -Path $homeRoot -ErrorAction Stop | Out-Null
+          $env:EP_TRACE_HOME = $homeRoot
+          node -e "require('./packaging/download-browser').ensureBrowser({home:process.env.EP_TRACE_HOME,consent:async()=>true}).then(file=>require('fs').appendFileSync(process.env.GITHUB_ENV,'EP_TRACE_CHROME='+file+'\n')).catch(()=>{process.exitCode=1})"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Broker API trace and local-only network sandbox observation
+        run: python scripts/diagnostics/windows-profile-trace.py
