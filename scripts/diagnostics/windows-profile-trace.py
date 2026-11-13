@@ -2,21 +2,13 @@
 import os,sys,pathlib,subprocess,tempfile,time,json,urllib.request,http.server,threading,shutil,socket
 
 def commands():
-    # Debug only the Chrome broker. Child processes run normally, preserving
-    # sandbox behavior. Return breakpoints are one-shot/current-thread only.
-    calls=[('kernelbase!AppContainerDeriveSidFromMoniker','DeriveSid'),('kernelbase!AppContainerRegisterSid','RegisterSid'),('kernelbase!CreateMutexW','CreateMutex'),('kernelbase!CreateDirectoryW','CreateDirectory'),('ntdll!NtSetSecurityObject','NtSetSecurity')]
-    result=['.symfix','.sympath+ srv*https://chromium-browser-symsrv.commondatastorage.googleapis.com','.printf "EPTRACE START\\n"']
-    for symbol,name in calls:
-        ret=f'.echo EPTRACE_RETURN_{name}; r @$tid; r rax; !gle; gc'
-        if name=='Wait':ret='.if (@eax != 0) { .echo EPTRACE_RETURN_Wait_Nonzero; r @$tid; r rax; !gle; k 6; }; gc'
-        escaped=ret.replace('"','\\"')
-        entry=f'.echo EPTRACE_ENTER_{name}; r @$tid; r rcx; r rdx;'
-        if name=='Wait':entry=''
-        if name in ('CreateDirectory','GetFileAttributes','GetNamedSecurity','GetNamedSecurityHost','SetNamedSecurity','SetNamedSecurityHost','DeriveSid'):entry+=' du @rcx;'
-        if name=='CreateMutex':entry+=' du @r8;'
-        if name=='RegisterSid':entry+=' du @rdx;'
-        result.append(f'bu {symbol} "{entry} ~.bp /1 poi(@rsp) \\"{escaped}\\"; gc"')
-    result+=['bl','g']
+    # Failure-only exports; no symbol download and no successful-call dumps.
+    calls=[('kernelbase!AppContainerDeriveSidFromMoniker','DeriveSid','(@eax & 0x80000000) != 0'),('kernelbase!AppContainerRegisterSid','RegisterSid','1'),('kernelbase!WaitForSingleObject','Wait','@eax != 0 && @eax != 0x102'),('kernelbase!CreateDirectoryW','CreateDirectory','@eax == 0'),('ntdll!NtSetSecurityObject','NtSetSecurity','(@eax & 0x80000000) != 0')]
+    result=['.sympath ""','.echo EPTRACE_SPARSE_START']
+    for symbol,name,condition in calls:
+        ret=f'.if ({condition}) {{ .echo EPTRACE_RETURN_{name}; r @$tid; r rax; !gle; k 5; }}; gc'
+        result.append(f'bu {symbol} "~.bp /1 poi(@rsp) \\"{ret}\\"; gc"')
+    result+=['g']
     return '\n'.join(result)+'\n'
 
 class Handler(http.server.BaseHTTPRequestHandler):
