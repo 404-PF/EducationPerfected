@@ -131,7 +131,7 @@ class FixedChild:
     done=False
     def wait(self,timeout):self.done=True;return 0
     def poll(self):return 0 if self.done else None
-output=b'EP email EP password Login saved in the OS credential store.'
+output=b'EP email fixture@example.test\r\nEP password synthetic-mac-only\r\nLogin saved in the OS credential store.'
 def sequence_run(args, **kwargs):
     global record
     if args[0]=='/usr/bin/security':return subprocess.CompletedProcess(args,0,stdout=repr(owned),stderr='')
