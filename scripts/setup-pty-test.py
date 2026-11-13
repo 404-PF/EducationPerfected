@@ -32,10 +32,10 @@ with session() as (child, master, slave, before):
     while select.select([master], [], [], .1)[0]:
         data += os.read(master, 65536)
     assert child.returncode == 0, data.decode(errors='replace')
-    assert b'fixture@example.test' not in data and b'fixture-only-password' not in data
+    assert b'fixture@example.test' in data and b'fixture-only-password' in data
     assert b'Login saved in the OS credential store.' in data
     assert termios.tcgetattr(slave)[3] & termios.ECHO == before[3] & termios.ECHO
-print('Inert-store PTY setup: fields hidden and terminal echo restored.')
+print('Inert-store PTY setup: fields visible while typing and terminal echo restored.')
 for signum in [2, 15, 1]:
     with session() as (child, master, slave, before):
         until(child, master, b'', b'EP email')

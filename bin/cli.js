@@ -5,7 +5,18 @@ const { diagnostic } = require('../lib/diagnostics');
 
 async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram, onBrowserClosed = () => {} } = {}) {
     output.write('Opening EducationPerfected. Finish sign-in in the browser.\n');
-    let terminal = null, pendingApproval = null, quitPromise = null;
+    let terminal = null, controls = null, pendingApproval = null, quitPromise = null;
+    const quit = () => {
+        if (pendingApproval) { pendingApproval.resolve(false); pendingApproval = null; }
+        if (!quitPromise && controls) quitPromise = controls.close().then(() => terminal.close()).catch(error => { quitPromise = null; throw error; });
+        return quitPromise || Promise.resolve();
+    };
+    // A manually closed browser ends the session: drain controls and exit instead of idling.
+    const browserGone = () => {
+        if (quitPromise || !terminal) return;
+        output.write('Browser closed; exiting.\n');
+        quit().catch(error => output.write(diagnostic(error, 'Shutdown') + '\n'));
+    };
     const requestSubmitApproval = (approval, label, detail, onCancel) => new Promise(resolve => {
         if (!terminal || pendingApproval || quitPromise) { resolve(false); return; }
         const request = { approval, resolve: null, label };
@@ -28,15 +39,10 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
     });
     const requestDropdownSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Dropdown Submit', `${approval.dropdownCount} dropdown`, onCancel);
     const requestNumberBoxSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Number-box Submit', `${approval.boxCount} boxes`, onCancel);
-    const controls = await launch({ onBrowserClosed, dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
+    controls = await launch({ onBrowserClosed, onBrowserDisconnected: browserGone, dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
     terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
     output.write('Commands: start, stop, status, mode auto, mode semi, refresh, inspect-self-mark, quit\n');
     const print = () => output.write(JSON.stringify(controls.status()) + '\n');
-    const quit = () => {
-        if (pendingApproval) { pendingApproval.resolve(false); pendingApproval = null; }
-        if (!quitPromise) quitPromise = controls.close().then(() => terminal.close()).catch(error => { quitPromise = null; throw error; });
-        return quitPromise;
-    };
     const onSignal = () => { quit().catch(error => output.write(diagnostic(error, 'Shutdown') + '\n')); };
     terminal.on('SIGINT', onSignal);
     process.on('SIGINT', onSignal);
@@ -91,7 +97,7 @@ async function credentialCommand(command, { store, prompt = promptCredentials, o
         output.write(removed ? 'Saved login removed from the OS credential store.\n' : 'No saved login was found.\n');
         return;
     }
-    output.write('Save a login in your OS credential store. Input is hidden; nothing is saved in this folder.\n');
+    output.write('Save a login in your OS credential store; nothing is saved in this folder.\n');
     // Setup has no browser signal owner. Restore raw input even on SIGTERM.
     const interrupted = signal => {
         if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);

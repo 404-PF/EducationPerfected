@@ -107,7 +107,8 @@ async function readKeychainCredential(field) {
     }
 }
 
-// Secret prompt: no echo, and no copy left in the terminal. Resolves null when stdin
+// Terminal prompt: input echoes as it is typed, so both fields can be reviewed and
+// edited before submitting. Resolves null when stdin
 // is not a terminal (piped input is not trusted with a password) or the user submits
 // nothing, so the manual-login path still works everywhere.
 //
@@ -121,7 +122,7 @@ async function readKeychainCredential(field) {
 // before anything was armed and mark themselves finished, so a later cancel() on them
 // is a no-op rather than an extra newline.
 /**
- * Prompts for a secret value with hidden input.
+ * Prompts for a value with visible, editable input.
  * @param {string} label
  * @param {(value: string) => string|null} cleaner - Function to clean the submitted value
  * @returns {{promise: Promise<string|null>, cancel: () => void}} promise resolves to the
@@ -148,10 +149,10 @@ function promptSecret(label, cleaner) {
             resolve(result);
         };
         if (!stdin.isTTY) return finish(null);
-        // Raw mode is what suppresses echo; without it the password would be printed,
-        // so a terminal that cannot do raw mode gets no prompt at all.
+        // Raw mode gives keystroke-at-a-time control (manual echo, backspace editing,
+        // escape-sequence filtering); a terminal that cannot do it gets no prompt.
         if (typeof stdin.setRawMode !== 'function') {
-            process.stderr.write('\n(this terminal cannot hide input; log in manually)\n');
+            process.stderr.write('\n(this terminal cannot take interactive input; log in manually)\n');
             return finish(null);
         }
         // Chunk is a Buffer; for...of yields numeric byte values. Collect bytes
@@ -159,6 +160,9 @@ function promptSecret(label, cleaner) {
         // On backspace/delete, remove the complete final UTF-8 character.
         // Ignore escape sequences (starting with 0x1B) so arrow keys, bracketed paste,
         // and other control sequences are not added to the secret.
+        // Echo only to a live terminal: redirected stderr (setup 2>setup.log) must
+        // never receive the typed login.
+        const echo = process.stderr.isTTY ? chunk => process.stderr.write(chunk) : () => {};
         const bytes = [];
         // Escape-sequence state machine. ESC starts a sequence, then:
         //   'kind' none   -> the next byte is the introducer ('[' CSI, ']' OSC,
@@ -206,7 +210,11 @@ function promptSecret(label, cleaner) {
                     // drop one whole UTF-8 character (continuation bytes, then the lead byte)
                     while (bytes.length && (bytes[bytes.length - 1] & 0xC0) === 0x80) bytes.pop();
                     bytes.pop();
-                } else if (byte >= 32) bytes.push(byte);
+                    echo('\b \b');   // erase the echoed character
+                } else if (byte >= 32) {
+                    bytes.push(byte);
+                    echo(Buffer.from([byte]));   // visible while typing
+                }
             }
         };
         wasRaw = stdin.isRaw;
@@ -288,7 +296,7 @@ async function racePromptAgainstLogin(prompt, sessionWatch) {
  */
 async function promptCredentials(watchForSession, { setup = false } = {}) {
     if (!process.stdin.isTTY) {
-        console.log(setup ? 'Setup requires a terminal with hidden input; no login saved.' : 'Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
+        console.log(setup ? 'Setup requires an interactive terminal; no login saved.' : 'Not running in a terminal, so no credential prompt; log in manually in the opened browser window.');
         return null;
     }
     // The watcher is started, not tested: watchForSession() hands back a Promise, which
@@ -308,7 +316,7 @@ async function promptCredentials(watchForSession, { setup = false } = {}) {
     const email = await race(emailPrompt);
     if (email === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (email === null) return null;
-    const passwordPrompt = promptSecret('EP password (input hidden): ', cleanPassword);
+    const passwordPrompt = promptSecret('EP password (visible): ', cleanPassword);
     const password = await race(passwordPrompt);
     if (password === PROMPT_CANCELLED_BY_LOGIN) return PROMPT_CANCELLED_BY_LOGIN;
     if (password === null) {
@@ -322,7 +330,7 @@ async function promptCredentials(watchForSession, { setup = false } = {}) {
  * Resolves credentials at runtime from the first available source:
  * 1. EP_EMAIL / EP_PASSWORD environment variables (both must be set)
  * 2. Versioned native OS credential record, then optional legacy keytar fields
- * 3. Interactive TTY prompt (hidden input), raced against watchForSession so a manual
+ * 3. Interactive TTY prompt (visible, editable input), raced against watchForSession so a manual
  *    browser login that completes while it is open cancels it
  * Returns null if no credentials are available, allowing manual login, or an object
  * with sessionDetected true when the login watcher saw a completed login first.
@@ -368,7 +376,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ onBrowserClosed = () => {}, legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover, numberBoxSubmitApprover } = {}) {
+async function launchProgram({ onBrowserClosed = () => {}, onBrowserDisconnected = () => {}, legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover, numberBoxSubmitApprover } = {}) {
     // F4 popup is the only normal-run dropdown input path. The older
     // Home/ArrowDown mechanism remains only in explicit synthetic regression
     // fixtures and the local EP-free diagnostic; there is no env rollback.
@@ -2440,7 +2448,7 @@ async function launchProgram({ onBrowserClosed = () => {}, legacySignals = false
                 close: () => legacySignals && startupSignal ? closeSignalBrowser() : browser.close(),
             });
             if (dropdownSubmitOnce) controls.inspectDropdowns = () => require('./lib/dropdown-diagnostics').collectDropdownDiagnostics(page,{definitionsOnly:true});
-            browser.on('disconnected', () => controls.browserClosed());
+            browser.on('disconnected', () => { controls.browserClosed(); onBrowserDisconnected(); });
 
             // Expose API functions to the page (for hotkey event listeners to call).
             // These bindings live on the browser context, not on the document, so they
@@ -2521,7 +2529,7 @@ async function launchProgram({ onBrowserClosed = () => {}, legacySignals = false
         });
 }
 
-module.exports = { launchProgram, promptCredentials };
+module.exports = { launchProgram, promptCredentials, promptSecret };
 if (require.main === module) {
     launchProgram({ legacySignals: true }).catch(error => {
         console.error(diagnostic(error, 'EducationPerfected startup'));

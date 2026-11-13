@@ -100,14 +100,10 @@ const { cleanupTestProcess } = require('./test-process-cleanup');
         await command('status', '"state":"completed"');
         if (process.argv.includes('--external-close')) {
             await browser.close();
-            const closedDeadline = Date.now() + 5000;
-            while (!output.includes('"state":"closed"') && Date.now() < closedDeadline) {
-                child.stdin.write('status\n');
-                await new Promise(resolve => setTimeout(resolve, 30));
-            }
-            assert.ok(output.includes('"state":"closed"'));
-            await command('start', '"state":"closed"');
-            await command('quit', '"state":"closed"');
+            const exitDeadline = Date.now() + 15000;
+            while (child.exitCode === null && Date.now() < exitDeadline) await new Promise(resolve => setTimeout(resolve, 30));
+            assert.equal(child.exitCode, 0, 'CLI must exit on its own after the browser is closed: ' + output);
+            assert.ok(output.includes('Browser closed; exiting.'), 'External close must be announced: ' + output);
         } else if (process.argv.includes('--signal')) child.kill('SIGINT');
         else await command('quit', '"state":"closed"');
         if (child.exitCode === null) await new Promise(resolve => child.once('exit', resolve));
