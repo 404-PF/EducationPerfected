@@ -59,8 +59,8 @@ async function verifyPackagedDelete() {
   }
   assert.equal(await entry.getPassword(), value, 'Production SEA setup must persist the exact synthetic pair (independent source read)');
   console.log('Windows SEA setup: ordered hidden prompt input, closed helper receipt and independent exact synthetic pair passed.');
-  for (const command of ['--check-credentials','--forget-credentials']) {
-   console.log('Windows SEA credential checkpoint: '+(command === '--check-credentials' ? 'health-read' : 'delete'));
+  for (const command of ['check-credentials','forget-credentials']) {
+   console.log('Windows SEA credential checkpoint: '+(command === 'check-credentials' ? 'health-read' : 'delete'));
    let text = '', spawnError;
    child = spawn(copy, [command], {env,cwd:home,stdio:['ignore','pipe','pipe']});
    childClosed = false;
@@ -72,17 +72,17 @@ async function verifyPackagedDelete() {
    catch (error) {setupCertain=false;throw error;}
    assert.equal(spawnError, undefined, 'Packaged credential process must spawn');
    assert.equal(code, 0, 'Packaged credential command must exit successfully');
-   const expected = command === '--check-credentials' ? 'Saved login is available and its record is valid.\n' : 'Saved login removed from the OS credential store.\n';
+   const expected = command === 'check-credentials' ? 'Saved login is available and its record is valid.\n' : 'Saved login removed from the OS credential store.\n';
    assert.ok(text === expected, 'Packaged command must return only fixed status text');
    assert.equal(childClosed, true, 'Each packaged credential process must close before the next command');
    assert.equal(binding.hasLiveWorkers(), false, 'Source worker must be idle between packaged commands');
    assert.equal(fs.readdirSync(tmp).length, 0, 'Packaged credential command must remove its native extraction before fixture cleanup');
-   if (command === '--check-credentials') assert.equal(await entry.getPassword(), value, 'Health read must leave the independently verified SEA-saved record unchanged');
+   if (command === 'check-credentials') assert.equal(await entry.getPassword(), value, 'Health read must leave the independently verified SEA-saved record unchanged');
   }
   assert.equal(await entry.getPassword(), null, 'Independent source worker must confirm packaged deletion');
   created = false;
   assert.equal(binding.hasLiveWorkers(), false);
-  console.log('Windows SEA interactive setup saved a source-verified exact synthetic pair; fresh-process health read validated shape, then --forget-credentials deleted it; independent source read, process exit and owned extraction cleanup passed. Not SEA-returned exact-value, browser startup, physical console or no-Node proof.');
+  console.log('Windows SEA interactive setup saved a source-verified exact synthetic pair; fresh-process health read validated shape, then forget-credentials deleted it; independent source read, process exit and owned extraction cleanup passed. Not SEA-returned exact-value, browser startup, physical console or no-Node proof.');
  } catch (error) {primary=error;}
  finally {
   try {await stopChild(child,closed);} catch {cleanupFailure=Error('Packaged child cleanup failed');}

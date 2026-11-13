@@ -109,13 +109,19 @@ async function credentialCommand(command, { store, prompt = promptCredentials, o
 }
 module.exports = { runCli, credentialCommand };
 if (require.main === module) {
-    if (['--setup','--forget-credentials','--check-credentials'].some(command => process.argv.includes(command))) {
-        const commands = ['--setup','--forget-credentials','--check-credentials'].filter(value => process.argv.includes(value));
-        if (commands.length > 1) { console.error('Choose only one credential command.'); process.exitCode = 1; }
-        else {
-        credentialCommand(commands[0]).catch(() => { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode = 1; });
-        }
-    } else if (process.argv.includes('--help') || process.argv.includes('-h')) {
-        console.log('EducationPerfected interactive CLI\nUsage: node bin/cli.js [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, inspect-self-mark, quit\nDoes not start answering until start is entered.');
-    } else runCli().catch(error => { console.error(diagnostic(error, 'EducationPerfected CLI')); process.exitCode = 1; });
+    const {parseCommand,helpText}=require('../lib/cli-command');
+    const parsed=parseCommand(process.argv.slice(2));
+    if(parsed.error){console.error(parsed.error);process.exitCode=1;}
+    else if(parsed.command==='help')console.log(helpText());
+    else if(parsed.command==='version')console.log(require('../package.json').version);
+    else if(['setup','check-credentials','forget-credentials'].includes(parsed.command)){
+        (async()=>{
+            if(parsed.command==='setup'){
+                await require('../packaging/download-browser').ensureBrowser();
+                console.log('Browser ready. Saving a login is optional; leave email empty to skip.');
+            }
+            await credentialCommand('--'+parsed.command);
+        })().catch(()=>{console.error('Setup/credential command failed; no plaintext fallback.');process.exitCode=1;});
+    }else if(parsed.command==='run')runCli().catch(error=>{console.error(diagnostic(error,'EducationPerfected CLI'));process.exitCode=1;});
+    else {console.error('This command is available in the packaged app only.');process.exitCode=1;}
 }

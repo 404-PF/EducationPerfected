@@ -17,11 +17,11 @@ async function probe(kind, scenario) {
     const moduleFixture = { exports: {} };
     const fakeProcess = {
         platform: 'linux', execPath: process.execPath,
-        argv: ['fixed', 'fixed', '--check-credentials'], env: {},
+        argv: ['fixed', 'fixed', 'check-credentials'], env: {},
         stdout: { write: line => { output += line; } },
         on() {}, removeListener() {},
     };
-    if (scenario === 'conflict') fakeProcess.argv.push('--forget-credentials');
+    if (scenario === 'conflict') fakeProcess.argv.push('forget-credentials');
     const load = id => {
         if (id === '../index') return {
             launchProgram() { browser++; },
@@ -66,10 +66,10 @@ async function probe(kind, scenario) {
     }
     if (scenario === 'conflict') {
         assert.equal(fakeProcess.exitCode, 1);
-        assert.ok(output.includes('Choose only one credential command.'));
+        assert.ok(output.includes('Use one subcommand. See help.'));
     } else if (scenario === 'error') {
         assert.equal(fakeProcess.exitCode, 1);
-        assert.ok(output.includes('Credential command failed.'));
+        assert.ok(output.includes('Setup/credential command failed'));
     } else {
         assert.equal(fakeProcess.exitCode, undefined);
         const expected = scenario === 'valid'
@@ -77,7 +77,7 @@ async function probe(kind, scenario) {
             : 'No saved login was found.\n';
         assert.equal(output, expected);
     }
-    if (kind === 'bootstrap') assert.equal(cleaned, 1);
+    if (kind === 'bootstrap') assert.equal(cleaned, scenario === 'conflict' ? 0 : 1);
 }
 (async () => {
     for (const kind of ['source', 'bootstrap']) {

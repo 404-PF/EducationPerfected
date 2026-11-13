@@ -42,3 +42,34 @@ after its awaited browser close succeeds. It may then remove or mark the runtime
 safe for retry, preserving signal exit codes. Failed close or forced exit before confirmation leaves the running marker retained.
 An already confirmed close remains safe if another signal arrives afterward.
 Signals before handoff have no browser owner and use bootstrap's existing cleanup.
+
+## Subcommands and uninstall
+
+`setup` acquires Chrome with the existing explicit consent/checksum flow, then
+offers optional hidden credential storage. Cached browser reuse skips another
+download. `check-credentials` and `forget-credentials` do not download or launch
+a browser. `help` and `version`, including -h/--help and -v/--version, return
+before runtime/store initialization. Old credential/update/uninstall --flags
+are refused with a hint and exit1, not silently accepted.
+
+`uninstall` requires an interactive typed confirmation. Close every other app
+copy, including source CLI and its browser, first. It removes only the app's
+native OS credential-store record, not legacy keytar records. A maintenance lock blocks
+new packaged runtime allocation while uninstall scans/deletes; stale maintenance
+locks are retained for inspection. Other live/uncertain runtime entries, browser
+download locks/staging, unknown root data or symlinks prevent browser deletion.
+It never recursively deletes tmp/root and reports retained data as incomplete.
+The current own native binding is removed only after native worker completion.
+The exe remains and its exact path is printed for manual deletion. Source CLI
+does not hold packaged runtime leases, so closing source copies is a user
+precondition, not claimed process discovery. No broad disk cleanup is promised.
+
+Native credential fixtures use an explicitly inert cached-browser receipt in
+disposable homes to exercise setup's cache-reuse path without launching that
+inert file. macOS retains its runner HOME for keychain isolation and uses the
+actual acquisition/cache path. Browser-download integrity/consent is tested
+separately; credential fixtures are not Google acquisition proof.
+
+Current uninstall retains browser caches even after confirmation because existing
+receipts do not inventory nested files. It prints the exact directory for manual
+inspection/deletion and reports incomplete rather than deleting unknown data.

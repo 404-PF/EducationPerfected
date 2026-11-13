@@ -44,6 +44,14 @@ async function prepareEmbeddedBrowser(dir,manifest){
     }
 }
 async function main() {
+    const parsed = require('../lib/cli-command').parseCommand(process.argv.slice(2));
+    if (parsed.error) { console.error(parsed.error); process.exitCode=1; return; }
+    if (parsed.command === 'help') { console.log(require('../lib/cli-command').helpText()); return; }
+    if (parsed.command === 'version') { console.log(require('../package.json').version); return; }
+    if (parsed.command === 'update') {
+        await require('./update').updateCommand({executable:process.execPath});
+        return;
+    }
     const runtime = require('../lib/runtime-directory').createRuntimeDirectory();
     const dir = runtime.directory;
     // Puppeteer creates its per-launch profile beneath this owned run directory.
@@ -67,18 +75,24 @@ async function main() {
         require('../lib/native-binding').setPackagedBinding(process.platform === 'win32'
             ? (windowsBinding = require('../lib/packaged-windows-binding').createWindowsBinding(file, { onIdle: () => { if (cleanupPending) cleanup(); } }))
             : createRequire(process.execPath)(file));
-        const args = process.argv.slice(2);
-        if (args.includes('--help') || args.includes('-h')) {
-            console.log('EducationPerfected\nUsage: educationperfected [--setup | --forget-credentials | --check-credentials]\nCommands: start, stop, status, mode auto, mode semi, refresh, quit');
+        if (parsed.command === 'uninstall') {
+            handoffSignals();
+            const result=await require('./uninstall').uninstallCommand({store:require('../lib/credential-store').createCredentialStore(),ownDirectory:dir,cleanupOwn:async()=>{
+                if(windowsBinding?.hasLiveWorkers())throw new Error('Credential worker closure unconfirmed');
+                runtime.remove(true);
+            }});
+            if(result.incomplete)process.exitCode ||= 1;
             return;
         }
-        if (['--setup','--forget-credentials','--check-credentials'].some(command => args.includes(command))) {
+        if (['setup','forget-credentials','check-credentials'].includes(parsed.command)) {
             handoffSignals();
-            const commands = ['--setup','--forget-credentials','--check-credentials'].filter(value => args.includes(value));
-            if (commands.length > 1) { console.error('Choose only one credential command.'); process.exitCode ||= 1; return; }
-            const command = commands[0];
-            try { await require('../bin/cli').credentialCommand(command); }
-            catch { console.error('Credential command failed. Unlock the OS credential store or run --setup to replace an invalid saved record; no plaintext fallback is used.'); process.exitCode ||= 1; }
+            try {
+                if (parsed.command === 'setup') {
+                    await require('./download-browser').ensureBrowser();
+                    console.log('Browser ready. Saving a login is optional; leave email empty to skip.');
+                }
+                await require('../bin/cli').credentialCommand('--'+parsed.command);
+            } catch { console.error('Setup/credential command failed; no plaintext fallback.'); process.exitCode ||= 1; }
             return;
         }
         if(manifest.browserMode==='direct-google-download') {

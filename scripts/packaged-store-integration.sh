@@ -19,6 +19,7 @@ trap 'kill "$KEYRING_PID" 2>/dev/null || :; wait "$KEYRING_PID" 2>/dev/null || :
 gdbus wait --session --timeout 5 org.freedesktop.secrets
 rm -f "$HOME/session-input"
 cd "$EP_STORE_TEST_ROOT"
+python3 scripts/seed-inert-browser-cache.py "$HOME"
 # The inert source CLI PTY contract is covered by test:store:integration.
 EP_PACKAGED_CLI="$EP_STORE_TEST_ROOT/build/linux-$(node -p 'process.arch')/educationperfected"
 export EP_PACKAGED_CLI
@@ -29,7 +30,7 @@ import os,pty,subprocess,select,time
 master,slave=pty.openpty()
 child=None
 try:
-    child=subprocess.Popen([os.environ['EP_PACKAGED_CLI'],'--setup'],stdin=slave,stdout=slave,stderr=slave,close_fds=True)
+    child=subprocess.Popen([os.environ['EP_PACKAGED_CLI'],'setup'],stdin=slave,stdout=slave,stderr=slave,close_fds=True)
     data=b''
     for marker,answer in [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'fixture-native-only\r')]:
         deadline=time.time()+8
@@ -55,7 +56,7 @@ const { createCredentialStore } = require('./lib/credential-store');
  console.log('Packaged CLI setup saved the expected synthetic native record.');
 })().catch(() => {console.error('Native CLI record verification failed.');process.exitCode=1;});
 VERIFY
-"$EP_PACKAGED_CLI" --forget-credentials
+"$EP_PACKAGED_CLI" forget-credentials
 node - <<'JS'
 const assert = require('node:assert/strict');
 const { createCredentialStore } = require('./lib/credential-store');

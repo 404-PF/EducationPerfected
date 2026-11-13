@@ -83,6 +83,12 @@ const ttyPair = answer => {
     assert.throws(() => update.selectUpdatePlan(releases, 'not-a-version', 'educationperfected-linux-x64'), /Unrecognized/);
 
     const base = { packaged: true, platform: 'linux', arch: 'x64', currentVersion: '2026.0.0' };
+    // The POSIX swap path really spawns the fixture executable (a #!/bin/sh script)
+    // for its default healthcheck; on Windows that script cannot execute, so the
+    // healthcheck is injected there. POSIX lanes keep the full end-to-end proof,
+    // and scripts/update-windows-helper-test.js covers the Windows cmd helper natively.
+    const posix = process.platform !== 'win32';
+    const spawnHealthcheck = posix ? {} : { healthcheck: async () => true };
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-update-contract-'));
     const exe = path.join(home, 'educationperfected');
     fixtureExecutable(exe, '2026.0.0');
@@ -118,7 +124,7 @@ const ttyPair = answer => {
         // Successful POSIX update: verified bytes swapped in, healthcheck run, old bytes kept as backup.
         {
             const { fetch, calls } = fakeFetch(releases);
-            const tty = ttyPair('update'); const pending = update.updateCommand({ ...base, executable: exe, fetchImpl: fetch, input: tty.input, output: tty.output });
+            const tty = ttyPair('update'); const pending = update.updateCommand({ ...base, executable: exe, fetchImpl: fetch, input: tty.input, output: tty.output, ...spawnHealthcheck });
             tty.answer();
             const result = await pending;
             assert.equal(result.status, 'updated'); assert.equal(result.version, '2026.1.5');
@@ -127,9 +133,11 @@ const ttyPair = answer => {
             assert.equal(fs.readFileSync(exe + '.backup', 'utf8').includes('2026.0.0'), true);
             assert.deepEqual(fs.readdirSync(home).filter(name => name.startsWith('.update')), []);
             assert.match(tty.text(), /version check passed/);
-            // The replaced fixture really answers the healthcheck contract.
-            const { spawnSync } = require('node:child_process');
-            assert.equal(spawnSync(exe, ['version'], { encoding: 'utf8' }).stdout.trim(), '2026.1.5');
+            if (posix) {
+                // The replaced fixture really answers the healthcheck contract.
+                const { spawnSync } = require('node:child_process');
+                assert.equal(spawnSync(exe, ['version'], { encoding: 'utf8' }).stdout.trim(), '2026.1.5');
+            }
             fs.rmSync(exe + '.backup');
         }
 
@@ -161,8 +169,11 @@ const ttyPair = answer => {
             tty.answer();
             await assert.rejects(pending, /rolled back/);
             assert.match(tty.text(), /restored automatically/);
-            const { spawnSync } = require('node:child_process');
-            assert.equal(spawnSync(exe, ['version'], { encoding: 'utf8' }).stdout.trim(), '2026.1.5'); // exe content is still the previous build
+            assert.equal(fs.readFileSync(exe, 'utf8'), newBytes.toString()); // exe bytes are the previous build again
+            if (posix) {
+                const { spawnSync } = require('node:child_process');
+                assert.equal(spawnSync(exe, ['version'], { encoding: 'utf8' }).stdout.trim(), '2026.1.5');
+            }
             assert.equal(fs.existsSync(exe + '.backup'), false);
             assert.deepEqual(fs.readdirSync(home).filter(name => name.startsWith('.update')), []);
         }

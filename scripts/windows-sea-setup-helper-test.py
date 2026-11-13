@@ -22,7 +22,7 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
             code=m.entry()
         text=out.getvalue();assert len(calls)==1
         exe,args,env,cwd,prompts,expected,forbidden_output,expected_exit=calls[0]
-        assert exe==str(canonical/'educationperfected.exe') and args==['--setup']
+        assert exe==str(canonical/'educationperfected.exe') and args==['setup']
         assert cwd==str(canonical/'home')
         assert 'EP_PASSWORD' not in env and 'EP_EMAIL' not in env and 'NODE_OPTIONS' not in env
         assert env['PATH']==str(canonical/'empty')
@@ -66,7 +66,7 @@ for mode in ('cancel-email','cancel-password'):
         expected_exit=transport.call_args.kwargs['expected_exit']
         assert exe==str(canonical/'educationperfected.exe') and cwd==str(canonical/'home')
         assert env['PATH']==str(canonical/'empty')
-        assert args==['--setup']
+        assert args==['setup']
         assert expected_exit==0
         assert expected==b'Setup cancelled; no login saved.'
         assert forbidden_output==(b'Login saved in the OS credential store. Run the CLI to sign in.',)
@@ -91,7 +91,7 @@ for mode in ('interrupt-email','interrupt-password'):
         expected_exit=transport.call_args.kwargs['expected_exit']
         assert exe==str(canonical/'educationperfected.exe') and cwd==str(canonical/'home')
         assert env['PATH']==str(canonical/'empty')
-        assert args==['--setup'] and expected_exit==130
+        assert args==['setup'] and expected_exit==130
         assert expected==(b'EP email' if mode=='interrupt-email' else b'EP password')
         assert prompts==([(b'EP email',b'\x03')] if mode=='interrupt-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\x03')])
         assert forbidden_output==((b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.',b'EP password') if mode=='interrupt-email' else (b'Login saved in the OS credential store. Run the CLI to sign in.',b'Setup cancelled; no login saved.'))

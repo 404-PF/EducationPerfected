@@ -7,7 +7,7 @@ def session():
     before = termios.tcgetattr(slave)
     child = None
     try:
-        child = subprocess.Popen(['node', '--require', os.path.join(ROOT, 'scripts/setup-inert-store.cjs'), 'bin/cli.js', '--setup'], stdin=slave, stdout=slave, stderr=slave, cwd=ROOT, close_fds=True)
+        child = subprocess.Popen(['node', '--require', os.path.join(ROOT, 'scripts/setup-inert-store.cjs'), 'bin/cli.js', 'setup'], stdin=slave, stdout=slave, stderr=slave, cwd=ROOT, close_fds=True)
         yield child, master, slave, before
     finally:
         if child is not None and child.poll() is None:

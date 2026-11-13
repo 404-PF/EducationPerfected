@@ -239,3 +239,35 @@ hooks disabled and the pinned headless-shell installed. It only uses local
 synthetic pages. Hosted workflow success remains to be observed; this is not
 a native package/no-Node/browser-certification pass, and branch protection
 requirements are not changed by adding the workflow.
+
+### Current subcommand migration
+
+Historical rows above retain the exact flags used by their original binaries.
+Current source and future candidate binaries use `setup`, `check-credentials`
+and `forget-credentials`. Removed --forms fail before native/runtime/download
+work. The migrated fixture source is not itself another native pass. Windows
+and Linux credential fixtures seed an inert cached-browser receipt inside their
+owned disposable HOME to isolate credential setup; that file is never launched.
+macOS retains runner HOME for verified owned keychain selection, so its fixture
+uses actual consented browser acquisition/cache reuse. Both avoid opening EP.
+Run `npm run test:packaged-harness`, `npm run test:browser-download`,
+`npm run test:store` and `npm run test:store:pty` for inert/local contracts.
+`cli-command-test.js` covers bootstrap dispatch, including update before runtime
+initialization and uninstall's cleanup callback. `uninstall-test.js` uses only
+synthetic files/stores and checks maintenance-lock contention, cancel/no-delete,
+safe removal, uncertain runs, locks, unknown data, symlink target retention,
+store failures and cleanup failures. These do not certify native uninstallation
+or Windows executable replacement.
+macOS fixture PATH now contains only an owned symlink to /usr/bin/unzip,
+not Node or Chrome. Its wrapper deadline accommodates the browser install
+timeout; the previous 90-second deadline did not. No new native run is claimed.
+
+Safety follow-up: uninstall retains all browser caches pending manual inspection,
+including unknown nested data; no recursive browser deletion is attempted.
+Maintenance-lock conflicts and release failures name the exact retained lock
+with close-all-processes/manual-inspection recovery, never stale-PID stealing.
+
+Hosted source-regression pass for tested commit172ea0705ebc27923e5e48c48a69d458b5f938f4:
+https://github.com/404-PF/EducationPerfected/actions/runs/43361167760 .
+The main-integration head below needs its own checks; this cited pass is not
+claimed as native certification or coverage of later source changes.
