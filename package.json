@@ -11,6 +11,7 @@
     "cli": "node bin/cli.js",
     "diagnose:dropdown:local": "node scripts/dropdown-native-local.js",
     "release:check": "node scripts/release-gate.js",
+    "test:update": "node scripts/update-test.js && node scripts/update-windows-helper-test.js && node scripts/update-workflow-policy-test.js",
     "test:beta-preparation": "node scripts/beta-preparation-test.js && node scripts/stage-downloadable-store-test.js && node scripts/stage-windows-test-artifact-test.js",
     "test:release-gate": "node scripts/release-gate-test.js",
     "build:downloadable-candidate": "node scripts/beta-candidate.js build-downloadable",
