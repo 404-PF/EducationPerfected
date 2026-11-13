@@ -1,9 +1,9 @@
-name: V2026 beta build preparation (no publication)
+name: V2026 stable-release preparation (no publication)
 on:
   workflow_dispatch:
     inputs:
       validation_label:
-        description: 'Internal build label, 2026.M.D-validation.N (not a public beta version)'
+        description: 'Internal build label, 2026.M.D-validation.N (not a public release version)'
         required: true
         type: string
       upload_windows_test:

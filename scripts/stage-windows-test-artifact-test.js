@@ -26,6 +26,7 @@ const { hashFile } = require("./beta-candidate"),
     );
     const candidate = {
       schemaVersion: 2,
+      sourceVersion: "2026.0.0",
       labelKind: "internal-validation-not-release",
       status: "build-only-not-for-distribution",
       publicationAuthorized: false,
@@ -72,6 +73,8 @@ const { hashFile } = require("./beta-candidate"),
     );
     await [
       ["schemaVersion", 1],
+      ["sourceVersion", "2026.0.0-beta.1"],
+      ["sourceVersion", "2026.0.0\nUNVERIFIED"],
       ["labelKind", "release"],
       ["status", "ready"],
       ["publicationAuthorized", true],

@@ -1,6 +1,6 @@
-# Downloadable beta candidate policy
+# Downloadable stable-release candidate policy
 
-This is preparation, not release approval or a statement that native checks pass.
+This prepares stable version `2026.0.0` without a prerelease suffix. It is not release approval or a statement that native checks pass.
 
 ## Distribution boundary
 
@@ -41,9 +41,9 @@ Browser launch and sandbox requirements are not waived. No sandbox-disabling
 flag is added by the downloader. Linux distribution/library compatibility is
 limited to the hosts actually validated.
 
-## Unsigned beta
+## Unsigned release
 
-Use an explicit unsigned beta policy: no paid code-signing identity, Windows
+Use an explicit unsigned release policy: no paid code-signing identity, Windows
 publisher certificate, Apple Developer ID or notarization is promised. macOS
 SEA construction still needs its existing ad-hoc integrity signature; that is
 not publisher authentication. Final macOS bytes must pass their ad-hoc signature
@@ -83,7 +83,7 @@ artifact/notices review, native credential save/read/delete, real console
 shutdown, and clean-machine no-Node evidence remain required on all five targets.
 Build success is not no-Node launch proof. Target narrowing needs a new decision.
 A future reviewed publication workflow must run release:check before upload.
-Every merge and every tag/release/publication still needs Page's separate approval.
+On November 13 Page authorized autonomous changes in repositories owned by 404-PF or 404-Page-Found, including source validation changes and preparation code, with independent exact-head review and passing checks before merge. This replaces the older per-merge approval rule; it does not authorize publication, spending or changes outside the handed-over work. Every tag, release and publication still needs Page's explicit approval.
 
 ## Source references
 

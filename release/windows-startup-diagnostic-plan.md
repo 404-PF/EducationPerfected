@@ -208,7 +208,9 @@ as false positives by this document, and it grants no native run or release.
 ## Fixed utility-service hash observation
 
 The local hosted navigation comparison reads three additional fixed bounded
-Browser.getHistogram names after navigation/readiness and before browser closure:
+Browser.getHistogram names after the launch/page-operation block and before
+browser closure. Page-selection, navigation or readiness may already have failed;
+the separately reported stage records what was reached:
 ChildProcess.LaunchFailed.UtilityProcessHash, ChildProcess.Crashed.UtilityProcessHash
 and ChildProcess.Launched.UtilityProcessHash. Only integer bucket bounds/counts
 are logged, never arbitrary histogram names, URLs, profile paths or child output.

@@ -26,6 +26,7 @@ async function stage(source, destination, commit) {
     fs.readFileSync(path.join(source, "CANDIDATE.json"), "utf8"),
   );
   assert.equal(candidate.schemaVersion, 2);
+  assert.equal(candidate.sourceVersion, "2026.0.0");
   assert.equal(candidate.labelKind, "internal-validation-not-release");
   assert.equal(candidate.status, "build-only-not-for-distribution");
   assert.equal(candidate.publicationAuthorized, false);
@@ -89,7 +90,8 @@ async function stage(source, destination, commit) {
   }
   fs.writeFileSync(
     path.join(destination, "TESTING.txt"),
-    `UNPUBLISHED INTERNAL WINDOWS X64 TEST BUILD - UNSIGNED\nSource: ${commit}\nLabel: ${candidate.validationLabel}\nNot a release, not certified, no bundled Chrome. Keep all notices.\nFirst run asks to download pinned Chrome from Google (about 200MB).\nWindows hosted first-run currently fails; cached startup is intermittent.\nSmartScreen/Defender may warn because no publisher signature exists. Do not disable security protections.\nOpen educationperfected.exe from Terminal. No real credentials are needed to observe startup.\nDo not enter start or refresh or open a real task/assessment for this startup test.\nSend the terminal error or screenshot with credentials removed.\n`,
+    `UNPUBLISHED INTERNAL WINDOWS X64 TEST BUILD - UNSIGNED\nPrepared stable version: ${candidate.sourceVersion} (not published or certified)
+Source: ${commit}\nLabel: ${candidate.validationLabel}\nNot a release, not certified, no bundled Chrome. Keep all notices.\nFirst run asks to download pinned Chrome from Google (about 200MB).\nWindows hosted first-run currently fails; cached startup is intermittent.\nSmartScreen/Defender may warn because no publisher signature exists. Do not disable security protections.\nOpen educationperfected.exe from Terminal. No real credentials are needed to observe startup.\nDo not enter start or refresh or open a real task/assessment for this startup test.\nSend the terminal error or screenshot with credentials removed.\n`,
     { flag: "wx" },
   );
 }
