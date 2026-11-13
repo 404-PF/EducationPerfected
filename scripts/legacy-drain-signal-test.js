@@ -66,7 +66,10 @@ if (process.env.EP_DRAIN_PRELOAD === '1') {
             const page = (await browser.pages())[0];
             await page.type('#loginId', 'fixture-user'); await page.type('#password', 'fixture-only'); await page.click('form button');
             await wait(() => output.includes('fully Loaded.'));
-            await page.goto(origin + '/lesson');
+            // Selection interruption intentionally preserves dialogs and skips
+            // destructive modal cleanup. Use a non-selection local fixture so
+            // the legacy $$eval cleanup delay is actually exercised.
+            await page.goto(origin + '/audio');
             await page.evaluate(() => { void window.startAnswer(); });
             await wait(() => output.includes('answerLoop entered.'));
             // Explicit stop leaves the real run active until cleanup drains.

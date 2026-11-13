@@ -219,3 +219,23 @@ Unmodified-artifact normal saved-login, Mac and Windows normal saved-login,
 Windows browser reliability/console events, clean-machine/no-Node hosts,
 Ubuntu24 compatibility, project/browser rights and signing remain open. No
 `release/evidence.json` is created from these fixture-only observations.
+
+
+### Source regression fixture refresh
+
+On unchanged main e88c7ad, cli-test.js expected supported multi-select semi-auto
+to stop automatically. It now verifies the exact selected set and zero Submit
+before and after an explicit stop. The legacy drain fixture used a selection
+question, where interrupted selection intentionally preserves dialogs and skips
+modal deletion; the preload never reached its delayed $$eval. The fixture now
+uses the local audio route to reach legacy modal cleanup. Production code is
+unchanged. Both prior failures were stale test assumptions, not evidence of an
+environment-only failure or a product regression. Updated full test:phase3
+passed locally, including normal and forced signal drains, CLI and restart.
+
+source-regression.yml runs test:phase3 on ordinary pull requests and main pushes,
+with pinned Node/actions, no persisted Git credential, dependency lifecycle
+hooks disabled and the pinned headless-shell installed. It only uses local
+synthetic pages. Hosted workflow success remains to be observed; this is not
+a native package/no-Node/browser-certification pass, and branch protection
+requirements are not changed by adding the workflow.
