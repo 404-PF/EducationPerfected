@@ -42,9 +42,9 @@ if (process.platform !== 'win32') {
 
     // Healthcheck failure path: staged build reports the wrong version; helper rolls back.
     fixtureCmd(exe, '2026.1.5');
+    fs.mkdirSync(staging, { recursive: true }); // the first helper run removed it
     fixtureCmd(staged, '2026.9.9');
     fs.rmSync(receipt, { force: true });
-    fs.mkdirSync(staging, { recursive: true });
     fs.writeFileSync(path.join(dir, 'apply-update-2.cmd'), windowsHelperScript({ executable: exe, staged, backup, version: '2026.2.0', receipt, staging }));
     const failed = require('node:child_process').spawnSync(process.env.ComSpec || 'cmd.exe', ['/c', path.join(dir, 'apply-update-2.cmd')], { encoding: 'utf8', timeout: 120000 });
     assert.equal(failed.status, 0, failed.stderr);
