@@ -22,7 +22,7 @@ Test real console Ctrl+C, terminal close and supported termination events both i
 
 ## Recording and release gates
 
-Use `release/criteria.json` without silently dropping selected targets. Any narrower beta scope needs an explicit scope decision. Record failures and skips honestly. Native validation does not clear project rights, browser redistribution or notice obligations. Run the release checker on the same clean source commit used for the final artifact, review the evidence itself and obtain publication authority separately. The checker cannot prove authenticity or prevent later source edits.
+Use `release/criteria.json` without silently dropping selected targets. Any narrower release scope needs an explicit scope decision. Record failures and skips honestly. Native validation does not clear project rights, browser redistribution or notice obligations. Run the release checker on the same clean source commit used for the final artifact, review the evidence itself and obtain publication authority separately. The checker cannot prove authenticity or prevent later source edits.
 
 ## Official references checked October 31, 2026
 

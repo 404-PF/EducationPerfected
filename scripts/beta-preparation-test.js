@@ -102,6 +102,11 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
         const dirty=command();assert.ifError(dirty.error);assert.equal(dirty.status,1,'dirty source must not become a candidate');
     }finally{fs.rmSync(checkout,{recursive:true,force:true});}
     const workflow=fs.readFileSync(path.resolve(__dirname,'../.github/workflows/beta-preparation.yml'),'utf8');
+    assert.match(workflow,/^name: V2026 stable-release preparation \(no publication\)$/m);
+    const stableVersion=require('../package.json').version;
+    assert.equal(stableVersion,'2026.0.0');
+    assert.equal(require('../package-lock.json').version,stableVersion);
+    assert.equal(require('../package-lock.json').packages[''].version,stableVersion);
     const active=workflow.split('\n').filter(line=>!line.trimStart().startsWith('#')).join('\n');
     assert.match(active,/contents: read/);assert.match(active,/persist-credentials: false/);
     assert.match(active,/if: github.ref == 'refs\/heads\/main'/);
@@ -139,5 +144,5 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
     assert.doesNotMatch(active,/run:.*\$\{\{\s*inputs\./);
     assert.equal((active.match(/- uses:/g)||[]).length,4);
     assert.match(active,/actions\/checkout@[a-f0-9]{40}/);assert.match(active,/actions\/setup-node@[a-f0-9]{40}/);
-    console.log('Beta preparation contracts PASS: dated versions, exact-byte inventory, invalid target/commit/missing-file failures, read-only manual workflow/explicit opt-in test artifact only, no release. Synthetic only.');
+    console.log('Release preparation contracts PASS: dated versions, exact-byte inventory, invalid target/commit/missing-file failures, read-only manual workflow/explicit opt-in test artifact only, no release. Synthetic only.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
