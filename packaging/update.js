@@ -4,7 +4,7 @@
 // corruption. It does NOT detect a compromised publisher: releases are unsigned
 // and no independent signing trust anchor exists. Never tags, uploads or
 // publishes anything; release publication stays a separate owner-approved act.
-const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+const fs = require('node:fs'), path = require('node:path');
 const { createHash } = require('node:crypto');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
@@ -56,15 +56,6 @@ function parseSha256Sums(text) {
     return sums;
 }
 
-function releaseDownloadUrl(tag, name) {
-    const url = 'https://github.com' + DOWNLOAD_PREFIX + tag + '/' + name;
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || parsed.pathname !== DOWNLOAD_PREFIX + tag + '/' + name || parsed.search || parsed.hash) {
-        throw new Error('Invalid release download source');
-    }
-    return url;
-}
-
 function checkAssetUrl(url, tag, name) {
     let parsed;
     try { parsed = new URL(url); } catch { throw new Error('Invalid release asset URL'); }
@@ -74,31 +65,36 @@ function checkAssetUrl(url, tag, name) {
     return url;
 }
 
-// Pick the newest stable release strictly newer than currentVersion.
-function selectUpdatePlan(releases, currentVersion, assetName = releaseAssetName()) {
-    const current = parseStableVersion(currentVersion);
-    if (!current) throw new Error('Unrecognized current version ' + currentVersion);
+function latestStableRelease(releases) {
     if (!Array.isArray(releases)) throw new Error('Unexpected release list response');
     let best = null;
     for (const release of releases) {
         if (!release || release.draft || release.prerelease || typeof release.tag_name !== 'string') continue;
         const parsed = parseStableVersion(release.tag_name);
-        if (!parsed) continue;
-        if (!best || compareVersions(parsed, best.parsed) > 0) best = { parsed, release };
+        if (parsed && (!best || compareVersions(parsed, best.parsed) > 0)) best = { parsed, release };
     }
+    return best;
+}
+
+// Pick the newest stable release strictly newer than currentVersion.
+function selectUpdatePlan(releases, currentVersion, assetName = releaseAssetName()) {
+    const current = parseStableVersion(currentVersion);
+    if (!current) throw new Error('Unrecognized current version ' + currentVersion);
+    const best = latestStableRelease(releases);
     if (!best) return { newer: false, latest: null };
     if (compareVersions(best.parsed, current) <= 0) return { newer: false, latest: best.parsed.version };
+    const tag = best.release.tag_name;
     const assets = Array.isArray(best.release.assets) ? best.release.assets : [];
     const find = name => assets.find(asset => asset && asset.name === name && typeof asset.browser_download_url === 'string');
     const asset = find(assetName), sums = find(SUMS_NAME);
-    if (!asset) throw new Error('Release ' + best.release.tag_name + ' has no asset ' + assetName + ' for this platform');
-    if (!sums) throw new Error('Release ' + best.release.tag_name + ' has no ' + SUMS_NAME);
+    if (!asset) throw new Error('Release ' + tag + ' has no asset ' + assetName + ' for this platform');
+    if (!sums) throw new Error('Release ' + tag + ' has no ' + SUMS_NAME);
     return {
         newer: true,
         version: best.parsed.version,
-        tag: best.release.tag_name,
-        asset: { name: assetName, url: checkAssetUrl(asset.browser_download_url, best.release.tag_name, assetName), size: Number.isInteger(asset.size) && asset.size >= 0 ? asset.size : null },
-        sums: { name: SUMS_NAME, url: checkAssetUrl(sums.browser_download_url, best.release.tag_name, SUMS_NAME) },
+        tag,
+        asset: { name: assetName, url: checkAssetUrl(asset.browser_download_url, tag, assetName), size: Number.isInteger(asset.size) && asset.size >= 0 ? asset.size : null },
+        sums: { name: SUMS_NAME, url: checkAssetUrl(sums.browser_download_url, tag, SUMS_NAME) },
     };
 }
 
@@ -182,6 +178,86 @@ function defaultVersion() {
     try { return require('../package.json').version; } catch { throw new Error('Current version unavailable'); }
 }
 
+function preflightExecutable(executable) {
+    if (!path.isAbsolute(executable)) throw new Error('Update needs the absolute packaged executable path');
+    const stat = fs.lstatSync(executable);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Packaged executable path is not a regular file');
+    const directory = path.dirname(executable);
+    fs.accessSync(directory, fs.constants.W_OK);
+    return directory;
+}
+
+// A previous Windows helper run reports through its receipt; an earlier backup
+// means the last update was never confirmed working by the user, so refuse.
+function checkPreviousRun(executable, backup, receipt, write) {
+    if (fs.existsSync(receipt)) {
+        write('Previous update result: ' + fs.readFileSync(receipt, 'utf8').trim());
+        fs.rmSync(receipt, { force: true });
+    }
+    if (fs.existsSync(backup)) {
+        throw new Error('An earlier update backup still exists: ' + backup + '. The current executable already passed its version check, so verify it works, delete that backup file, then retry.');
+    }
+}
+
+function acquireLock(lock, directory) {
+    try {
+        return fs.openSync(lock, 'wx', 0o600);
+    } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        throw new Error('Another update is active or was interrupted. Lock: ' + lock + '. Close all EducationPerfected processes, remove that lock and orphaned .update-* directories in ' + directory + ', then retry.');
+    }
+}
+
+// Download SHA256SUMS and the platform asset from the same release into staging
+// and verify the asset BEFORE anything is replaced or the process exits.
+async function stageVerifiedAsset(plan, staging, fetchImpl, headers, write) {
+    const sumsResponse = await fetchImpl(plan.sums.url, { headers, signal: AbortSignal.timeout(60000) });
+    if (!sumsResponse.ok) throw new Error(SUMS_NAME + ' download failed (HTTP ' + sumsResponse.status + ')');
+    const expected = parseSha256Sums(await sumsResponse.text()).get(plan.asset.name);
+    if (!expected) throw new Error(SUMS_NAME + ' has no entry for ' + plan.asset.name);
+    const staged = path.join(staging, plan.asset.name);
+    const assetResponse = await fetchImpl(plan.asset.url, { headers, signal: AbortSignal.timeout(15 * 60 * 1000) });
+    if (!assetResponse.ok) throw new Error('Update download failed (HTTP ' + assetResponse.status + ')');
+    await pipeline(Readable.fromWeb(assetResponse.body), fs.createWriteStream(staged, { mode: 0o700 }));
+    if (await fileHash(staged) !== expected) throw new Error('Update checksum mismatch; downloaded file discarded, nothing replaced');
+    write('Checksum verified against the release ' + SUMS_NAME + '.');
+    return staged;
+}
+
+// POSIX: swap the verified build in, healthcheck it, restore the backup on failure.
+async function applyPosixUpdate({ executable, staged, backup, version, healthcheck, spawn, write }) {
+    fs.renameSync(executable, backup);
+    try {
+        fs.renameSync(staged, executable);
+        fs.chmodSync(executable, 0o700);
+        const ok = healthcheck ? await healthcheck(executable, version) : defaultHealthcheck(executable, version, spawn);
+        if (!ok) throw new Error('version check failed');
+    } catch (error) {
+        let restoreError = null;
+        try {
+            fs.rmSync(executable, { force: true });
+            fs.renameSync(backup, executable);
+        } catch (failure) { restoreError = failure; }
+        if (restoreError) throw new Error('Update failed (' + error.message + ') AND rollback failed (' + restoreError.message + '). Previous build is kept as ' + backup + '; rename it back over ' + executable + ' manually.');
+        write('New build failed its version check; the previous build was restored automatically. Nothing else changed.');
+        throw new Error('Update rolled back: ' + error.message);
+    }
+    write('Updated to ' + version + '; version check passed.');
+    write('Previous build kept as ' + backup + '. To roll back manually, replace the executable with that file. Verify this build works and remove the backup before the next update.');
+    return { status: 'updated', version };
+}
+
+// Windows: the helper lives OUTSIDE the staging directory it removes, because cmd
+// reads batch files lazily and a script cannot reliably delete its own folder.
+function startWindowsHelper({ executable, staging, staged, backup, receipt, version, spawnDetached, write }) {
+    const helper = staging + '.cmd';
+    fs.writeFileSync(helper, windowsHelperScript({ executable, staged, backup, version, receipt, staging }), { mode: 0o700 });
+    spawnDetached(process.env.ComSpec || 'cmd.exe', ['/c', helper]);
+    write('Windows cannot replace a running executable, so a detached helper finishes this update after the program exits: it swaps in ' + version + ', runs its version check, and restores the previous build on failure.');
+    write('Result receipt: ' + receipt + ' (shown again on the next update run). Previous build will be kept as ' + backup + '.');
+    return { status: 'helper-started', version };
+}
+
 async function updateCommand({
     executable = process.execPath,
     currentVersion = defaultVersion(),
@@ -202,22 +278,11 @@ async function updateCommand({
         return { status: 'source-checkout' };
     }
     if (typeof fetchImpl !== 'function') throw new Error('Network fetch unavailable in this Node runtime');
-    if (!path.isAbsolute(executable)) throw new Error('Update needs the absolute packaged executable path');
-    const stat = fs.lstatSync(executable);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Packaged executable path is not a regular file');
-    const directory = path.dirname(executable);
-    fs.accessSync(directory, fs.constants.W_OK);
+    const directory = preflightExecutable(executable);
     const assetName = releaseAssetName(platform, arch);
     const backup = executable + '.backup';
     const receipt = executable + '.update-result';
-    // A previous Windows helper run reports through its receipt.
-    if (fs.existsSync(receipt)) {
-        write('Previous update result: ' + fs.readFileSync(receipt, 'utf8').trim());
-        fs.rmSync(receipt, { force: true });
-    }
-    if (fs.existsSync(backup)) {
-        throw new Error('An earlier update backup still exists: ' + backup + '. The current executable already passed its version check, so verify it works, delete that backup file, then retry.');
-    }
+    checkPreviousRun(executable, backup, receipt, write);
     const headers = { 'User-Agent': 'educationperfected-update', 'Accept': 'application/vnd.github+json' };
     const response = await fetchImpl(RELEASES_API, { headers, signal: AbortSignal.timeout(60000) });
     if (!response.ok) throw new Error('Release check failed (HTTP ' + response.status + ')');
@@ -228,14 +293,16 @@ async function updateCommand({
     }
     plan.currentVersion = currentVersion;
     const lock = executable + '.update.lock';
-    let lockFd;
-    try { lockFd = fs.openSync(lock, 'wx', 0o600); }
-    catch (error) {
-        if (error.code === 'EEXIST') throw new Error('Another update is active or was interrupted. Lock: ' + lock + '. Close all EducationPerfected processes, remove that lock and orphaned .update-* directories in ' + directory + ', then retry.');
-        throw error;
-    }
-    let staging, helperScript;
-    const cleanup = () => { if (staging) fs.rmSync(staging, { recursive: true, force: true }); if (helperScript) fs.rmSync(helperScript, { force: true }); fs.closeSync(lockFd); fs.rmSync(lock, { force: true }); };
+    const lockFd = acquireLock(lock, directory);
+    let staging = null, helperOwned = false;
+    const cleanup = () => {
+        if (staging && !helperOwned) {
+            fs.rmSync(staging, { recursive: true, force: true });
+            fs.rmSync(staging + '.cmd', { force: true });
+        }
+        fs.closeSync(lockFd);
+        fs.rmSync(lock, { force: true });
+    };
     try {
         if (!await confirm(plan, backup, { input, output })) {
             write('Update cancelled; nothing changed.');
@@ -243,44 +310,13 @@ async function updateCommand({
         }
         staging = fs.mkdtempSync(path.join(directory, '.update-'));
         fs.chmodSync(staging, 0o700);
-        // Verify the staged build against SHA256SUMS from the same release BEFORE anything exits or is replaced.
-        const sumsResponse = await fetchImpl(plan.sums.url, { headers, signal: AbortSignal.timeout(60000) });
-        if (!sumsResponse.ok) throw new Error(SUMS_NAME + ' download failed (HTTP ' + sumsResponse.status + ')');
-        const expected = parseSha256Sums(await sumsResponse.text()).get(plan.asset.name);
-        if (!expected) throw new Error(SUMS_NAME + ' has no entry for ' + plan.asset.name);
-        const staged = path.join(staging, plan.asset.name);
-        const assetResponse = await fetchImpl(plan.asset.url, { headers, signal: AbortSignal.timeout(15 * 60 * 1000) });
-        if (!assetResponse.ok) throw new Error('Update download failed (HTTP ' + assetResponse.status + ')');
-        await pipeline(Readable.fromWeb(assetResponse.body), fs.createWriteStream(staged, { mode: 0o755 }));
-        if (await fileHash(staged) !== expected) throw new Error('Update checksum mismatch; downloaded file discarded, nothing replaced');
-        write('Checksum verified against the release ' + SUMS_NAME + '.');
+        const staged = await stageVerifiedAsset(plan, staging, fetchImpl, headers, write);
         if (platform === 'win32') {
-            // The helper lives OUTSIDE the staging directory it removes: cmd reads
-            // batch files lazily, so a script cannot reliably delete its own folder.
-            const helper = staging + '.cmd';
-            fs.writeFileSync(helper, windowsHelperScript({ executable, staged, backup, version: plan.version, receipt, staging }), { mode: 0o700 });
-            helperScript = helper;
-            spawnDetached(process.env.ComSpec || 'cmd.exe', ['/c', helper]);
-            write('Windows cannot replace a running executable, so a detached helper finishes this update after the program exits: it swaps in ' + plan.version + ', runs its version check, and restores the previous build on failure.');
-            write('Result receipt: ' + receipt + ' (shown again on the next update run). Previous build will be kept as ' + backup + '.');
-            staging = null; helperScript = null; // staging and helper script are owned by the helper now
-            return { status: 'helper-started', version: plan.version };
+            const result = startWindowsHelper({ executable, staging, staged, backup, receipt, version: plan.version, spawnDetached, write });
+            helperOwned = true; // staging and the helper script belong to the helper now
+            return result;
         }
-        fs.renameSync(executable, backup);
-        try {
-            fs.renameSync(staged, executable);
-            fs.chmodSync(executable, 0o755);
-            const ok = healthcheck ? await healthcheck(executable, plan.version) : defaultHealthcheck(executable, plan.version, spawn);
-            if (!ok) throw new Error('version check failed');
-        } catch (error) {
-            try { fs.rmSync(executable, { force: true }); fs.renameSync(backup, executable); }
-            catch (restoreError) { throw new Error('Update failed (' + error.message + ') AND rollback failed (' + restoreError.message + '). Previous build is kept as ' + backup + '; rename it back over ' + executable + ' manually.'); }
-            write('New build failed its version check; the previous build was restored automatically. Nothing else changed.');
-            throw new Error('Update rolled back: ' + error.message);
-        }
-        write('Updated to ' + plan.version + '; version check passed.');
-        write('Previous build kept as ' + backup + '. To roll back manually, replace the executable with that file. Verify this build works and remove the backup before the next update.');
-        return { status: 'updated', version: plan.version };
+        return await applyPosixUpdate({ executable, staged, backup, version: plan.version, healthcheck, spawn, write });
     } finally {
         cleanup();
     }

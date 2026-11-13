@@ -21,7 +21,6 @@ function releaseList(tag, assets, flags = {}) {
 
 function fakeFetch(releases) {
     const calls = [];
-    const sumsEntry = releases.flatMap(r => r.assets).find(a => a.name === update.SUMS_NAME);
     return { calls, fetch: async (url, options = {}) => {
         calls.push({ url, method: options.method || 'GET' });
         if (url === update.RELEASES_API) return { ok: true, status: 200, json: async () => releases.map(({ assets, ...rest }) => ({ ...rest, assets: assets.map(({ _bytes, ...asset }) => asset) })) };

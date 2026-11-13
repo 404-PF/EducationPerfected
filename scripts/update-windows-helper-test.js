@@ -21,8 +21,8 @@ for (const fragment of ['move /y "%EXE%" "%BACKUP%"', 'move /y "%STAGED%" "%EXE%
 assert.ok(script.includes('if %tries% geq 180'), 'bounded wait');
 assert.ok(script.includes('\r\n'), 'cmd line endings');
 // Paths with cmd metacharacters are refused instead of producing an injectable script.
-assert.throws(() => windowsHelperScript({ executable: 'C:\\100% disk\\ep.exe', staged, backup, version: '2026.1.5', receipt, staging }), /% or !/);
-assert.throws(() => windowsHelperScript({ executable: exe, staged, backup, version: '2026.1.5', receipt: 'C:\\a!b', staging }), /% or !/);
+assert.throws(() => windowsHelperScript({ executable: String.raw`C:\100% disk\ep.exe`, staged, backup, version: '2026.1.5', receipt, staging }), /% or !/);
+assert.throws(() => windowsHelperScript({ executable: exe, staged, backup, version: '2026.1.5', receipt: String.raw`C:\a!b`, staging }), /% or !/);
 
 if (process.platform !== 'win32') {
     console.log('Windows update helper: static script contracts passed; end-to-end swap skipped off Windows (runs in the windows-2025 CI lane).');

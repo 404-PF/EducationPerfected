@@ -3,15 +3,14 @@ const assert = require('node:assert/strict'), fs = require('node:fs');
 const workflow = fs.readFileSync(__dirname + '/../.github/workflows/update-validation.yml', 'utf8');
 
 // Read-only: no permission to create releases, tags or uploads, and no step does so.
-assert.match(workflow, /permissions:\s*\r?\n\s*contents:\s*read/);
+assert.ok(workflow.includes('permissions:\n  contents: read'), 'read-only token');
 for (const forbidden of ['contents: write', 'gh release', 'gh api', 'upload-release', 'softprops/', 'actions/upload-artifact', 'git tag', 'git push']) {
     assert.ok(!workflow.includes(forbidden), 'workflow must not contain: ' + forbidden);
 }
 // Manual dispatch plus post-merge proof on main only; no release/pr-triggered path can form.
 assert.match(workflow, /workflow_dispatch/);
 assert.ok(!/release:|workflow_run:|pull_request/.test(workflow), 'no release/PR triggers');
-const push = /push:[\s\S]*?branches:\s*\[main\]/.exec(workflow);
-assert.ok(push, 'push trigger is main-only');
+assert.ok(workflow.includes('push:\n    branches: [main]'), 'push trigger is main-only');
 // Native proof needs the Windows runner (running-executable replacement semantics).
 assert.ok(workflow.includes('windows-2025'), 'windows lane');
 assert.ok(workflow.includes('ubuntu-22.04'), 'linux lane');
