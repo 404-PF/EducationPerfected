@@ -29,7 +29,7 @@ WAIT_OBJECT_0=0
 WAIT_TIMEOUT=258
 
 class ExitUnconfirmed(RuntimeError):pass
-FIXED_STAGES=frozenset(('system-identity','host-guard','node-identity','pipe-create','console-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','job-assignment-pre-resume','process-resume','process-timeout','process-exit-code','console-status-missing','console-input-echoed','Requires x64 pointer ABI','Windows SDK ABI mismatch','process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-child-nonzero','console-command-failed'))
+FIXED_STAGES=frozenset(('system-identity','host-guard','node-identity','pipe-create','console-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','job-assignment-pre-resume','process-resume','process-timeout','process-exit-code','console-status-missing','console-input-missing','Requires x64 pointer ABI','Windows SDK ABI mismatch','process-exit-unconfirmed','job-exit-unconfirmed','console-eof-unconfirmed','console-writer-unconfirmed','console-prompt-order','console-duplicate-prompt','console-prompt-count','console-prompt','console-read','console-write','console-short-write','console-output-limit','job-query','job-terminate','suspended-process-terminate','handle-close','console-child-nonzero','console-command-failed'))
 def fixed_stage(error):
     return str(error) if type(error) in (RuntimeError,ExitUnconfirmed) and str(error) in FIXED_STAGES else 'console-command-failed'
 
@@ -83,7 +83,7 @@ PUBLIC_DOWNLOAD_PROMPT=b'Type download'
 def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None,public_browser_download=False):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
     # Exact public browser-consent protocol only. Never an arbitrary echo waiver:
-    # setup callers keep the original secret-input checks and 30s/120s budgets.
+    # setup callers keep the visible-input echo checks and 30s/120s budgets.
     public_protocols=(
         ((PUBLIC_DOWNLOAD_PROMPT,b'cancel\r'),),
         ((PUBLIC_DOWNLOAD_PROMPT,b'download\r'),(b'EP email',b'\r')),
@@ -92,13 +92,13 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     if public_browser_download:
         if args!=['setup'] or tuple(prompts) not in public_protocols or type(process_budget_ms) is not int or process_budget_ms!=960000:raise RuntimeError('host-guard')
     elif type(process_budget_ms) is not int or process_budget_ms not in (30000,120000):raise RuntimeError('host-guard')
-    def echoed(data):
-        return any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in data
+    def missing_echo(data):
+        return any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') not in data
                    for marker,answer in prompts if not (public_browser_download and marker==PUBLIC_DOWNLOAD_PROMPT))
     api=api or kernel32()
     handles=[];pc=HANDLE();pi=PROCESS_INFORMATION();attributes=None;attribute_ready=False
     job=None;assigned=False;reader=None;writer=None
-    output=bytearray();condition=threading.Condition();eof=threading.Event();writer_done=threading.Event();errors=[]
+    output=bytearray();condition=threading.Condition();eof=threading.Event();writer_done=threading.Event();errors=[];sent=[]
     primary=None;cleanup=None;code=DWORD();creation_sides=[]
     def prompt_ready(index):
         marker=prompts[index][0]
@@ -137,6 +137,7 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
                 data=c.create_string_buffer(answer);count=DWORD()
                 checked(api.WriteFile(input_write,data,len(answer),c.byref(count),None),'console-write')
                 if count.value!=len(answer):raise RuntimeError('console-short-write')
+                sent.append(answer)
         except BaseException as error:errors.append(error)
         finally:writer_done.set()
     try:
@@ -209,10 +210,12 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     if on_drain:
         try:on_drain(bytes(output))
         except BaseException:pass # Observation must not replace primary/cleanup outcomes.
-    # Inspect the whole drained stream even when another operation failed. Input
-    # appearance is a fixed primary and forbids native cleanup certification.
-    if echoed(bytes(output)):
-        raise ExitUnconfirmed('console-input-echoed') from RuntimeError('console-input-echoed')
+    # Inspect the whole drained stream even when another operation failed. A
+    # missing typed-input echo is a fixed primary and forbids native cleanup
+    # certification; a run whose inputs were never fully sent or whose drain
+    # never finished has no complete stream to judge.
+    if not errors and eof.is_set() and len(sent)==len(prompts) and missing_echo(bytes(output)):
+        raise ExitUnconfirmed('console-input-missing') from RuntimeError('console-input-missing')
     if cleanup:raise ExitUnconfirmed(fixed_stage(cleanup)) from primary
     if on_closed:on_closed()
     if primary:raise primary
@@ -229,5 +232,5 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     if expected not in captured:raise RuntimeError('console-status-missing')
     if any(token in captured for token in forbidden_output):raise RuntimeError('console-command-failed')
     if any(captured.count(token)!=1 for token,_ in prompts):raise RuntimeError('console-prompt-count')
-    if echoed(captured):raise RuntimeError('console-input-echoed')
+    if missing_echo(captured):raise RuntimeError('console-input-missing')
     return True

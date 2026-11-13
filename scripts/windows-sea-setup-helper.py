@@ -48,8 +48,8 @@ def entry():
         if len(sys.argv)!=3:raise RuntimeError('host-guard')
         setup(sys.argv[1],state,sys.argv[2])
     except BaseException as error:
-        # Uncertain closure or any input echo must never authorize concurrent deletion.
-        uncertain=(state['attempted'] and not state['closed']) or isinstance(error,conpty.ExitUnconfirmed) or conpty.fixed_stage(error)=='console-input-echoed' or not isinstance(error,RuntimeError)
+        # Uncertain closure or a missing input echo must never authorize concurrent deletion.
+        uncertain=(state['attempted'] and not state['closed']) or isinstance(error,conpty.ExitUnconfirmed) or conpty.fixed_stage(error)=='console-input-missing' or not isinstance(error,RuntimeError)
         original=error.__cause__ if isinstance(error,conpty.ExitUnconfirmed) and error.__cause__ else error
         print('EP_SETUP_PRIMARY='+conpty.fixed_stage(original),flush=True)
         print('EP_SETUP_UNCERTAIN' if uncertain else 'EP_SETUP_CLOSED_FAILURE',flush=True)

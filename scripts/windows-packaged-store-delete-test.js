@@ -58,7 +58,7 @@ async function verifyPackagedDelete() {
    }
   }
   assert.equal(await entry.getPassword(), value, 'Production SEA setup must persist the exact synthetic pair (independent source read)');
-  console.log('Windows SEA setup: ordered hidden prompt input, closed helper receipt and independent exact synthetic pair passed.');
+  console.log('Windows SEA setup: ordered visible prompt input, closed helper receipt and independent exact synthetic pair passed.');
   for (const command of ['check-credentials','forget-credentials']) {
    console.log('Windows SEA credential checkpoint: '+(command === 'check-credentials' ? 'health-read' : 'delete'));
    let text = '', spawnError;

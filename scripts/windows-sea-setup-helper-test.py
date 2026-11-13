@@ -4,7 +4,7 @@ from unittest import mock
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('helper',pathlib.Path(__file__).with_name('windows-sea-setup-helper.py'))
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
+for scenario in ('success','closed-failure','uncertain','noecho','unexpected'):
     root=pathlib.Path(tempfile.mkdtemp(prefix='ep-setup-helper-inert-'))
     for name in ('home','tmp','empty'):(root/name).mkdir()
     (root/'educationperfected.exe').write_bytes(b'inert')
@@ -15,7 +15,7 @@ for scenario in ('success','closed-failure','uncertain','echo','unexpected'):
         if scenario in ('success','closed-failure'):on_closed()
         if scenario=='closed-failure':raise RuntimeError('console-child-nonzero')
         if scenario=='uncertain':raise m.conpty.ExitUnconfirmed('job-exit-unconfirmed') from RuntimeError('process-timeout')
-        if scenario=='echo':raise RuntimeError('console-input-echoed')
+        if scenario=='noecho':raise RuntimeError('console-input-missing')
         if scenario=='unexpected':raise ValueError('private-secret-native-text')
     try:
         with mock.patch.object(m.sys,'platform','win32'),mock.patch.object(m.sys,'argv',['fixed',str(root/'home'/'..'),'save']),mock.patch.dict(os.environ,{'GITHUB_ACTIONS':'true','RUNNER_OS':'Windows','RUNNER_ENVIRONMENT':'github-hosted','EP_PASSWORD':str(0),'EP_EMAIL':str(0),'NODE_OPTIONS':'inert'},clear=True),mock.patch.object(m.conpty,'run_console',side_effect=run),contextlib.redirect_stdout(io.StringIO()) as out:
@@ -72,7 +72,7 @@ for mode in ('cancel-email','cancel-password'):
         assert forbidden_output==(b'Login saved in the OS credential store. Run the CLI to sign in.',)
         assert prompts==([(b'EP email',b'\r')] if mode=='cancel-email' else [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'\r')])
     finally:shutil.rmtree(root)
-print('Cancellation helper modes use only fixed empty hidden-prompt input/ack/forbidden-save contracts (inert only).')
+print('Cancellation helper modes use only fixed empty prompt input/ack/forbidden-save contracts (inert only).')
 
 
 for mode in ('interrupt-email','interrupt-password'):

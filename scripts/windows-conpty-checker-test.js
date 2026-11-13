@@ -14,4 +14,4 @@ for (const scenario of ['guard','success','mismatch','timeout']) {
     assert.ok(output[0].startsWith('CONPTY_CAPABILITY stdinTTY='));
     assert.doesNotMatch(output.join(''),/inert-key|wrong/);
 }
-console.log('ConPTY fixed checker: flushed readiness, guard1/input2/timeout3/success0 and hidden chunked input passed (inert only).');
+console.log('ConPTY fixed checker: flushed readiness, guard1/input2/timeout3/success0 and visible chunked input passed (inert only).');
