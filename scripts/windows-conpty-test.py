@@ -30,7 +30,7 @@ class API:
     def SetInformationJobObject(self,job,kind,limits,size):assert limits._obj.basic.flags==0x2000;return 0 if self.scenario=='job-limit' else 1
     def CreateProcessW(self,exe,command,a,b,inherit,flags,env,cwd,si,pi):
         assert not inherit and flags==0x80404
-        assert command.value.endswith('setup') and si._obj.cb==112
+        assert command.value=='fixed.exe setup' and si._obj.cb==112
         assert si._obj.flags & 0x100 and not si._obj.stdin and not si._obj.stdout and not si._obj.stderr
         assert env.value.startswith('HOME=')
         if self.scenario=='process-create':return 0

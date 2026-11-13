@@ -241,3 +241,8 @@ or Windows executable replacement.
 macOS fixture PATH now contains only an owned symlink to /usr/bin/unzip,
 not Node or Chrome. Its wrapper deadline accommodates the browser install
 timeout; the previous 90-second deadline did not. No new native run is claimed.
+
+Safety follow-up: uninstall retains all browser caches pending manual inspection,
+including unknown nested data; no recursive browser deletion is attempted.
+Maintenance-lock conflicts and release failures name the exact retained lock
+with close-all-processes/manual-inspection recovery, never stale-PID stealing.

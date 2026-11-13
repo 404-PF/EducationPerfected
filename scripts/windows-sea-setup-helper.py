@@ -7,6 +7,7 @@ conpty=importlib.util.module_from_spec(spec);spec.loader.exec_module(conpty)
 
 def setup(root, state, mode):
     if sys.platform!='win32' or os.environ.get('GITHUB_ACTIONS')!='true' or os.environ.get('RUNNER_ENVIRONMENT')!='github-hosted' or os.environ.get('RUNNER_OS')!='Windows':raise RuntimeError('host-guard')
+    if mode not in ('save','cancel-email','cancel-password','interrupt-email','interrupt-password'):raise RuntimeError('host-guard')
     root=pathlib.Path(root)
     if not root.is_absolute() or root.is_symlink() or not root.is_dir():raise RuntimeError('node-identity')
     root=root.resolve(strict=True)
@@ -21,7 +22,6 @@ def setup(root, state, mode):
     cache_spec=importlib.util.spec_from_file_location('inert_browser_cache',pathlib.Path(__file__).with_name('seed-inert-browser-cache.py'))
     cache=importlib.util.module_from_spec(cache_spec);cache_spec.loader.exec_module(cache)
     cache.seed(root/'home',platform_name='win32')
-    if mode not in ('save','cancel-email','cancel-password','interrupt-email','interrupt-password'):raise RuntimeError('host-guard')
     prompts=[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
     saved=b'Login saved in the OS credential store. Run the CLI to sign in.'
     expected=saved

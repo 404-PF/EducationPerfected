@@ -54,7 +54,7 @@ are refused with a hint and exit1, not silently accepted.
 
 `uninstall` requires an interactive typed confirmation. Close every other app
 copy, including source CLI and its browser, first. It removes only the app's
-Credential Manager record, not legacy keytar records. A maintenance lock blocks
+native OS credential-store record, not legacy keytar records. A maintenance lock blocks
 new packaged runtime allocation while uninstall scans/deletes; stale maintenance
 locks are retained for inspection. Other live/uncertain runtime entries, browser
 download locks/staging, unknown root data or symlinks prevent browser deletion.
@@ -69,3 +69,7 @@ disposable homes to exercise setup's cache-reuse path without launching that
 inert file. macOS retains its runner HOME for keychain isolation and uses the
 actual acquisition/cache path. Browser-download integrity/consent is tested
 separately; credential fixtures are not Google acquisition proof.
+
+Current uninstall retains browser caches even after confirmation because existing
+receipts do not inventory nested files. It prints the exact directory for manual
+inspection/deletion and reports incomplete rather than deleting unknown data.

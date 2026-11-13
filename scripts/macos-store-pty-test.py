@@ -72,14 +72,18 @@ def main():
         master, slave = pty.openpty(); child=None
         try:
             child = subprocess.Popen([*command,'setup'], stdin=slave, stdout=slave, stderr=slave, cwd=repo, env=env, close_fds=True)
-            data=b''
+            data=b'';download_answered=False
             for marker, answer in [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-mac-only\r')]:
-                deadline=time.monotonic()+950
+                deadline=time.monotonic()+10
                 while marker not in data:
                     if child.poll() is not None or time.monotonic()>deadline:
                         raise RuntimeError('Mac credential prompt failed')
-                    if b'Type download to fetch' in data and b'Browser ready.' not in data:
+                    if not download_answered and b'Type download to fetch' in data:
+                        download_answered=True
+                        deadline=time.monotonic()+950 # Installer has a 15-minute hard timeout.
                         os.write(master,b'download\r');data=b''
+                    if download_answered and b'Browser ready.' in data:
+                        download_answered=False;deadline=time.monotonic()+10
                     if select.select([master],[],[],.1)[0]:
                         data+=os.read(master,65536)
                 os.write(master,answer)

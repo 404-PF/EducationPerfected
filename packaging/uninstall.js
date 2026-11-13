@@ -29,7 +29,7 @@ async function uninstallCommand({store,ownDirectory,cleanupOwn,home,executable=p
  try{
   // Credential deletion is authorized by the same explicit local confirmation.
   try{await store.remove();output.write('App saved login removed (or none existed).\n');}
-  catch{incomplete=true;output.write('Saved login removal failed; unlock Credential Manager and retry.\n');}
+  catch{incomplete=true;output.write('Saved login removal failed; unlock the native OS credential store and retry.\n');}
   const tmp=path.join(root,'tmp'),browsers=path.join(root,'browsers');
   let safe=safeRuntimeRoot(tmp,ownDirectory);
   try{
@@ -39,11 +39,12 @@ async function uninstallCommand({store,ownDirectory,cleanupOwn,home,executable=p
   }catch{safe=false;}
   // Unknown root entries are not recursively deleted, nor followed as links.
   if(fs.readdirSync(root).some(name=>!['tmp','browsers','MAINTENANCE.lock'].includes(name)))safe=false;
-  if(safe){
-   try{if(fs.existsSync(browsers))fs.rmSync(browsers,{recursive:true});}
-   catch{incomplete=true;output.write('Browser files could not all be removed; retained for inspection.\n');}
-  }else{incomplete=true;output.write('Live/uncertain runtime files, download locks or unknown app data retained. Close all app/browser processes and inspect before retrying.\n');}
-  await cleanupOwn();
+  if(fs.existsSync(browsers)){
+   incomplete=true;
+   output.write('Browser cache retained: its receipt does not inventory all nested files. Inspect and remove it manually after closing every copy: '+browsers+'\n');
+  }
+  if(!safe){incomplete=true;output.write('Live/uncertain runtime files, download locks or unknown app data retained. Close all app/browser processes and inspect before retrying.\n');}
+  try{await cleanupOwn();}catch{incomplete=true;output.write('Owned runtime cleanup failed; retained for inspection.\n');}
   // Only remove empty containers. No recursive root or temp deletion.
   for(const directory of [tmp])try{fs.rmdirSync(directory);}catch(error){if(error.code!=='ENOENT'){incomplete=true;}}
  }finally{release();}
