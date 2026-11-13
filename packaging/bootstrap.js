@@ -90,7 +90,7 @@ async function main() {
         }
         handoffSignals();
         browserCleanupConfirmed = false;
-        await require('../bin/cli').runCli();
+        await require('../bin/cli').runCli({onBrowserClosed:()=>{browserCleanupConfirmed=true;}});
         browserCleanupConfirmed = true;
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }
 }

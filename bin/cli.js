@@ -3,7 +3,7 @@ const readline = require('node:readline');
 const { launchProgram, promptCredentials } = require('../index');
 const { diagnostic } = require('../lib/diagnostics');
 
-async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram } = {}) {
+async function runCli({ input = process.stdin, output = process.stdout, launch = launchProgram, onBrowserClosed = () => {} } = {}) {
     output.write('Opening EducationPerfected. Finish sign-in in the browser.\n');
     let terminal = null, pendingApproval = null, quitPromise = null;
     const requestSubmitApproval = (approval, label, detail, onCancel) => new Promise(resolve => {
@@ -28,7 +28,7 @@ async function runCli({ input = process.stdin, output = process.stdout, launch =
     });
     const requestDropdownSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Dropdown Submit', `${approval.dropdownCount} dropdown`, onCancel);
     const requestNumberBoxSubmitApproval = (approval, onCancel) => requestSubmitApproval(approval, 'Number-box Submit', `${approval.boxCount} boxes`, onCancel);
-    const controls = await launch({ dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
+    const controls = await launch({ onBrowserClosed, dropdownSubmitApprover: requestDropdownSubmitApproval, numberBoxSubmitApprover: requestNumberBoxSubmitApproval });
     terminal = readline.createInterface({ input, output, terminal: Boolean(input.isTTY && output.isTTY) });
     output.write('Commands: start, stop, status, mode auto, mode semi, refresh, inspect-self-mark, quit\n');
     const print = () => output.write(JSON.stringify(controls.status()) + '\n');

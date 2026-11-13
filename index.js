@@ -368,7 +368,7 @@ async function resolveCredentials(watchForSession) {
 
 // ===== Program ===== //
 
-async function launchProgram({ legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover, numberBoxSubmitApprover } = {}) {
+async function launchProgram({ onBrowserClosed = () => {}, legacySignals = false, gapsFillOnly = false, choiceSelectOnly = false, gapsSubmitOnce = false, textboxFillOnly = false, dropdownSubmitOnce = false, multiSelectOnly = false, dropdownSubmitApprover, numberBoxSubmitApprover } = {}) {
     // F4 popup is the only normal-run dropdown input path. The older
     // Home/ArrowDown mechanism remains only in explicit synthetic regression
     // fixtures and the local EP-free diagnostic; there is no env rollback.
@@ -479,7 +479,7 @@ async function launchProgram({ legacySignals = false, gapsFillOnly = false, choi
             try {
                 // Ready legacy controls must drain before the browser-close timeout
                 // starts. Startup still has only a browser to close.
-                await signalClose();
+                await require('./lib/browser-close-confirmation').closeAndConfirm(signalClose, onBrowserClosed);
             } catch {
                 startupBrowser.process()?.kill();
                 startupBrowser.disconnect();

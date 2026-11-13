@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const {closeAndConfirm}=require('../lib/browser-close-confirmation');
+(async()=>{
+ const events=[];
+ await closeAndConfirm(async()=>{events.push('close');},()=>{events.push('confirmed');});
+ assert.deepEqual(events,['close','confirmed']);
+ let confirmed=false;
+ await assert.rejects(closeAndConfirm(async()=>{throw Error('inert close failure');},()=>{confirmed=true;}));
+ assert.equal(confirmed,false);
+ const fs=require('node:fs'),path=require('node:path');
+ const index=fs.readFileSync(path.join(__dirname,'../index.js'),'utf8');
+ assert.ok(index.includes("closeAndConfirm(signalClose, onBrowserClosed)"));
+ const bootstrap=fs.readFileSync(path.join(__dirname,'../packaging/bootstrap.js'),'utf8');
+ assert.ok(bootstrap.includes('runCli({onBrowserClosed:()=>{browserCleanupConfirmed=true;}})'));
+ console.log('Only awaited successful browser closure confirms runtime removal; failed close retains uncertainty (inert).');
+})().catch(error=>{console.error(error);process.exitCode=1;});
