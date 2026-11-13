@@ -20,7 +20,7 @@ jobs:
           - {sample: trace-1, mode: trace-isolated}
           - {sample: trace-2, mode: trace-isolated}
           - {sample: baseline-1, mode: baseline-isolated}
-          - {sample: baseline-2, mode: baseline-isolated}
+          - {sample: baseline-2, mode: baseline-inherited}
     env:
       EP_TRACE_MODE: ${{ matrix.mode }}
     steps:

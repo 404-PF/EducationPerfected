@@ -3,10 +3,10 @@ import os,sys,pathlib,subprocess,tempfile,time,json,urllib.request,http.server,t
 
 def commands():
     # Failure-only exports; no symbol download and no successful-call dumps.
-    calls=[('kernelbase!AppContainerDeriveSidFromMoniker','DeriveSid','(@eax & 0x80000000) != 0'),('kernelbase!AppContainerRegisterSid','RegisterSid','1'),('kernelbase!WaitForSingleObject','Wait','@eax != 0 && @eax != 0x102'),('kernelbase!CreateDirectoryW','CreateDirectory','@eax == 0'),('ntdll!NtSetSecurityObject','NtSetSecurity','(@eax & 0x80000000) != 0')]
+    calls=[('kernelbase!AppContainerDeriveSidFromMoniker','DeriveSid','1'),('kernelbase!AppContainerRegisterSid','RegisterSid','1')]
     result=['.sympath ""','.echo EPTRACE_SPARSE_START']
     for symbol,name,condition in calls:
-        ret=f'.if ({condition}) {{ .echo EPTRACE_RETURN_{name}; r @$tid; r rax; !gle; k 5; }}; gc'
+        ret=f'.if ({condition}) {{ .echo EPTRACE_RETURN_{name}; r @$tid; r rax; !gle; }}; gc'
         result.append(f'bu {symbol} "~.bp /1 poi(@rsp) \\"{ret}\\"; gc"')
     result+=['g']
     return '\n'.join(result)+'\n'
@@ -34,6 +34,8 @@ def main():
             if mode.endswith('isolated'):
                 for name in ('empty','tmp'):(home/name).mkdir()
                 env.update(HOME=str(home),USERPROFILE=str(home),PATH=str(home/'empty'),TEMP=str(home/'tmp'),TMP=str(home/'tmp'),TMPDIR=str(home/'tmp'))
+            probe=subprocess.run([sys.executable,'scripts/diagnostics/windows-known-folder.py'],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=15)
+            print('EPTRACE FOLDER '+mode+' '+probe.stdout,flush=True)
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
             with log.open('wb') as out:
