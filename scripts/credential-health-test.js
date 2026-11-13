@@ -35,6 +35,7 @@ async function probe(kind, scenario) {
                     return require('../bin/cli').credentialCommand(command, { store, output: fakeProcess.stdout });
                 },
             };
+            if (id === '../lib/runtime-directory') return {createRuntimeDirectory: () => ({directory:'/fixed-owned', remove(safe) {assert.equal(safe,true);cleaned++;return true;}})};
             if (id === 'node:fs') return {
                 mkdtempSync: () => '/fixed-owned', chmodSync() {}, writeFileSync() {},
                 rmSync() { cleaned++; },

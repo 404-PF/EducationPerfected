@@ -11,6 +11,8 @@ async function probe(expectedHash, declaredLength) {
  const finished=new Promise(resolve=>{complete=resolve;});
  const fakeProcess={execPath:process.execPath,argv:['fixture','fixture'],env:{},on(){},removeListener(){},exit(){throw Error('Unexpected exit');}};
  const load=id=>{
+  if(id==='../lib/runtime-directory')return {createRuntimeDirectory:()=>({directory:'/inert-owned-runtime',remove:()=>true})};
+  if(id==='node:fs')return {writeFileSync(){}};
   if(id==='node:sea')return {getAsset:key=>key==='manifest'?JSON.stringify({length:declaredLength ?? bytes.length,sha256:expectedHash}):new ArrayBuffer(0),getRawAsset:key=>{assert.equal(key,'browser');return raw;}};
   if(id==='node:module')return {createRequire:()=>()=>({})};
   if(id==='../lib/native-binding')return {setPackagedBinding(){}};

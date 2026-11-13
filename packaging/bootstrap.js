@@ -1,4 +1,4 @@
-const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+const fs = require('node:fs'), path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const { createGunzip } = require('node:zlib');
 const { createHash } = require('node:crypto');
@@ -7,7 +7,7 @@ const { getAsset, getRawAsset } = require('node:sea');
 const { Readable } = require('node:stream');
 const { setImmediate: nextTurn } = require('node:timers/promises');
 const { unpackTar } = require('modern-tar/fs');
-function createCleanup(dir,getBinding,setPending){
+function createCleanup(dir,getBinding,setPending,remove = () => fs.rmSync(dir, { recursive: true, force: true })){
  return ()=>{
         if (getBinding()?.hasLiveWorkers()) {
             setPending(true);
@@ -16,7 +16,7 @@ function createCleanup(dir,getBinding,setPending){
             return;
         }
         setPending(false);
-        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {
+        try { remove(); } catch {
             console.error('Owned extraction cleanup failed; temporary files may remain.');
             process.exitCode ||= 1;
         } };
@@ -44,10 +44,18 @@ async function prepareEmbeddedBrowser(dir,manifest){
     }
 }
 async function main() {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'educationperfected-'));
-    fs.chmodSync(dir, 0o700);
+    const runtime = require('../lib/runtime-directory').createRuntimeDirectory();
+    const dir = runtime.directory;
+    // Puppeteer creates its per-launch profile beneath this owned run directory.
+    process.env.PUPPETEER_TMP_DIR = dir;
+    let browserCleanupConfirmed = true;
     let windowsBinding, cleanupPending = false;
-    const cleanup=createCleanup(dir,()=>windowsBinding,value=>{cleanupPending=value;});
+    const cleanup=createCleanup(dir,()=>windowsBinding,value=>{cleanupPending=value;},()=>{
+        if (!runtime.remove(browserCleanupConfirmed)) {
+            console.error('Browser closure unconfirmed; owned runtime files retained.');
+            process.exitCode ||= 1;
+        }
+    });
     process.on('exit', cleanup);
     const onInt = () => process.exit(130), onTerm = () => process.exit(143), onHup = () => process.exit(129);
     process.on('SIGINT', onInt); process.on('SIGTERM', onTerm); process.on('SIGHUP', onHup);
@@ -81,7 +89,9 @@ async function main() {
             await prepareEmbeddedBrowser(dir,manifest);
         }
         handoffSignals();
+        browserCleanupConfirmed = false;
         await require('../bin/cli').runCli();
+        browserCleanupConfirmed = true;
     } finally { cleanup(); handoffSignals(); process.removeListener('exit', cleanup); }
 }
 main().catch(error => { console.error(error?.code === 'EP_BROWSER_CHECKSUM' ? 'EducationPerfected could not start. Browser payload integrity check failed (EP_BROWSER_CHECKSUM).' : 'EducationPerfected could not start. ' + require('../lib/diagnostics').diagnostic(error, 'Startup')); process.exitCode ||= 1; });

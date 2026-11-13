@@ -8,6 +8,7 @@ async function probe(boot,diagnostic,badHash=false) {
  const output=[],order=[];let loads=0;
  const process={platform:'linux',execPath:'fixed-node',argv:['fixed','fixed'],env:{EP_TEST_BOOT:boot,EP_TEST_BROWSER_IDENTITY:diagnostic},on(){},removeListener(){}};
  const load=id=>{
+  if(id==='../lib/runtime-directory')return {createRuntimeDirectory:()=>({directory:'/fixed-owned',remove:safe=>{assert.ok(safe);order.push('cleanup');return true;}})};
   if(id==='node:fs')return {mkdtempSync:()=>'/fixed-owned',chmodSync(){},writeFileSync(){},rmSync(){order.push('cleanup');}};
   if(id==='node:sea')return {getAsset:key=>key==='manifest'?JSON.stringify(manifest):new ArrayBuffer(0),getRawAsset:()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)};
   if(id==='node:module')return {createRequire:()=>()=>({})};
