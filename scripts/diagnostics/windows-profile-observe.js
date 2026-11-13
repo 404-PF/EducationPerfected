@@ -10,6 +10,7 @@ const puppeteer=require('puppeteer');
    try{const {histogram}=await session.send('Browser.getHistogram',{name});metrics[name]={count:histogram.count,buckets:histogram.buckets};}catch{metrics[name]={unavailable:true};}
   }
   await session.detach();await page.goto('chrome://sandbox',{waitUntil:'domcontentloaded',timeout:10000});
+  await page.waitForFunction(()=>document.body.innerText.length>100,{timeout:10000}).catch(()=>{});
   const sandbox=await page.evaluate(()=>document.body.innerText.slice(0,12000));
   console.log(JSON.stringify({error,metrics,sandbox}));
  }finally{await browser.close();}
