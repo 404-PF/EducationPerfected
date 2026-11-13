@@ -39,7 +39,7 @@ async function run(mode,fail,path){
   Module._load=originalLoad;console.log=originalLog;process.execPath=originalExec;process.env=originalEnv;Object.defineProperty(process,'platform',originalPlatform);Object.defineProperty(process,'arch',originalArch);delete require.cache[target];
  }
  assert.equal(!error,!fail,mode+':'+fail+':'+error);
- if(!fail){assert.equal(removed,true);assert.equal(closed,true);assert.ok(calls.indexOf('remove-root')>calls.indexOf('disconnect'));}
+ if(!fail){assert.ok(calls.indexOf('network-sandbox')>calls.indexOf('ready'));assert.equal(removed,true);assert.equal(closed,true);assert.ok(calls.indexOf('remove-root')>calls.indexOf('disconnect'));}
  else assert.equal(removed,false,'failure must not claim root removed: '+fail);
 }
 (async()=>{for(const paths of [path.posix,path.win32])for(const mode of ['source','sea'])for(const fail of ['', 'allocate','mkdir','manifest','profile','archive','listen','spawn','ready','network-sandbox','argv','detach','version','receipt','identity','page','type','click','cli-ready','quit','owner-close','owner-exit','disconnect','stop','server-close','residue','remove-root',...(mode==='source'?['extract','unpack','origin','remove-extraction']:['copy'])])await run(mode,fail,paths);exclusiveCopy();console.log('Actual driver predicate/lifecycle migration inert matrix passed');})().catch(error=>{console.error(error);process.exitCode=1;});

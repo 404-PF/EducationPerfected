@@ -23,14 +23,15 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath,re
  // Throw outside finally so closure uncertainty cannot be mistaken for an observed sample.
  if(!browser)throw new Error('Diagnostic launch closure unconfirmed');
  // Read only after navigation/readiness was observed, never before goto.
- const networkSandbox=await require('./windows-network-sandbox').observeNetworkSandbox(browser).catch(()=>null);
+ let networkSandbox=null,networkSandboxError=null;
+ try{networkSandbox=await require('./windows-network-sandbox').observeNetworkSandbox(browser);}catch(error){networkSandboxError=error?.message==='Network sandbox observation deadline'?'observation-timeout':'sandbox-acceptance-failed';}
  const utilityHistograms=await require('./windows-utility-histograms').utilityHistograms(browser);
  let timer;
  try{await Promise.race([browser.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Close deadline')),10000);})]);cleanup=true;}
  catch{try{browser.process()?.kill();}catch{ /* Retain uncertainty even if best-effort kill fails. */ }}
  finally{clearTimeout(timer);detach();}
  if(!cleanup)throw new Error('Diagnostic browser cleanup unconfirmed');
- return {networkSandbox,kind,recover,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
+ return {networkSandboxError,networkSandbox,kind,recover,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
 async function panel(){
@@ -57,13 +58,13 @@ async function panel(){
    }
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',executablePath,env,logPath:path.join(root,'chrome-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
-   safe=result.cleanup;assert.ok(result.networkSandbox,'Windows Network sandbox acceptance failed');console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));
+   safe=result.cleanup;console.log('Windows local sandbox-setup comparison: '+JSON.stringify({setupKind,...result}));assert.ok(result.networkSandbox,'Windows Network sandbox acceptance failed');
   }
   const recovered=[];
   for(let index=0;index<6;index++){
    const before=requests;safe=false;
    const result=await sample({kind:'initial-page',recover:true,executablePath,env,logPath:path.join(root,'recovery-'+index+'.log'),url:'http://127.0.0.1:'+server.address().port+'/app/login',launch:options=>require('puppeteer').launch(options),requestSeen:()=>requests>before});
-   safe=result.cleanup;assert.ok(result.networkSandbox,'Windows Network sandbox acceptance failed');console.log('Windows bounded initial-login recovery: '+JSON.stringify(result));
+   safe=result.cleanup;console.log('Windows bounded initial-login recovery: '+JSON.stringify(result));assert.ok(result.networkSandbox,'Windows Network sandbox acceptance failed');
    recovered.push(result.ready);
   }
   assert.ok(recovered.every(Boolean),'Bounded recovery did not reach local login in every independent sample');
