@@ -5,7 +5,7 @@ const {acquireMaintenance,storageRoot}=require('../lib/storage-maintenance');
 const {createRuntimeDirectory}=require('../lib/runtime-directory');
 (async()=>{
  const lockedHome=fs.mkdtempSync(path.join(os.tmpdir(),'ep-maintenance-inert-'));
- try{const release=acquireMaintenance(storageRoot(lockedHome));assert.throws(()=>createRuntimeDirectory({home:lockedHome}),{code:'EEXIST'});release();const runtime=createRuntimeDirectory({home:lockedHome});assert.ok(runtime.remove(true));}finally{fs.rmSync(lockedHome,{recursive:true,force:true});}
+ try{const root=storageRoot(lockedHome),write=fs.writeFileSync;try{fs.writeFileSync=()=>{throw Error('inert lock write');};assert.throws(()=>acquireMaintenance(root),/inert lock write/);}finally{fs.writeFileSync=write;}assert.equal(fs.existsSync(path.join(root,'MAINTENANCE.lock')),false);const release=acquireMaintenance(root);assert.throws(()=>createRuntimeDirectory({home:lockedHome}),{code:'EEXIST'});release();const runtime=createRuntimeDirectory({home:lockedHome});assert.ok(runtime.remove(true));}finally{fs.rmSync(lockedHome,{recursive:true,force:true});}
  for(const scenario of ['cancel','empty','safe','other-run','download-lock','unknown','store-error','browser-symlink','cleanup-error']){
   const home=fs.mkdtempSync(path.join(os.tmpdir(),'ep-uninstall-inert-'));
   try{

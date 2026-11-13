@@ -1,6 +1,6 @@
 // Policy contracts for the update command's CI lane: native proof only, never publication.
 const assert = require('node:assert/strict'), fs = require('node:fs');
-const workflow = fs.readFileSync(__dirname + '/../.github/workflows/update-validation.yml', 'utf8');
+const workflow = fs.readFileSync(__dirname + '/../.github/workflows/update-validation.yml', 'utf8').replaceAll('\r\n', '\n'); // git autocrlf on Windows runners
 
 // Read-only: no permission to create releases, tags or uploads, and no step does so.
 assert.ok(workflow.includes('permissions:\n  contents: read'), 'read-only token');

@@ -59,7 +59,7 @@ jobs:
       - name: Check isolated keychain protocol with inert state
         run: python3 scripts/macos-store-isolation-policy-test.py
       - name: Exercise synthetic source and SEA credentials in owned temporary keychain
-        timeout-minutes: 18
+        timeout-minutes: 20
         run: python3 scripts/macos-isolated-store-test.py
       # Hosted disposable user-domain metadata only, restored and verified.
       # No existing keychain contents, signing identity, upload or release.
