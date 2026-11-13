@@ -4,7 +4,7 @@ import os,sys,pathlib,subprocess,tempfile,time,json,urllib.request,http.server,t
 def commands():
     # Debug only the Chrome broker. Child processes run normally, preserving
     # sandbox behavior. Return breakpoints are one-shot/current-thread only.
-    calls=[('kernelbase!AppContainerDeriveSidFromMoniker','DeriveSid'),('kernelbase!AppContainerRegisterSid','RegisterSid'),('kernelbase!CreateMutexW','CreateMutex'),('kernelbase!WaitForSingleObject','Wait'),('kernelbase!CreateDirectoryW','CreateDirectory'),('ntdll!NtSetSecurityObject','NtSetSecurity'),('ntdll!NtQuerySecurityObject','NtQuerySecurity')]
+    calls=[('kernelbase!AppContainerDeriveSidFromMoniker','DeriveSid'),('kernelbase!AppContainerRegisterSid','RegisterSid'),('kernelbase!CreateMutexW','CreateMutex'),('kernelbase!CreateDirectoryW','CreateDirectory'),('ntdll!NtSetSecurityObject','NtSetSecurity')]
     result=['.symfix','.sympath+ srv*https://chromium-browser-symsrv.commondatastorage.googleapis.com','.printf "EPTRACE START\\n"']
     for symbol,name in calls:
         ret=f'.echo EPTRACE_RETURN_{name}; r @$tid; r rax; !gle; gc'
@@ -35,17 +35,20 @@ def main():
     try:
         print('EPTRACE HOST '+json.dumps({'platform':sys.getwindowsversion().build,'arch':os.environ.get('PROCESSOR_ARCHITECTURE'),'source':os.environ['GITHUB_SHA']}),flush=True)
         failures=0
-        for mode in ('baseline-inherited','baseline-isolated','trace-inherited','trace-isolated'):
+        for mode in ('trace-isolated','baseline-isolated','trace-inherited','baseline-inherited'):
             home=root/mode;home.mkdir();profile=home/'chrome-profile';log=home/'debug.log'
+            case_chrome=home/'chrome-win64'
+            shutil.copytree(chrome.parent,case_chrome)
+            exe=case_chrome/chrome.name
             env=dict(os.environ)
             if mode.endswith('isolated'):
-                for name in ('local','roaming','tmp'):(home/name).mkdir()
-                env.update(HOME=str(home),USERPROFILE=str(home),LOCALAPPDATA=str(home/'local'),APPDATA=str(home/'roaming'),TEMP=str(home/'tmp'),TMP=str(home/'tmp'))
+                for name in ('empty','tmp'):(home/name).mkdir()
+                env.update(HOME=str(home),USERPROFILE=str(home),PATH=str(home/'empty'),TEMP=str(home/'tmp'),TMP=str(home/'tmp'),TMPDIR=str(home/'tmp'))
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
             with log.open('wb') as out:
-                args=json.loads(subprocess.check_output(['node','-e','(async()=>console.log(JSON.stringify(await require("puppeteer").defaultArgs({headless:false,userDataDir:process.argv[1]}))))().catch(()=>process.exit(1))',str(profile)],text=True))
-                launch=[str(chrome),*args,'--remote-debugging-port='+str(port)]
+                args=json.loads(subprocess.check_output(['node','-e','(async()=>console.log(JSON.stringify(await require("puppeteer").defaultArgs({headless:"shell",userDataDir:process.argv[1]}))))().catch(()=>process.exit(1))',str(profile)],text=True))
+                launch=[str(exe),*args,'--remote-debugging-port='+str(port)]
                 if mode.startswith('trace'):launch=[str(cdb),'-hd','-G','-cf',str(command),*launch]
                 child=subprocess.Popen(launch,stdout=out,stderr=subprocess.STDOUT,env=env)
                 try:
@@ -59,7 +62,7 @@ def main():
                             time.sleep(.1)
                     # A tiny Node observer drives only owned local page and emits
                     # fixed booleans/network-specific histogram/sandbox results.
-                    result=subprocess.run(['node','scripts/diagnostics/windows-profile-observe.js',str(port),str(server.server_port)],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=45,text=True)
+                    result=subprocess.run(['node','scripts/diagnostics/windows-profile-observe.js',str(port),str(server.server_port)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=45,text=True)
                     print('EPTRACE MODE '+mode+' OBSERVER '+result.stdout,flush=True)
                     if result.returncode:failures+=1
                 except Exception as error:
@@ -71,7 +74,10 @@ def main():
                     subprocess.run([os.path.join(os.environ['SystemRoot'],'System32','taskkill.exe'),'/pid',str(child.pid),'/T','/F'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
                     child.wait(timeout=15)
             text=log.read_text(errors='replace')
-            print('EPTRACE MODE '+mode+' DEBUGGER '+json.dumps(text.splitlines()[-4000:]),flush=True)
+            raw=text.splitlines();selected=set()
+            for i,line in enumerate(raw):
+                if line.startswith('EPTRACE') or any(x in line for x in ('Syntax error','evaluation failed','network_sandbox','error_code=','err:','exited')):selected.update(range(max(0,i-1),min(len(raw),i+12)))
+            print('EPTRACE MODE '+mode+' DEBUGGER '+json.dumps([raw[i] for i in sorted(selected)][:10000]),flush=True)
         if failures:raise RuntimeError('incomplete diagnostic modes: '+str(failures))
     finally:
         server.shutdown();server.server_close();thread.join(3)

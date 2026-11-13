@@ -11,7 +11,7 @@ const puppeteer=require('puppeteer');
   }
   await session.detach();await page.goto('chrome://sandbox',{waitUntil:'domcontentloaded',timeout:10000});
   await page.waitForFunction(()=>document.body.innerText.length>100,{timeout:10000}).catch(()=>{});
-  const sandbox=await page.evaluate(()=>document.body.innerText.slice(0,12000));
+  const sandbox=await page.evaluate(()=>{const text=document.body.innerText;return {summary:text.split('features:')[0],networkFeature:/"enabled": true,\s*"name": "NetworkServiceSandbox"/.test(text),networkPolicy:(text.match(/\{[^{}]*"tag": "utility!kNetwork"[^{}]*\}/)||[])[0]||null};});
   console.log(JSON.stringify({error,metrics,sandbox}));
  }finally{await browser.close();}
 })().catch(()=>{console.log(JSON.stringify({observerFailure:true}));process.exitCode=1;});
