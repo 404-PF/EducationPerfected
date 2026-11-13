@@ -35,11 +35,9 @@ def main():
     try:
         print('EPTRACE HOST '+json.dumps({'platform':sys.getwindowsversion().build,'arch':os.environ.get('PROCESSOR_ARCHITECTURE'),'source':os.environ['GITHUB_SHA']}),flush=True)
         failures=0
-        for mode in ('trace-isolated','baseline-isolated','trace-inherited','baseline-inherited'):
+        for mode in (os.environ['EP_TRACE_MODE'],):
             home=root/mode;home.mkdir();profile=home/'chrome-profile';log=home/'debug.log'
-            case_chrome=home/'chrome-win64'
-            shutil.copytree(chrome.parent,case_chrome)
-            exe=case_chrome/chrome.name
+            exe=chrome
             env=dict(os.environ)
             if mode.endswith('isolated'):
                 for name in ('empty','tmp'):(home/name).mkdir()

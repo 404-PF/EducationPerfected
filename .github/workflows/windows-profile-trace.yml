@@ -12,6 +12,19 @@ jobs:
   trace:
     runs-on: windows-2025
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {sample: trace-1, mode: trace-isolated}
+          - {sample: trace-2, mode: trace-isolated}
+          - {sample: trace-3, mode: trace-isolated}
+          - {sample: trace-4, mode: trace-isolated}
+          - {sample: baseline-1, mode: baseline-isolated}
+          - {sample: baseline-2, mode: baseline-isolated}
+    env:
+      EP_TRACE_MODE: ${{ matrix.mode }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
