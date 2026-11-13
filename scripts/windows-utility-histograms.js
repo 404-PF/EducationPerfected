@@ -3,6 +3,9 @@ const names=[
  'ChildProcess.Crashed.UtilityProcessExitCode',
  'ChildProcess.LaunchFailed.UtilityProcessErrorCode',
  'ChildProcess.LaunchFailed.WinLastError',
+ 'ChildProcess.LaunchFailed.UtilityProcessHash',
+ 'ChildProcess.Crashed.UtilityProcessHash',
+ 'ChildProcess.Launched.UtilityProcessHash',
 ];
 function boundedHistogram(value,name){
  const integer=n=>Number.isSafeInteger(n)&&n>=-2147483648&&n<=4294967296;

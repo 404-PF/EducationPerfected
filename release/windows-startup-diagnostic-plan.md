@@ -203,3 +203,28 @@ No same-user hostile-writer resistance, OS isolation policy or handle-bound
 redesign is claimed here. The existing disposable-host/manual diagnostic contract
 must be reviewed against these limits. Findings are not suppressed or classified
 as false positives by this document, and it grants no native run or release.
+
+
+## Fixed utility-service hash observation
+
+The local hosted navigation comparison reads three additional fixed bounded
+Browser.getHistogram names after navigation/readiness and before browser closure:
+ChildProcess.LaunchFailed.UtilityProcessHash, ChildProcess.Crashed.UtilityProcessHash
+and ChildProcess.Launched.UtilityProcessHash. Only integer bucket bounds/counts
+are logged, never arbitrary histogram names, URLs, profile paths or child output.
+The existing 2-second per-operation limit, 16-bucket maximum, unknown-not-zero
+handling and session cleanup remain unchanged. These are aggregate histograms:
+matching one service hash cannot pair every error/last-error bucket to that service.
+
+Validation7 recorded aggregate utility launch error44 in all four probes, including
+a probe that reached local readiness. Pinned Chromium156 defines44 as inability
+to create an AppContainer profile, not45 (executable-access failure). The cause of
+ERR_ABORTED remains unproved. The new service hashes help distinguish which
+utility services launched or failed without disabling sandboxing or changing
+product behavior. Missing/colliding/ambiguous hashes remain inconclusive. No
+Windows result or successful launch is claimed by this source-only addition.
+
+Pinned source references:
+- https://chromium.googlesource.com/chromium/src/+/156.0.8078.47/components/metrics/stability_metrics_helper.cc
+- https://chromium.googlesource.com/chromium/src/+/156.0.8078.47/content/browser/service_host/service_process_host_impl.cc
+- https://chromium.googlesource.com/chromium/src/+/156.0.8078.47/sandbox/win/src/sandbox_types.h
