@@ -7,9 +7,11 @@ assert.match(workflow, /permissions:\s*\r?\n\s*contents:\s*read/);
 for (const forbidden of ['contents: write', 'gh release', 'gh api', 'upload-release', 'softprops/', 'actions/upload-artifact', 'git tag', 'git push']) {
     assert.ok(!workflow.includes(forbidden), 'workflow must not contain: ' + forbidden);
 }
-// Manual trigger only; no automatic publication path can form.
+// Manual dispatch plus post-merge proof on main only; no release/pr-triggered path can form.
 assert.match(workflow, /workflow_dispatch/);
-assert.ok(!/on:\s*\r?\n\s*(push|release|workflow_run):/.test(workflow), 'no push/release triggers');
+assert.ok(!/release:|workflow_run:|pull_request/.test(workflow), 'no release/PR triggers');
+const push = /push:[\s\S]*?branches:\s*\[main\]/.exec(workflow);
+assert.ok(push, 'push trigger is main-only');
 // Native proof needs the Windows runner (running-executable replacement semantics).
 assert.ok(workflow.includes('windows-2025'), 'windows lane');
 assert.ok(workflow.includes('ubuntu-22.04'), 'linux lane');

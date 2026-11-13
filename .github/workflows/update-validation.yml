@@ -3,6 +3,13 @@ name: update-command validation (offline fixtures, no publication)
 # publishes a release; the update tests run against local fixture releases.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/update.js'
+      - 'scripts/update-*.js'
+      - '.github/workflows/update-validation.yml'
+      - 'package.json'
 permissions:
   contents: read
 jobs:
