@@ -628,16 +628,23 @@ async function withCredentialsFixtures(watcherDir, suffix, fake) {
         };
 
         // fresh block without any keychain entries
+        // Typed input echoes back through stderr so it can be reviewed while typing.
+        const echoed = [];
+        const originalWrite = process.stderr.write;
+        process.stderr.write = chunk => { echoed.push(String(chunk)); return true; };
         const prompt = loadBlock(dir, 'prompt.js', ['resolveCredentials'], {});
         const p = prompt.resolveCredentials();
         await promptsOn();
-        assert.equal(stdin.raw, true, 'raw mode was enabled for hidden input');
+        assert.equal(stdin.raw, true, 'raw mode was enabled for interactive input');
         stdin.push('typed@example.test\r');
         await released();   // the email is in; the password prompt takes over stdin
         stdin.push('s3cr3t\r');
         const r = await p;
+        process.stderr.write = originalWrite;
         assert.deepEqual(r, { email: 'typed@example.test', password: 's3cr3t', source: 'the terminal prompt' });
-        check('interactive TTY prompt resolves credentials with hidden input and asserts raw mode');
+        assert.ok(echoed.join('').includes('typed@example.test'), 'the email echoes while typing');
+        assert.ok(echoed.join('').includes('s3cr3t'), 'the password echoes while typing');
+        check('interactive TTY prompt resolves credentials with visible input and asserts raw mode');
 
         // Control sequences must be swallowed whole. `[` is itself a CSI final byte, so a
         // parser that ends there appends "A" from an arrow key or "200~"/"201~" from a
