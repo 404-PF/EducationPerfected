@@ -11,7 +11,7 @@ try {
     assert.equal(processState(1, () => {}), 'alive');
     assert.equal(processState(1, () => { throw Object.assign(new Error('inert'), {code:'EPERM'}); }), 'unknown');
     const first = createRuntimeDirectory({home, pid:41, kill:dead});
-    const tmp = path.join(home, '.educationperfected', 'tmp');
+    const tmp = path.join(fs.realpathSync(home), '.educationperfected', 'tmp');
     assert.equal(path.dirname(first.directory), tmp);
     fs.writeFileSync(path.join(first.directory, 'keyring.node'), 'inert-native');
     fs.mkdirSync(path.join(first.directory, 'puppeteer_dev_chrome_profile-inert'));
@@ -36,6 +36,15 @@ try {
     assert.equal(fs.existsSync(stale), false);
     for (const directory of [first.directory, live, uncertain, invalid]) assert.ok(fs.existsSync(directory));
     assert.equal(fs.readFileSync(path.join(browserCache, 'receipt-inert'), 'utf8'), 'keep');
+    fs.writeFileSync(path.join(next.directory, 'OWNER.next'), 'stale-pending');
+    const originalRemove = fs.rmSync;
+    const locked = path.join(next.directory, 'locked-profile');
+    fs.writeFileSync(locked, 'inert');
+    try {
+        fs.rmSync = (file, options) => { if (file === locked) throw Object.assign(new Error('inert locked file'), {code:'EPERM'});return originalRemove(file, options); };
+        assert.throws(() => next.remove(true), /locked file/);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(next.directory, 'OWNER.json'))).state, 'cleanup-ready');
+    } finally { fs.rmSync = originalRemove; }
     assert.equal(next.remove(true), true);
     assert.equal(next.remove(true), true);
     assert.equal(fs.existsSync(next.directory), false);

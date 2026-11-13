@@ -15,7 +15,8 @@ on Windows, or `~/.educationperfected/` on Linux/macOS.
 - `tmp/run-<random>/OWNER.json`: PID/schema and cleanup state only, no credentials.
 
 Normal confirmed browser closure plus native-worker exit permits run-directory
-removal. If removal fails after closure, the marker becomes cleanup-ready; next
+removal. The ownership receipt is deleted last, after payload files; a stale pending
+receipt is safely replaced on retry. If removal fails after closure, the marker becomes cleanup-ready; next
 startup retries removal only if that owner PID is definitively dead. Alive,
 unqueryable, malformed, symlinked and running-marked directories are retained.
 A dead app PID does not prove Chrome children exited, so crash leftovers are not
