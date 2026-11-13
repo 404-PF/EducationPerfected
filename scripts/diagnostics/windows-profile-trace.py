@@ -4,7 +4,7 @@ import os,sys,pathlib,subprocess,tempfile,time,json,urllib.request,http.server,t
 def commands():
     # Debug only the Chrome broker. Child processes run normally, preserving
     # sandbox behavior. Return breakpoints are one-shot/current-thread only.
-    calls=[('userenv!DeriveAppContainerSidFromAppContainerName','DeriveSid'),('kernelbase!AppContainerRegisterSid','RegisterSid'),('kernelbase!CreateMutexW','CreateMutex'),('kernelbase!WaitForSingleObject','Wait'),('kernelbase!CreateDirectoryW','CreateDirectory'),('advapi32!SetNamedSecurityInfoW','SetNamedSecurity'),('sechost!SetNamedSecurityInfoW','SetNamedSecurityHost'),('advapi32!GetNamedSecurityInfoW','GetNamedSecurity'),('sechost!GetNamedSecurityInfoW','GetNamedSecurityHost'),('advapi32!SetSecurityDescriptorSacl','SetSDLabel'),('kernelbase!GetFileAttributesW','GetFileAttributes')]
+    calls=[('userenv!DeriveAppContainerSidFromAppContainerName','DeriveSid'),('kernelbase!AppContainerRegisterSid','RegisterSid'),('kernelbase!CreateMutexW','CreateMutex'),('kernelbase!WaitForSingleObject','Wait'),('kernelbase!CreateDirectoryW','CreateDirectory'),('advapi32!SetNamedSecurityInfoW','SetNamedSecurity'),('sechost!SetNamedSecurityInfoW','SetNamedSecurityHost'),('advapi32!GetNamedSecurityInfoW','GetNamedSecurity'),('sechost!GetNamedSecurityInfoW','GetNamedSecurityHost'),('advapi32!SetSecurityDescriptorSacl','SetSDLabel'),('shell32!SHGetKnownFolderPath','KnownFolder'),('shell32!SHGetFolderPathW','FolderPath'),('advapi32!AddMandatoryAce','AddMandatoryAce'),('advapi32!SetEntriesInAclW','SetEntriesInAcl')]
     result=['.symfix','.sympath+ srv*https://chromium-browser-symsrv.commondatastorage.googleapis.com','.printf "EPTRACE START\\n"']
     for symbol,name in calls:
         ret=f'.echo EPTRACE_RETURN_{name}; r @$tid; r rax; !gle; gc'
@@ -41,7 +41,7 @@ def main():
                 for name in ('local','roaming','tmp'):(home/name).mkdir()
                 env.update(HOME=str(home),USERPROFILE=str(home),LOCALAPPDATA=str(home/'local'),APPDATA=str(home/'roaming'),TEMP=str(home/'tmp'),TMP=str(home/'tmp'))
             with log.open('wb') as out:
-                args=json.loads(subprocess.check_output(['node','-e','console.log(JSON.stringify(require("puppeteer").defaultArgs({headless:false,userDataDir:process.argv[1]})))',str(profile)],text=True))
+                args=json.loads(subprocess.check_output(['node','-e','(async()=>console.log(JSON.stringify(await require("puppeteer").defaultArgs({headless:false,userDataDir:process.argv[1]}))))().catch(()=>process.exit(1))',str(profile)],text=True))
                 launch=[str(chrome),*args,'--remote-debugging-port=0']
                 if mode.startswith('trace'):launch=[str(cdb),'-hd','-G','-cf',str(command),*launch]
                 child=subprocess.Popen(launch,stdout=out,stderr=subprocess.STDOUT,env=env)
