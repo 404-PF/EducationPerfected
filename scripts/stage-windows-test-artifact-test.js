@@ -73,6 +73,8 @@ const { hashFile } = require("./beta-candidate"),
     );
     await [
       ["schemaVersion", 1],
+      ["sourceVersion", "2026.0.0-beta.1"],
+      ["sourceVersion", "2026.0.0\nUNVERIFIED"],
       ["labelKind", "release"],
       ["status", "ready"],
       ["publicationAuthorized", true],

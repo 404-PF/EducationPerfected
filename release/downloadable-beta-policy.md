@@ -83,7 +83,7 @@ artifact/notices review, native credential save/read/delete, real console
 shutdown, and clean-machine no-Node evidence remain required on all five targets.
 Build success is not no-Node launch proof. Target narrowing needs a new decision.
 A future reviewed publication workflow must run release:check before upload.
-Self-owned repository changes follow the autonomous-work grant with independent exact-head review and passing checks. Every tag, release and publication still needs Page's explicit approval.
+On November 13 Page authorized autonomous changes in repositories owned by 404-PF or 404-Page-Found, including source validation changes and preparation code, with independent exact-head review and passing checks before merge. This replaces the older per-merge approval rule; it does not authorize publication, spending or changes outside the handed-over work. Every tag, release and publication still needs Page's explicit approval.
 
 ## Source references
 
