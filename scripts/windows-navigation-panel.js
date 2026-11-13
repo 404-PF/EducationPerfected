@@ -22,12 +22,14 @@ async function sample({kind,executablePath,env,url,launch,requestSeen,logPath}){
  // without a handle cannot confirm closure and retains the owned root.
  // Throw outside finally so closure uncertainty cannot be mistaken for an observed sample.
  if(!browser)throw new Error('Diagnostic launch closure unconfirmed');
+ // Read only after navigation/readiness was observed, never before goto.
+ const utilityHistograms=await require('./windows-utility-histograms').utilityHistograms(browser);
  let timer;
  try{await Promise.race([browser.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Close deadline')),10000);})]);cleanup=true;}
  catch{try{browser.process()?.kill();}catch{ /* Retain uncertainty even if best-effort kill fails. */ }}
  finally{clearTimeout(timer);detach();}
  if(!cleanup)throw new Error('Diagnostic browser cleanup unconfirmed');
- return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
+ return {kind,initialBlank,navigated,ready,stage,requestSeen:requestSeen()?true:null,cleanup,cause,utilityHistograms,stderr:stderr.result(),...(logPath?{loggingEnabled:true,logFile:browserLogFile(logPath)}:{})};
 }
 
 async function panel(){
