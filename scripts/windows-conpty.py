@@ -86,11 +86,11 @@ def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=t
     # setup callers keep the original secret-input checks and 30s/120s budgets.
     public_protocols=(
         ((PUBLIC_DOWNLOAD_PROMPT,b'cancel\r'),),
-        ((PUBLIC_DOWNLOAD_PROMPT,b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')),
+        ((PUBLIC_DOWNLOAD_PROMPT,b'download\r'),(b'EP email',b'\r')),
     )
     if type(public_browser_download) is not bool:raise RuntimeError('host-guard')
     if public_browser_download:
-        if args or tuple(prompts) not in public_protocols or type(process_budget_ms) is not int or process_budget_ms!=960000:raise RuntimeError('host-guard')
+        if args!=['setup'] or tuple(prompts) not in public_protocols or type(process_budget_ms) is not int or process_budget_ms!=960000:raise RuntimeError('host-guard')
     elif type(process_budget_ms) is not int or process_budget_ms not in (30000,120000):raise RuntimeError('host-guard')
     def echoed(data):
         return any(answer.rstrip(b'\r\n') not in (b'',b'\x03') and answer.rstrip(b'\r\n') in data

@@ -292,3 +292,21 @@ authentication response or submission is retried. Sandbox settings unchanged.
 The source experiment is not packaged SEA proof; that requires another native
 validation. Upstream restart mechanism:
 https://github.com/chromium/chromium/commit/66b7f8a3ea8cc19a726665c83dabd717aaaa129d .
+
+
+### Windows first-run fixture scope correction
+
+Validation12 atce81e3ea9b8a65d024db4f09ac448fcfa70b5585 passed all5
+builds/4POSIX lanes, Windows cached exact SEA mock login/semi-auto0Submit/quit
+and native credentials. First-run ConPTY reached downloaded/checksummed browser
+and owner login-ready, then failed later without ERR_ABORTED.
+https://github.com/404-PF/EducationPerfected/actions/runs/43367914433 .
+
+The first-run driver had sent ETX at login-ready under EP_TEST_BOOT, which
+intentionally bypasses credential prompts and has no raw-input ETX listener
+at that checkpoint. It did not establish a working Windows console interrupt.
+The driver now tests the explicit `setup` subcommand: decline, then consented
+acquisition/checksum and optional hidden credential skip. No secret is supplied
+or saved. Cached SEA local login/quit is a separate proof; this fixture no
+longer claims a unified first-run browser/raw-ETX shutdown proof. Native run
+of this changed fixture remains awaited. No product change for this correction.

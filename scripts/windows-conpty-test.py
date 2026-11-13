@@ -225,23 +225,23 @@ print('Observer exceptions cannot replace success, primary setup/child failure o
 class PublicAPI(BudgetAPI):
     def __init__(self,decline=False):super().__init__(960000);self.decline=decline
     def CreateProcessW(self,exe,command,*args):
-        assert command.value=='fixed.exe'
+        assert command.value=='fixed.exe setup'
         return super().CreateProcessW(exe,c.create_unicode_buffer('fixed.exe setup'),*args)
     def ReadFile(self,h,buf,size,count,overlap):
         self.reads+=1
         if self.reads==1:chunk=b'Type download'
         elif self.reads==2:
             assert self.ready.wait(2)
-            chunk=b'cancel' if self.decline else b'download\r\nBrowser download checksum verified\r\nEP_TEST_LOGIN_READY'
+            chunk=b'cancel' if self.decline else b'download\r\nBrowser download checksum verified\r\nEP email\r\nSetup cancelled; no login saved.'
         else:self.console_closed.wait(2);c.set_last_error(109);return 0
         c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
-    def GetExitCodeProcess(self,h,code):code._obj.value=1 if self.decline else 130;return 1
+    def GetExitCodeProcess(self,h,code):code._obj.value=1 if self.decline else 0;return 1
 for decline in (False,True):
     api=PublicAPI(decline)
-    prompts=[(b'Type download',b'cancel\r')] if decline else [(b'Type download',b'download\r'),(b'EP_TEST_LOGIN_READY',b'\x03')]
-    assert m.run_console('fixed.exe',[],{'HOME':'owned'},'owned',prompts,b'cancel' if decline else b'Browser download checksum verified',api=api,process_budget_ms=960000,public_browser_download=True,expected_exit=1 if decline else 130)
+    prompts=[(b'Type download',b'cancel\r')] if decline else [(b'Type download',b'download\r'),(b'EP email',b'\r')]
+    assert m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',prompts,b'cancel' if decline else b'Browser download checksum verified',api=api,process_budget_ms=960000,public_browser_download=True,expected_exit=1 if decline else 0)
     assert api.waits[0]==960000 and api.waits.count(960000)==1
-    assert api.writes==([b'cancel\r'] if decline else [b'download\r',b'\x03'])
+    assert api.writes==([b'cancel\r'] if decline else [b'download\r',b'\r'])
 for kwargs in (
     {'args':['setup'],'prompts':[(b'EP email',b'public-answer\r')]},
     {'args':[],'prompts':[(b'Type download',b'arbitrary-secret\r')]},
