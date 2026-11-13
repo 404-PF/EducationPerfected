@@ -160,6 +160,9 @@ function promptSecret(label, cleaner) {
         // On backspace/delete, remove the complete final UTF-8 character.
         // Ignore escape sequences (starting with 0x1B) so arrow keys, bracketed paste,
         // and other control sequences are not added to the secret.
+        // Echo only to a live terminal: redirected stderr (setup 2>setup.log) must
+        // never receive the typed login.
+        const echo = process.stderr.isTTY ? chunk => process.stderr.write(chunk) : () => {};
         const bytes = [];
         // Escape-sequence state machine. ESC starts a sequence, then:
         //   'kind' none   -> the next byte is the introducer ('[' CSI, ']' OSC,
@@ -207,10 +210,10 @@ function promptSecret(label, cleaner) {
                     // drop one whole UTF-8 character (continuation bytes, then the lead byte)
                     while (bytes.length && (bytes[bytes.length - 1] & 0xC0) === 0x80) bytes.pop();
                     bytes.pop();
-                    process.stderr.write('\b \b');   // erase the echoed character
+                    echo('\b \b');   // erase the echoed character
                 } else if (byte >= 32) {
                     bytes.push(byte);
-                    process.stderr.write(Buffer.from([byte]));   // visible while typing
+                    echo(Buffer.from([byte]));   // visible while typing
                 }
             }
         };
@@ -2526,7 +2529,7 @@ async function launchProgram({ onBrowserClosed = () => {}, onBrowserDisconnected
         });
 }
 
-module.exports = { launchProgram, promptCredentials };
+module.exports = { launchProgram, promptCredentials, promptSecret };
 if (require.main === module) {
     launchProgram({ legacySignals: true }).catch(error => {
         console.error(diagnostic(error, 'EducationPerfected startup'));
