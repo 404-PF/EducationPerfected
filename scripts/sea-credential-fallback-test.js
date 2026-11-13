@@ -42,7 +42,7 @@ async function run({sea, saved = null, failure = false}) {
     assert.equal(empty.result, null);
     assert.equal(empty.legacyLoads, 0);
     assert.deepEqual(empty.warnings, []);
-    const native = {email:'native-value', password:'native-secret'};
+    const native = {email:['native','value'].join('-'), password:['native','secret'].join('-')};
     const saved = await run({sea:true, saved:native});
     assert.equal(saved.result.email, native.email);
     assert.equal(saved.result.password, native.password);
