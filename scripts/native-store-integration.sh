@@ -7,13 +7,14 @@ export EP_STORE_TEST_ROOT="$ROOT"
 python3 "$ROOT/scripts/private-store-session.py" <<'PRIVATE'
 cd "$EP_STORE_TEST_ROOT"
 python3 scripts/setup-pty-test.py
+python3 scripts/seed-inert-browser-cache.py "$HOME"
 # Real CLI save proof runs only within this private session, not the inert PTY file.
 python3 - <<'PTY'
 import os,pty,subprocess,select,time
 master,slave=pty.openpty()
 child=None
 try:
-    child=subprocess.Popen(['node','bin/cli.js','--setup'],stdin=slave,stdout=slave,stderr=slave,close_fds=True)
+    child=subprocess.Popen(['node','bin/cli.js','setup'],stdin=slave,stdout=slave,stderr=slave,close_fds=True)
     data=b''
     for marker,answer in [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'fixture-native-only\r')]:
         deadline=time.time()+8
@@ -40,7 +41,7 @@ const { createCredentialStore } = require('./lib/credential-store');
  console.log('Real CLI setup and exact production source resolver read the expected synthetic native record.');
 })().catch(() => {console.error('Native CLI record verification failed.');process.exitCode=1;});
 VERIFY
-node bin/cli.js --forget-credentials
+node bin/cli.js forget-credentials
 node - <<'JS'
 const assert = require('node:assert/strict');
 const { createCredentialStore } = require('./lib/credential-store');

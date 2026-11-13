@@ -91,7 +91,7 @@ async function stage(source, destination, commit) {
   fs.writeFileSync(
     path.join(destination, "TESTING.txt"),
     `UNPUBLISHED INTERNAL WINDOWS X64 TEST BUILD - UNSIGNED\nPrepared stable version: ${candidate.sourceVersion} (not published or certified)
-Source: ${commit}\nLabel: ${candidate.validationLabel}\nNot a release, not certified, no bundled Chrome. Keep all notices.\nFirst run asks to download pinned Chrome from Google (about 200MB).\nWindows hosted first-run currently fails; cached startup is intermittent.\nSmartScreen/Defender may warn because no publisher signature exists. Do not disable security protections.\nOpen educationperfected.exe from Terminal. No real credentials are needed to observe startup.\nDo not enter start or refresh or open a real task/assessment for this startup test.\nSend the terminal error or screenshot with credentials removed.\n`,
+Source: ${commit}\nLabel: ${candidate.validationLabel}\nNot a release, not certified, no bundled Chrome. Keep all notices.\nFirst run asks to download pinned Chrome from Google (about 200MB).\nWindows hosted first-run currently fails; cached startup is intermittent.\nSmartScreen/Defender may warn because no publisher signature exists. Do not disable security protections.\nOpen educationperfected.exe from Terminal. Run help or version for side-effect-free command information. Use setup for optional installation later; old --setup flags are refused. No real credentials are needed to observe startup.\nDo not enter start or refresh or open a real task/assessment for this startup test.\nSend the terminal error or screenshot with credentials removed.\n`,
     { flag: "wx" },
   );
 }

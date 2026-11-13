@@ -18,6 +18,9 @@ def setup(root, state, mode):
     if any((root/'tmp').iterdir()):raise RuntimeError('console-command-failed')
     env={k:v for k,v in os.environ.items() if k.upper() not in ('PATH','NODE_OPTIONS','EP_EMAIL','EP_PASSWORD','EP_TEST_BOOT')}
     env.update(HOME=str(root/'home'),USERPROFILE=str(root/'home'),TEMP=str(root/'tmp'),TMP=str(root/'tmp'),TMPDIR=str(root/'tmp'),PATH=str(root/'empty'))
+    cache_spec=importlib.util.spec_from_file_location('inert_browser_cache',pathlib.Path(__file__).with_name('seed-inert-browser-cache.py'))
+    cache=importlib.util.module_from_spec(cache_spec);cache_spec.loader.exec_module(cache)
+    cache.seed(root/'home',platform_name='win32')
     if mode not in ('save','cancel-email','cancel-password','interrupt-email','interrupt-password'):raise RuntimeError('host-guard')
     prompts=[(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-sea-delete\r')]
     saved=b'Login saved in the OS credential store. Run the CLI to sign in.'
@@ -37,7 +40,7 @@ def setup(root, state, mode):
         if mode=='interrupt-email':forbidden+=(b'EP password',)
     state['attempted']=True
     def closed():state['closed']=True
-    conpty.run_console(str(executable),['--setup'],env,str(root/'home'),prompts,expected,on_closed=closed,forbidden_output=forbidden,expected_exit=expected_exit)
+    conpty.run_console(str(executable),['setup'],env,str(root/'home'),prompts,expected,on_closed=closed,forbidden_output=forbidden,expected_exit=expected_exit)
 
 def entry():
     state={'attempted':False,'closed':False}

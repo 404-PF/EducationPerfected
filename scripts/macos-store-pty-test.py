@@ -52,6 +52,8 @@ def main():
         directory.mkdir(mode=0o700)
     # User-domain keychain metadata belongs to the inherited runner HOME.
     # Fresh HOME selects different metadata, so this lane intentionally retains it.
+    # Only the system ZIP extractor is exposed; no Node or browser on PATH.
+    (empty/'unzip').symlink_to('/usr/bin/unzip')
     env.update(TMPDIR=str(tmp), PATH=str(empty))
     checkpoint('inherited-home-selection')
     for keychain_command in ('default-keychain', 'list-keychains'):
@@ -69,13 +71,15 @@ def main():
         checkpoint(label+'-setup')
         master, slave = pty.openpty(); child=None
         try:
-            child = subprocess.Popen([*command,'--setup'], stdin=slave, stdout=slave, stderr=slave, cwd=repo, env=env, close_fds=True)
+            child = subprocess.Popen([*command,'setup'], stdin=slave, stdout=slave, stderr=slave, cwd=repo, env=env, close_fds=True)
             data=b''
             for marker, answer in [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-mac-only\r')]:
-                deadline=time.monotonic()+10
+                deadline=time.monotonic()+950
                 while marker not in data:
                     if child.poll() is not None or time.monotonic()>deadline:
                         raise RuntimeError('Mac credential prompt failed')
+                    if b'Type download to fetch' in data and b'Browser ready.' not in data:
+                        os.write(master,b'download\r');data=b''
                     if select.select([master],[],[],.1)[0]:
                         data+=os.read(master,65536)
                 os.write(master,answer)
@@ -97,13 +101,13 @@ def main():
             # architectures. Do not broaden ACLs or pretend this proves the value.
             checkpoint('sea-save-acknowledged-exact-record-read-unproved')
         checkpoint(label+'-health-read')
-        health = run([*command,'--check-credentials'])
+        health = run([*command,'check-credentials'])
         if health.stdout != b'Saved login is available and its record is valid.\n':
             raise RuntimeError('Saved login health read did not confirm a valid record')
         if any(tmp.iterdir()):
             raise RuntimeError('Mac setup or health-read extraction residue')
         checkpoint(label+'-delete')
-        result = run([*command,'--forget-credentials'])
+        result = run([*command,'forget-credentials'])
         if b'Saved login removed from the OS credential store.' not in result.stdout:
             raise RuntimeError('Mac credential deletion not confirmed')
         checkpoint(label+'-deleted-verification')

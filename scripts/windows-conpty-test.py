@@ -30,7 +30,7 @@ class API:
     def SetInformationJobObject(self,job,kind,limits,size):assert limits._obj.basic.flags==0x2000;return 0 if self.scenario=='job-limit' else 1
     def CreateProcessW(self,exe,command,a,b,inherit,flags,env,cwd,si,pi):
         assert not inherit and flags==0x80404
-        assert command.value.endswith('--setup') and si._obj.cb==112
+        assert command.value.endswith('setup') and si._obj.cb==112
         assert si._obj.flags & 0x100 and not si._obj.stdin and not si._obj.stdout and not si._obj.stderr
         assert env.value.startswith('HOME=')
         if self.scenario=='process-create':return 0
@@ -77,7 +77,7 @@ for scenario in ['success','assignment','console-create','timeout','echo','echo-
     # Only the live-job failure needs an accelerated deadline; others use real time.
     kwargs={'clock':lambda:next(clock_values,6000)} if scenario=='job-live' else {}
     error=None
-    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',([(b'EP email',b'public-answer\r'),(b'EP password',b'public-other\r')] if scenario=='order' else [(b'EP email',b'public-answer\r')]),b'Login saved',api=api,**kwargs)
+    try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',([(b'EP email',b'public-answer\r'),(b'EP password',b'public-other\r')] if scenario=='order' else [(b'EP email',b'public-answer\r')]),b'Login saved',api=api,**kwargs)
     except BaseException as caught:error=caught
     assert (error is None)==(scenario=='success'),(scenario,type(error))
     if scenario in ['assignment','console-create','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume']:assert not api.resumed and not api.writes
@@ -99,7 +99,7 @@ print('ConPTY inert API/ABI ownership controls: creation/assignment fail closed,
 
 api=API('success');capture=io.StringIO()
 with contextlib.redirect_stdout(capture):
-    m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
+    m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
 assert capture.getvalue()=='ConPTY fixed child capability: stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown; exit=zero; exitDWORD=0\n'
 assert 'public-answer' not in capture.getvalue()
 print('ConPTY fixed-only child readiness and nonzero-exit classification controls passed.')
@@ -107,7 +107,7 @@ print('ConPTY fixed-only child readiness and nonzero-exit classification control
 for scenario,wanted in [('readiness','stdinTTY=1; stdoutTTY=0; rawMode=1'),('readiness-lf','stdinTTY=1; stdoutTTY=0; rawMode=1'),('prefixed','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown'),('trailing','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown'),('malformed','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown'),('duplicate-readiness','stdinTTY=unknown; stdoutTTY=unknown; rawMode=unknown')]:
     api=API(scenario);capture=io.StringIO()
     with contextlib.redirect_stdout(capture):
-        m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
+        m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,capability_diagnostics=True)
     assert wanted in capture.getvalue() and 'private-name' not in capture.getvalue()
 print('ConPTY readiness parser: exact fixed marker, malformed/duplicate unknown, no arbitrary drained output.')
 
@@ -116,9 +116,9 @@ for expected in (7,8):
     original=api.GetExitCodeProcess
     def get_exit(handle,code):code._obj.value=expected;return 1
     api.GetExitCodeProcess=get_exit
-    assert m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,expected_exit=expected)
+    assert m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,expected_exit=expected)
     error=None
-    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',api=API('child-nonzero'),expected_exit=expected)
+    try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',api=API('child-nonzero'),expected_exit=expected)
     except RuntimeError as caught:error=caught
     assert str(error)=='console-child-nonzero'
 print('ConPTY ladder controls: expected exit7/8 accepted only explicitly, other nonzero exits still fail.')
@@ -136,7 +136,7 @@ for scenario in ('cancel','save-marker'):
     api.ReadFile=read_cancel
     error=None
     try:
-        m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'\r')],b'Setup cancelled; no login saved.',api=api,forbidden_output=(b'Login saved in the OS credential store.',))
+        m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'\r')],b'Setup cancelled; no login saved.',api=api,forbidden_output=(b'Login saved in the OS credential store.',))
     except BaseException as caught:error=caught
     if scenario=='save-marker':assert str(error)=='console-command-failed'
     else:assert error is None,(scenario,error)
@@ -158,7 +158,7 @@ for scenario in ('interrupt','wrong-exit','cancel-ack','save-ack','password-labe
     api.GetExitCodeProcess=interrupt_exit
     prompts=[(b'EP email',b'\x03')] if scenario!='secret-echo' else [(b'EP email',b'public-answer\x03')]
     error=None
-    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',prompts,b'EP email',api=api,expected_exit=130,forbidden_output=(b'Setup cancelled; no login saved.',b'Login saved in the OS credential store.',b'EP password'))
+    try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',prompts,b'EP email',api=api,expected_exit=130,forbidden_output=(b'Setup cancelled; no login saved.',b'Login saved in the OS credential store.',b'EP password'))
     except BaseException as caught:error=caught
     if scenario=='interrupt':assert error is None,error
     elif scenario=='wrong-exit':assert str(error)=='console-child-nonzero'
@@ -169,7 +169,7 @@ api=API('success')
 def exit130(handle,code):code._obj.value=130;return 1
 api.GetExitCodeProcess=exit130
 error=None
-try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api)
+try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api)
 except BaseException as caught:error=caught
 assert str(error)=='console-child-nonzero'
 print('Raw ETX input requires child130 only explicitly, no acks/password prompt; default exit0 rejects130 (inert only).')
@@ -183,11 +183,11 @@ class BudgetAPI(API):
         return super().WaitForSingleObject(h,30000 if ms==self.budget else ms)
 for budget in (30000,120000):
     api=BudgetAPI(budget)
-    assert m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,process_budget_ms=budget)
+    assert m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,process_budget_ms=budget)
     assert api.waits[0]==budget
     assert api.waits.count(budget)==1
 default_api=BudgetAPI(30000)
-assert m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=default_api)
+assert m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=default_api)
 assert default_api.waits[0]==30000 and default_api.waits.count(30000)==1
 for invalid in (0,90000,120001,True,'120000',None):
     with mock.patch.object(m,'kernel32',side_effect=AssertionError('Must reject before native allocation')):
@@ -199,7 +199,7 @@ print('ConPTY fixed diagnostic120s vs unchangeddefault30s outer process budget, 
 for scenario in ('success','child-nonzero','process-create','job-live'):
     api=API(scenario);observed=[];closed=[];values=iter(range(0,6000,6));kwargs={'clock':lambda:next(values,6000)} if scenario=='job-live' else {}
     error=None
-    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=observed.append,on_closed=lambda:closed.append(True),**kwargs)
+    try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=observed.append,on_closed=lambda:closed.append(True),**kwargs)
     except BaseException as caught:error=caught
     assert len(observed)==1 and isinstance(observed[0],bytes)
     if scenario=='success':assert error is None and closed==[True] and b'Login saved' in observed[0]
@@ -213,7 +213,7 @@ for scenario in ('success','child-nonzero','process-create','job-live'):
     api=API(scenario);values=iter(range(0,6000,6));kwargs={'clock':lambda:next(values,6000)} if scenario=='job-live' else {};closed=[];seen=[]
     def broken_observer(data):seen.append(data);raise RuntimeError('private-observer-error')
     error=None
-    try:m.run_console('fixed.exe',['--setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=broken_observer,on_closed=lambda:closed.append(True),**kwargs)
+    try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',[(b'EP email',b'public-answer\r')],b'Login saved',api=api,on_drain=broken_observer,on_closed=lambda:closed.append(True),**kwargs)
     except BaseException as caught:error=caught
     assert len(seen)==1
     if scenario=='success':assert error is None and closed==[True] and b'Login saved' in seen[0]
@@ -226,7 +226,7 @@ class PublicAPI(BudgetAPI):
     def __init__(self,decline=False):super().__init__(960000);self.decline=decline
     def CreateProcessW(self,exe,command,*args):
         assert command.value=='fixed.exe'
-        return super().CreateProcessW(exe,c.create_unicode_buffer('fixed.exe --setup'),*args)
+        return super().CreateProcessW(exe,c.create_unicode_buffer('fixed.exe setup'),*args)
     def ReadFile(self,h,buf,size,count,overlap):
         self.reads+=1
         if self.reads==1:chunk=b'Type download'
@@ -243,7 +243,7 @@ for decline in (False,True):
     assert api.waits[0]==960000 and api.waits.count(960000)==1
     assert api.writes==([b'cancel\r'] if decline else [b'download\r',b'\x03'])
 for kwargs in (
-    {'args':['--setup'],'prompts':[(b'EP email',b'public-answer\r')]},
+    {'args':['setup'],'prompts':[(b'EP email',b'public-answer\r')]},
     {'args':[],'prompts':[(b'Type download',b'arbitrary-secret\r')]},
     {'args':[],'prompts':[(b'Type download',b'download\r')]},
 ):

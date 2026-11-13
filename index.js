@@ -347,7 +347,7 @@ async function resolveCredentials(watchForSession) {
         const saved = await require('./lib/credential-store').createCredentialStore().read();
         if (saved) return { ...saved, source: 'the OS credential store' };
     } catch (error) {
-        console.warn('Saved login unavailable (' + (error.code || 'store failure') + '). Unlock the OS credential store or run CLI --setup; manual login is still available.');
+        console.warn('Saved login unavailable (' + (error.code || 'store failure') + '). Unlock the OS credential store or run CLI setup; manual login is still available.');
     }
 
     const keychainEmail = await readKeychainCredential('EP_EMAIL');

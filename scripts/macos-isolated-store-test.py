@@ -102,7 +102,7 @@ def main():
     def fixture(root):
         child = subprocess.Popen([sys.executable, str(pathlib.Path(__file__).with_name('macos-store-pty-test.py')), str(root)], start_new_session=True)
         try:
-            if child.wait(timeout=90) != 0:
+            if child.wait(timeout=1950) != 0:
                 raise RuntimeError('Credential child failed')
         finally:
             stop_group(child)

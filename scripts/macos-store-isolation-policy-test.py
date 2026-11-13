@@ -121,7 +121,7 @@ try:
     assert captured[-1]['TMPDIR']==str(root/'tmp') and captured[-1]['PATH']==str(root/'empty')
     assert captured[-2]['HOME']=='/inert-original-home'
 finally:shutil.rmtree(alias_parent)
-print('Mac native child retains runner HOME and verified metadata with owned TMP/empty PATH (inert only).')
+print('Mac native child retains runner HOME and verified metadata with owned TMP/only-system-unzip PATH (inert only).')
 
 # Full child sequencing inertly distinguishes exact source read from SEA acknowledgement.
 root=pathlib.Path(tempfile.mkdtemp(prefix='ep-inert-sequence-')).resolve()
@@ -135,11 +135,11 @@ output=b'EP email EP password Login saved in the OS credential store.'
 def sequence_run(args, **kwargs):
     global record
     if args[0]=='/usr/bin/security':return subprocess.CompletedProcess(args,0,stdout=repr(owned),stderr='')
-    if args[-1]=='--check-credentials':
+    if args[-1]=='check-credentials':
         assert record is not None
         calls.append(record+'-health')
         return subprocess.CompletedProcess(args,0,stdout=b'Saved login is available and its record is valid.\n',stderr=b'')
-    if args[-1]=='--forget-credentials':
+    if args[-1]=='forget-credentials':
         assert record is not None
         calls.append('source-delete' if len(args)>2 else 'sea-delete');record=None
         return subprocess.CompletedProcess(args,0,stdout=b'Saved login removed from the OS credential store.',stderr=b'')

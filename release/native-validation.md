@@ -219,3 +219,25 @@ Unmodified-artifact normal saved-login, Mac and Windows normal saved-login,
 Windows browser reliability/console events, clean-machine/no-Node hosts,
 Ubuntu24 compatibility, project/browser rights and signing remain open. No
 `release/evidence.json` is created from these fixture-only observations.
+
+### Current subcommand migration
+
+Historical rows above retain the exact flags used by their original binaries.
+Current source and future candidate binaries use `setup`, `check-credentials`
+and `forget-credentials`. Removed --forms fail before native/runtime/download
+work. The migrated fixture source is not itself another native pass. Windows
+and Linux credential fixtures seed an inert cached-browser receipt inside their
+owned disposable HOME to isolate credential setup; that file is never launched.
+macOS retains runner HOME for verified owned keychain selection, so its fixture
+uses actual consented browser acquisition/cache reuse. Both avoid opening EP.
+Run `npm run test:packaged-harness`, `npm run test:browser-download`,
+`npm run test:store` and `npm run test:store:pty` for inert/local contracts.
+`cli-command-test.js` covers bootstrap dispatch, including update before runtime
+initialization and uninstall's cleanup callback. `uninstall-test.js` uses only
+synthetic files/stores and checks maintenance-lock contention, cancel/no-delete,
+safe removal, uncertain runs, locks, unknown data, symlink target retention,
+store failures and cleanup failures. These do not certify native uninstallation
+or Windows executable replacement.
+macOS fixture PATH now contains only an owned symlink to /usr/bin/unzip,
+not Node or Chrome. Its wrapper deadline accommodates the browser install
+timeout; the previous 90-second deadline did not. No new native run is claimed.

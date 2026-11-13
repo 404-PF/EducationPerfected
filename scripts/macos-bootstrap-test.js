@@ -10,6 +10,7 @@ async function probe(rejectPath) {
  const completed=new Promise(resolve=>{finish=resolve;});
  const load=id=>{
   if(id==='../lib/runtime-directory')return {createRuntimeDirectory:()=>({directory:'/synthetic-owned-root',remove:safe=>{assert.ok(safe);order.push('cleanup');finish();return true;}})};
+  if(id==='../lib/cli-command')return require(id);
   if(id==='node:fs')return {mkdtempSync:()=>'/synthetic-owned-root',chmodSync(){},writeFileSync(){},rmSync(){order.push('cleanup');finish();}};
   if(id==='node:sea')return {getAsset:key=>key==='manifest'?JSON.stringify({length:asset.length,sha256:createHash('sha256').update(asset).digest('hex'),executable}):new ArrayBuffer(0),getRawAsset:()=>raw};
   if(id==='node:module')return {createRequire:()=>()=>({})};

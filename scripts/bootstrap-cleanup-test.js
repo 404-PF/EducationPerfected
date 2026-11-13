@@ -4,7 +4,7 @@ const source=fs.readFileSync(path.resolve(__dirname,'../packaging/bootstrap.js')
 async function probe(signal) {
  const listeners=new Map();let output='',finished;const safeValues=[];
  const done=new Promise(resolve=>{finished=resolve;});
- const fakeProcess={platform:'linux',execPath:process.execPath,argv:['fixture','fixture','--help'],env:{},
+ const fakeProcess={platform:'linux',execPath:process.execPath,argv:['fixture','fixture','check-credentials'],env:{},
   on(name,handler){listeners.set(name,handler);},removeListener(name){listeners.delete(name);},
   exit(code){this.exitCode=code;listeners.get('exit')?.();}};
  const load=id=>{
@@ -12,6 +12,7 @@ async function probe(signal) {
   if(id==='node:fs')return {mkdtempSync:()=>'/synthetic-owned-root',chmodSync(){},writeFileSync(){},rmSync(){throw Object.assign(Error('private path'),{code:'EPERM'});}};
   if(id==='node:sea')return {getAsset:key=>key==='manifest'?'{}':new ArrayBuffer(0)};
   if(id==='node:module')return {createRequire:()=>()=>({})};
+  if(id==='../bin/cli')return {credentialCommand:async()=>{if(signal)fakeProcess.exit(signal==='SIGINT'?130:signal==='SIGTERM'?143:129);}};
   if(id==='../lib/native-binding')return {setPackagedBinding(){}};
   if(id==='modern-tar/fs')return {};
   return require(id);
