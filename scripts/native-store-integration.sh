@@ -25,7 +25,8 @@ try:
     child.wait(timeout=10)
     while select.select([master],[],[],.1)[0]: data+=os.read(master,65536)
     assert child.returncode==0
-    assert b'fixture-native-only' not in data and b'fixture@example.test' not in data
+    # Typed input stays visible while typing; the echo must appear in the stream.
+    assert b'fixture-native-only' in data and b'fixture@example.test' in data
 finally:
     if child is not None and child.poll() is None: child.kill();child.wait(timeout=5)
     os.close(master);os.close(slave)

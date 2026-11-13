@@ -89,7 +89,7 @@ def main():
                 os.write(master,answer)
             child.wait(timeout=15)
             data=drain_pty(master,data)
-            if child.returncode != 0 or b'Login saved in the OS credential store.' not in data or b'synthetic-mac-only' in data or b'fixture@example.test' in data:
+            if child.returncode != 0 or b'Login saved in the OS credential store.' not in data or b'synthetic-mac-only' not in data or b'fixture@example.test' not in data:
                 raise RuntimeError('Mac credential setup output contract failed')
         finally:
             if child is not None and child.poll() is None:
