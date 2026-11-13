@@ -18,7 +18,7 @@ class API:
         a._obj.value=self.next;b._obj.value=self.next+1;self.next+=2;return 1
     def CloseHandle(self,h):
         self.closed.append(h.value)
-        return 0 if self.scenario=='echo-close-failure' and h.value==33 else 1
+        return 0 if self.scenario=='noecho-close-failure' and h.value==33 else 1
     def CreatePseudoConsole(self,*args):args[-1]._obj.value=None if self.scenario=='console-null' else 30;return -1 if self.scenario=='console-create' else 0
     def ClosePseudoConsole(self,h):self.console_closed.set()
     def InitializeProcThreadAttributeList(self,buf,n,flags,size):
@@ -61,7 +61,7 @@ class API:
         if self.reads==1:chunk=b'EP password' if self.scenario=='order' else b'EP emailEP email' if self.scenario=='duplicate' else b'EP email'
         elif self.reads==2:
             if not self.ready.wait(2):raise RuntimeError('inert missing input')
-            chunk=b'Login saved in the OS credential store.'+(b'public-answer' if self.scenario in ('echo','echo-close-failure') else b'')
+            chunk=(b'' if self.scenario in ('no-echo','noecho-close-failure') else b'public-answer\r\n')+b'Login saved in the OS credential store.'
             if self.scenario=='readiness':chunk+=b'\n'
             if self.scenario=='readiness':chunk+=b'CONPTY_CAPABILITY stdinTTY=1 stdoutTTY=0 rawMode=1\r\n'
             if self.scenario=='readiness-lf':chunk+=b'\nCONPTY_CAPABILITY stdinTTY=1 stdoutTTY=0 rawMode=1\n'
@@ -72,7 +72,7 @@ class API:
         else:self.console_closed.wait(2);c.set_last_error(109);return 0
         c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
     def WriteFile(self,h,data,size,count,overlap):self.writes.append(data.raw[:size]);count._obj.value=size;self.ready.set();return 1
-for scenario in ['success','assignment','console-create','timeout','echo','echo-close-failure','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero','console-null']:
+for scenario in ['success','assignment','console-create','timeout','no-echo','noecho-close-failure','job-live','duplicate','order','pipe-create','attribute-size','attribute-init','attribute-console','job-create','job-limit','process-create','process-resume','output-cap','child-nonzero','console-null']:
     api=API(scenario);clock_values=iter(range(0,6000,6))
     # Only the live-job failure needs an accelerated deadline; others use real time.
     kwargs={'clock':lambda:next(clock_values,6000)} if scenario=='job-live' else {}
@@ -89,13 +89,13 @@ for scenario in ['success','assignment','console-create','timeout','echo','echo-
     if scenario=='job-live':assert isinstance(error,m.ExitUnconfirmed) and str(error)=='job-exit-unconfirmed'
     if scenario=='order':assert str(error)=='console-prompt-order'
     if scenario=='duplicate':assert str(error)=='console-duplicate-prompt'
-    if scenario in ('echo','echo-close-failure'):
-        assert isinstance(error,m.ExitUnconfirmed) and str(error)=='console-input-echoed'
-        assert isinstance(error.__cause__,RuntimeError) and str(error.__cause__)=='console-input-echoed'
-    if scenario=='echo-close-failure':assert 33 in api.closed
+    if scenario in ('no-echo','noecho-close-failure'):
+        assert isinstance(error,m.ExitUnconfirmed) and str(error)=='console-input-missing'
+        assert isinstance(error.__cause__,RuntimeError) and str(error.__cause__)=='console-input-missing'
+    if scenario=='noecho-close-failure':assert 33 in api.closed
     if scenario=='output-cap':assert str(error)=='console-output-limit'
     if scenario=='child-nonzero':assert str(error)=='console-child-nonzero'
-print('ConPTY inert API/ABI ownership controls: creation/assignment fail closed, timeout, drained echo and job-live retention discriminated. Native Windows pending.')
+print('ConPTY inert API/ABI ownership controls: creation/assignment fail closed, timeout, drained input echo and job-live retention discriminated. Native Windows pending.')
 
 api=API('success');capture=io.StringIO()
 with contextlib.redirect_stdout(capture):
@@ -123,7 +123,7 @@ for expected in (7,8):
     assert str(error)=='console-child-nonzero'
 print('ConPTY ladder controls: expected exit7/8 accepted only explicitly, other nonzero exits still fail.')
 
-# Empty Enter is not an echoed secret; nonempty input and forbidden ack stay checked.
+# Empty Enter needs no echo; nonempty input must echo and the forbidden ack stays checked.
 for scenario in ('cancel','save-marker'):
     api=API('success');original_read=api.ReadFile
     def read_cancel(handle,buffer,size,count,overlap):
@@ -144,26 +144,25 @@ print('ConPTY empty Enter cancellation and forbidden-save acknowledgement contro
 
 # Actual transport gate combinations: ETX is a control byte, not a secret; 130
 # never becomes a generic accepted exit and neither ack may masquerade as interrupt.
-for scenario in ('interrupt','wrong-exit','cancel-ack','save-ack','password-label','secret-echo'):
+for scenario in ('interrupt','wrong-exit','cancel-ack','save-ack','password-label','interrupt-echo'):
     api=API('success');original_read=api.ReadFile
     def read_interrupt(handle,buffer,size,count,overlap):
         result=original_read(handle,buffer,size,count,overlap)
         if result and api.reads==2:
             text=b'\x03'
-            text+= {'cancel-ack':b'Setup cancelled; no login saved.','save-ack':b'Login saved in the OS credential store.','password-label':b'EP password','secret-echo':b'public-answer\x03'}.get(scenario,b'')
+            text+= {'cancel-ack':b'Setup cancelled; no login saved.','save-ack':b'Login saved in the OS credential store.','password-label':b'EP password','interrupt-echo':b'public-answer\x03'}.get(scenario,b'')
             c.memmove(buffer,text,len(text));count._obj.value=len(text)
         return result
     api.ReadFile=read_interrupt
     def interrupt_exit(handle,code):code._obj.value=0 if scenario=='wrong-exit' else 130;return 1
     api.GetExitCodeProcess=interrupt_exit
-    prompts=[(b'EP email',b'\x03')] if scenario!='secret-echo' else [(b'EP email',b'public-answer\x03')]
+    prompts=[(b'EP email',b'\x03')] if scenario!='interrupt-echo' else [(b'EP email',b'public-answer\x03')]
     error=None
     try:m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',prompts,b'EP email',api=api,expected_exit=130,forbidden_output=(b'Setup cancelled; no login saved.',b'Login saved in the OS credential store.',b'EP password'))
     except BaseException as caught:error=caught
     if scenario=='interrupt':assert error is None,error
     elif scenario=='wrong-exit':assert str(error)=='console-child-nonzero'
-    elif scenario=='secret-echo':
-        assert isinstance(error,m.ExitUnconfirmed) and str(error)=='console-input-echoed'
+    elif scenario=='interrupt-echo':assert error is None,error
     else:assert str(error)=='console-command-failed'
 api=API('success')
 def exit130(handle,code):code._obj.value=130;return 1
@@ -221,7 +220,7 @@ for scenario in ('success','child-nonzero','process-create','job-live'):
     elif scenario=='child-nonzero':assert str(error)=='console-child-nonzero' and closed==[True]
     else:assert str(error)=='process-create' and closed==[True] and seen[0]==b''
 print('Observer exceptions cannot replace success, primary setup/child failure or unconfirmed cleanup outcome (inert).')
-# The one public-download protocol is opt-in and cannot waive setup secret echoes.
+# The one public-download protocol is opt-in and cannot waive setup input echoes.
 class PublicAPI(BudgetAPI):
     def __init__(self,decline=False):super().__init__(960000);self.decline=decline
     def CreateProcessW(self,exe,command,*args):
@@ -255,4 +254,4 @@ with mock.patch.object(m,'kernel32',side_effect=AssertionError('No allocation'))
     try:m.run_console('fixed.exe',[],{},'owned',process_budget_ms=960000)
     except RuntimeError as e:assert str(e)=='host-guard'
     else:raise AssertionError('Default budget widened')
-print('Fixed public browser consent protocol permits public echo only; setup/default secret guards and default budgets unchanged (inert).')
+print('Fixed public browser consent protocol permits the public protocol only; setup/default echo checks and default budgets unchanged (inert).')
