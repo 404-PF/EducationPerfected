@@ -31,9 +31,13 @@ def main():
             home=root/mode;home.mkdir();profile=home/'chrome-profile';log=home/'debug.log'
             exe=chrome
             env=dict(os.environ)
-            if mode.endswith('isolated'):
+            if mode!='baseline-inherited':
                 for name in ('empty','tmp'):(home/name).mkdir()
                 env.update(HOME=str(home),USERPROFILE=str(home),PATH=str(home/'empty'),TEMP=str(home/'tmp'),TMP=str(home/'tmp'),TMPDIR=str(home/'tmp'))
+            if mode=='baseline-preserve-profile':env['USERPROFILE']=os.environ['USERPROFILE']
+            if mode=='baseline-complete-profile':
+                (home/'AppData'/'Local').mkdir(parents=True)
+                (home/'AppData'/'Roaming').mkdir(parents=True)
             probe=subprocess.run([sys.executable,'scripts/diagnostics/windows-known-folder.py'],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=15)
             print('EPTRACE FOLDER '+mode+' '+probe.stdout,flush=True)
             with socket.socket() as sock:

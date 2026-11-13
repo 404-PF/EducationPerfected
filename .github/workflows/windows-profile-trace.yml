@@ -17,10 +17,12 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - {sample: trace-1, mode: trace-isolated}
-          - {sample: trace-2, mode: trace-isolated}
-          - {sample: baseline-1, mode: baseline-isolated}
-          - {sample: baseline-2, mode: baseline-inherited}
+          - {sample: fake-1, mode: baseline-isolated}
+          - {sample: fake-2, mode: baseline-isolated}
+          - {sample: preserve-1, mode: baseline-preserve-profile}
+          - {sample: preserve-2, mode: baseline-preserve-profile}
+          - {sample: complete-1, mode: baseline-complete-profile}
+          - {sample: complete-2, mode: baseline-complete-profile}
     env:
       EP_TRACE_MODE: ${{ matrix.mode }}
     steps:
