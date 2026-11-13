@@ -91,3 +91,14 @@ Every merge and every tag/release/publication still needs Page's separate approv
 - https://developer.chrome.com/docs/automation-and-testing/chrome-for-testing
 - https://www.google.com/chrome/terms/
 - https://policies.google.com/terms
+
+## Optional internal Windows startup test artifact
+
+The manual preparation workflow can stage the exact inventoried Windows no-browser
+executable, notices, candidate inventory, checksums and TESTING.txt in a 7-day Actions
+artifact only when upload_windows_test is explicitly true. The default is false.
+This public repository's artifacts are readable by signed-in GitHub users with
+repository read access, not collaborator-only or private. Owner approval of that
+audience is required before enabling the input. No tag, release, Pages or release
+certification follows from this internal test package. Native probe failures remain
+failures; test download availability is not evidence that Windows first-run works.

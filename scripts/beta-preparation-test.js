@@ -129,9 +129,14 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
         await assert.rejects(async()=>verifyGates(active.replace(gate,gate.replace("steps."+prerequisite+".outcome == 'success'",'true'))));
         await assert.rejects(async()=>verifyGates(active.replace(gate,gate.replace('!cancelled()','true'))));
     }
-    assert.doesNotMatch(active,/upload-artifact|contents: write|gh release|git tag|git push|actions\/cache|pull_request_target/);
+    assert.doesNotMatch(active,/contents: write|gh release|git tag|git push|actions\/cache|pull_request_target/);
+    assert.equal((active.match(/uses: actions\/upload-artifact@/g)||[]).length,1);
+    const upload=active.split('      - name: Upload explicitly requested unsigned Windows test package')[1].split('      - name:')[0];
+    assert.match(upload,/inputs.upload_windows_test && steps.test_package.outcome == 'success'/);assert.match(upload,/runner.os == 'Windows'/);
+    assert.match(upload,/retention-days: 7/);assert.match(upload,/path: build\/windows-internal-test\//);assert.match(upload,/if-no-files-found: error/);
+    assert.match(active,/upload_windows_test:[\s\S]*?default: false/);
     assert.doesNotMatch(active,/run:.*\$\{\{\s*inputs\./);
     assert.equal((active.match(/- uses:/g)||[]).length,4);
     assert.match(active,/actions\/checkout@[a-f0-9]{40}/);assert.match(active,/actions\/setup-node@[a-f0-9]{40}/);
-    console.log('Beta preparation contracts PASS: dated versions, exact-byte inventory, invalid target/commit/missing-file failures, read-only manual workflow/no upload or publication. Synthetic only.');
+    console.log('Beta preparation contracts PASS: dated versions, exact-byte inventory, invalid target/commit/missing-file failures, read-only manual workflow/explicit opt-in test artifact only, no release. Synthetic only.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
