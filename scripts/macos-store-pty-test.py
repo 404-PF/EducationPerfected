@@ -76,8 +76,11 @@ def main():
             for marker, answer in [(b'EP email',b'fixture@example.test\r'),(b'EP password',b'synthetic-mac-only\r')]:
                 deadline=time.monotonic()+10
                 while marker not in data:
-                    if child.poll() is not None or time.monotonic()>deadline:
-                        raise RuntimeError('Mac credential prompt failed')
+                    if child.poll() is not None:
+                        raise RuntimeError('Mac credential child exited before prompt: '+marker.decode())
+                    if time.monotonic()>deadline:
+                        banner=' after store banner' if b'Save a login' in data else ' before store banner'
+                        raise RuntimeError('Mac credential prompt timed out: '+marker.decode()+banner)
                     if not download_answered and b'Type download to fetch' in data:
                         download_answered=True
                         deadline=time.monotonic()+950 # Installer has a 15-minute hard timeout.
@@ -89,8 +92,12 @@ def main():
                 os.write(master,answer)
             child.wait(timeout=15)
             data=drain_pty(master,data)
-            if child.returncode != 0 or b'Login saved in the OS credential store.' not in data or b'synthetic-mac-only' not in data or b'fixture@example.test' not in data:
-                raise RuntimeError('Mac credential setup output contract failed')
+            problems=[]
+            if child.returncode != 0:problems.append('nonzero-exit')
+            if b'Login saved in the OS credential store.' not in data:problems.append('ack-missing')
+            if b'fixture@example.test' not in data:problems.append('email-echo-missing')
+            if b'synthetic-mac-only' not in data:problems.append('password-echo-missing')
+            if problems:raise RuntimeError('Mac credential setup output contract failed: '+','.join(problems))
         finally:
             if child is not None and child.poll() is None:
                 child.kill();child.wait(timeout=10)
@@ -130,6 +137,7 @@ def shutil_which_node():
 if __name__=='__main__':
     try:
         main()
-    except BaseException:
-        print('Mac synthetic credential child failed at fixed checkpoint: '+STAGE+'; no record or native error contents printed.',file=sys.stderr)
+    except BaseException as error:
+        cause=str(error) if type(error) is RuntimeError else type(error).__name__
+        print('Mac synthetic credential child failed at fixed checkpoint: '+STAGE+'; fixed cause: '+cause+'; no record or native error contents printed.',file=sys.stderr)
         sys.exit(1)
