@@ -61,6 +61,29 @@ const ttyPair = answer => {
     assert.equal(update.parseSha256Sums(good).get('educationperfected-windows-x64.exe'), sha256(Buffer.from('b')));
     for (const bad of ['', 'zzz  x\n', sha256(Buffer.from('a')) + ' ../escape\n', sha256(Buffer.from('a')) + '  a\n' + sha256(Buffer.from('b')) + '  a\n', 'not-a-sum-line\n']) assert.throws(() => update.parseSha256Sums(bad), undefined, JSON.stringify(bad));
 
+    // Update failures surface as update failures with fixed categories, never as
+    // startup failures and never echoing the thrown message (tags, paths, URLs).
+    const { diagnostic } = require('../lib/diagnostics');
+    const cases = [
+        ['Release v2026.1.5 has no asset educationperfected-linux-x64 for this platform', /no build for this platform/],
+        ['Release v2026.1.5 has no SHA256SUMS', /no usable checksum file/],
+        ['Malformed SHA256SUMS line', /no usable checksum file/],
+        ['SHA256SUMS has no entry for educationperfected-linux-x64', /no usable checksum file/],
+        ['Update checksum mismatch; downloaded file discarded, nothing replaced', /integrity check; nothing was replaced/],
+        ['Unrecognized current version 2026.0.0-beta.1', /does not report a recognized stable version/],
+        ['Another update is active or was interrupted. Lock: /secret/path/x.update.lock.', /Another update is active or was interrupted/],
+        ['Update needs an interactive terminal', /interactive terminal/],
+        ['Release check failed (HTTP 403)', /check the network and retry later/],
+        ['something entirely unexpected', /check the network and retry later/],
+    ];
+    for (const [message, pattern] of cases) {
+        const line = diagnostic(new Error(message), 'Update');
+        assert.ok(line.startsWith('Update failed'), line);
+        assert.match(line, pattern, message);
+        assert.ok(!line.includes(message), 'raw error text must not leak: ' + line);
+    }
+    assert.ok(!diagnostic(new Error('x'), 'Update').includes('could not start'));
+
     // Release selection: stable-only, drafts/prereleases/non-SemVer skipped, assets + URLs validated.
     // The new fixture build is itself runnable so the default healthcheck (`<exe> version`) passes with it.
     const newBytes = Buffer.from('#!/bin/sh\necho 2026.1.5\n');

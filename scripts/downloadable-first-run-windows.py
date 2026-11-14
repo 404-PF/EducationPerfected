@@ -136,7 +136,7 @@ def run_fixture():
             def closed():
                 nonlocal safe
                 safe=True
-            prompts=[(b'Download now? [y/N]',b'y\r'),(b'EP email',b'\r')] if accepted else [(b'Download now? [y/N]',b'n\r')]
+            prompts=[(b'Download now? [Y/n]',b'y\r'),(b'EP email',b'\r')] if accepted else [(b'Download now? [Y/n]',b'n\r')]
             conpty.run_console(str(artifact),['setup'],env,str(home),prompts,b'Setup cancelled; no login saved.' if accepted else b'Browser download cancelled',expected_exit=0 if accepted else 1,on_closed=closed,process_budget_ms=960000,public_browser_download=True,capability_diagnostics=True,on_drain=drain,forbidden_output=() if accepted else (b'EP_TEST_LOGIN_READY',b'Browser download checksum verified'))
             verify_cache(home,accepted);assert not list(temp.glob('educationperfected-*'))
         print('Windows exact copied SEA fresh-home decline/download/checksum/optional credential-setup skip and owned job/EOF/extraction/cache-lock cleanup passed. Empty child PATH, no browser/login/raw ETX proof in this setup fixture; cached SEA login is tested separately.',flush=True)

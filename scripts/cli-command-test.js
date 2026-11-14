@@ -7,8 +7,9 @@ for(const flag of ['-v','--version'])assert.equal(parseCommand([flag]).command,'
 for(const command of ['setup','check-credentials','forget-credentials','update','uninstall'])assert.equal(parseCommand(['--'+command]).error,`Use ${command} instead of --${command}.`);
 assert.ok(parseCommand(['setup','help']).error);assert.ok(parseCommand(['nonsense']).error);
 assert.match(helpText(),/no answers until start/);
+assert.ok(helpText().startsWith('EducationPerfected ' + require('../package.json').version + '\n'),'help header derives the version from package.json');
 const source=fs.readFileSync(path.join(__dirname,'../packaging/bootstrap.js'),'utf8');
-async function probe(args,downloadFails=false){
+async function probe(args,downloadFails=false,updateFails=false){
  const events=[],out=[];
  const processFixture={argv:['fixed','fixed',...args],env:{},execPath:'fixed.exe',platform:'linux',on(){},removeListener(){}};
  const load=id=>{
@@ -20,7 +21,7 @@ async function probe(args,downloadFails=false){
   if(id==='node:sea')return {getAsset:key=>key==='manifest'?JSON.stringify({browserMode:'direct-google-download',browserVersion:require('../packaging/browser-downloads.json').version}):new ArrayBuffer(0)};
   if(id==='modern-tar/fs')return {};
   if(id==='../lib/native-binding')return {setPackagedBinding(){}};
-  if(id==='./update')return {updateCommand:async options=>{assert.equal(options.executable,'fixed.exe');events.push('update');}};
+  if(id==='./update')return {updateCommand:async options=>{assert.equal(options.executable,'fixed.exe');events.push('update');if(updateFails)throw Error('inert update failure');}};
   if(id==='../lib/credential-store')return {createCredentialStore:()=>({inert:true})};
   if(id==='./uninstall')return {uninstallCommand:async options=>{assert.equal(options.ownDirectory,'/inert-runtime');assert.equal(options.store.inert,true);events.push('uninstall');await options.cleanupOwn();return {incomplete:false};}};
   if(id==='./download-browser')return {ensureBrowser:async()=>{events.push('acquire');if(downloadFails)throw Error('inert cancellation');}};
@@ -38,6 +39,7 @@ async function probe(args,downloadFails=false){
   const result=await probe(['--'+command]);assert.deepEqual(result.events,[]);assert.equal(result.exitCode,1);assert.ok(result.out[0].includes('Use '+command));
  }
  assert.deepEqual((await probe(['update'])).events,['update']);
+ const failedUpdate=await probe(['update'],false,true);assert.deepEqual(failedUpdate.events,['update']);assert.equal(failedUpdate.exitCode,1);assert.deepEqual(failedUpdate.out,['inert']);
  assert.deepEqual((await probe(['uninstall'])).events,['runtime','uninstall','cleanup','cleanup']);
  assert.deepEqual((await probe(['setup'])).events,['runtime','acquire','--setup','cleanup']);
  assert.deepEqual((await probe(['setup'],true)).events,['runtime','acquire','cleanup']);
