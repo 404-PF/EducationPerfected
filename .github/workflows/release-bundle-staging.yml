@@ -76,7 +76,7 @@ jobs:
           done
           win_dir=$(echo "candidates/downloadable-candidate-windows-x64"-*)
           setup_name=educationperfected-setup-windows-x64.exe
-          setup=$(awk -v n="$setup_name" '$2 == n {print $1}' "$win_dir/SHA256SUMS")
+          setup=$(awk -v n="$setup_name" '{f=$2; sub(/^\*/, "", f); if (f == n) {print $1; exit}}' "$win_dir/SHA256SUMS")
           test -n "$setup"
           cp "$win_dir/$setup_name" "$staging/$setup_name"
           actual=$(sha256sum "$staging/$setup_name" | awk '{print $1}')
