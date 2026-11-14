@@ -25,10 +25,6 @@ All tests are local fixtures. No test or CI job may submit live Education Perfec
 
 Fixtures assert exact CLI-facing wording. If you change prompt, consent, help or error text, sweep the fixtures that pin it (the Windows ConPTY, first-run and macOS PTY fixtures under `scripts/`) in the same change.
 
-## Commits
-
-Commits are GPG-signed. Unsigned commits are not accepted. Squash merges through the GitHub API carry GitHub's own signature.
-
 ## Pull requests
 
 Every pull request gets an independent review of its exact head commit and must have the required checks green (source-regression, SonarCloud, cubic AI review) before it is squash-merged. If the head moves, the review is redone on the new head.
