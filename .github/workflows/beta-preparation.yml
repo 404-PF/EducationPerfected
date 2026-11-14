@@ -118,15 +118,15 @@ jobs:
           $out = 'build\windows-x64-downloadable'
           & $iscc "/DAppVersion=$version" "/DSourceExe=$out\educationperfected.exe" "/DOutputDir=$out" installer\windows-setup.iss | Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage explicitly requested Windows internal test package
+        id: test_package
+        if: inputs.upload_windows_test && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        run: node scripts/stage-windows-test-artifact.js
       - name: Checksum the Windows installer
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
         run: |
           cd build/windows-x64-downloadable
           sha256sum educationperfected-setup-windows-x64.exe >> SHA256SUMS
-      - name: Stage explicitly requested Windows internal test package
-        id: test_package
-        if: inputs.upload_windows_test && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
-        run: node scripts/stage-windows-test-artifact.js
       - name: Upload explicitly requested downloadable candidate bundle
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.upload_candidate_bundles && inputs.browser_mode == 'direct-download-validation' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

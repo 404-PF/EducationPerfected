@@ -17,7 +17,6 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes
 UninstallDisplayName=EducationPerfected
 ChangesEnvironment=yes
-ChangesUninstall=yes
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "educationperfected-windows-x64.exe"; Flags: ignoreversion
@@ -28,6 +27,12 @@ Name: "addtopath"; Description: "Add EducationPerfected to your PATH"; GroupDesc
 [Icons]
 Name: "{group}\EducationPerfected"; Filename: "{app}\educationperfected-windows-x64.exe"
 Name: "{group}\Uninstall EducationPerfected"; Filename: "{uninstallexe}"
+
+[UninstallDelete]
+Type: files; Name: "{app}\educationperfected-windows-x64.exe.backup"
+Type: files; Name: "{app}\educationperfected-windows-x64.exe.update-result"
+Type: files; Name: "{app}\educationperfected-windows-x64.exe.update.lock"
+Type: filesandordirs; Name: "{app}\.update-*"
 
 [Code]
 const

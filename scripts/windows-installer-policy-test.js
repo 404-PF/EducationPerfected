@@ -6,8 +6,11 @@ for(const required of [
  '{localappdata}\\Programs\\EducationPerfected','OutputBaseFilename=educationperfected-setup-windows-x64',
  'DestName: "educationperfected-windows-x64.exe"','Name: "addtopath"','{group}\\EducationPerfected',
  'CurUninstallStepChanged','RemoveAppFromPath','UninstallDisplayName=EducationPerfected',
+ '[UninstallDelete]','educationperfected-windows-x64.exe.backup','educationperfected-windows-x64.exe.update-result',
+ 'educationperfected-windows-x64.exe.update.lock','{app}\\.update-*',
 ])assert.ok(iss.includes(required),required);
 assert.doesNotMatch(iss,/PrivilegesRequired=(admin|poweruser)/);
+assert.ok(!iss.includes('ChangesUninstall'),'not a valid Inno directive; ISCC aborts on it');
 const beta=fs.readFileSync(path.join(__dirname,'../.github/workflows/beta-preparation.yml'),'utf8');
 for(const required of [
  'Inno Setup 6\\ISCC.exe',"require('./package.json').version",'/DAppVersion','/DSourceExe',
@@ -16,6 +19,7 @@ for(const required of [
 ])assert.ok(beta.includes(required),required);
 const bundles=beta.split('      - name: Upload explicitly requested downloadable candidate bundle')[1].split('      - name:')[0];
 assert.match(bundles,/educationperfected\*/,'candidate upload picks up the installer via glob');
+assert.ok(beta.indexOf('      - name: Stage explicitly requested Windows internal test package')<beta.indexOf('      - name: Checksum the Windows installer'),'test package stages before the installer line is appended to SHA256SUMS, keeping the manifest byte-equality assertion intact');
 const staging=fs.readFileSync(path.join(__dirname,'../.github/workflows/release-bundle-staging.yml'),'utf8');
 for(const required of ['educationperfected-setup-windows-x64.exe','installer is not byte-identical','12 payload files'])assert.ok(staging.includes(required),required);
 assert.ok(require('../package.json').scripts['test:phase3'].includes('windows-installer-policy-test.js'),'wired into test:phase3');
