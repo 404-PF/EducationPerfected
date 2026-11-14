@@ -90,7 +90,18 @@ def main():
                     if select.select([master],[],[],.1)[0]:
                         data+=os.read(master,65536)
                 os.write(master,answer)
-            child.wait(timeout=15)
+            try:
+                child.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                # The prompts were answered but the child neither exited nor failed.
+                # A bounded same-Node read separates a hung save from a stuck exit.
+                child.kill();child.wait(timeout=10)
+                try:
+                    run([node,'-e',verify_saved])
+                    landed='present'
+                except subprocess.CalledProcessError:
+                    landed='absent'
+                raise RuntimeError('Mac credential setup child stuck after prompts; saved record '+landed)
             data=drain_pty(master,data)
             problems=[]
             if child.returncode != 0:problems.append('nonzero-exit')
