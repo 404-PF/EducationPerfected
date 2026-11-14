@@ -32,10 +32,6 @@ try {
   $dest = Join-Path $env:LOCALAPPDATA 'Programs\EducationPerfected'
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   Copy-Item (Join-Path $tmp $asset) (Join-Path $dest 'educationperfected.exe') -Force
-  # Installs predating the rename kept the asset name as the command; remove it and its updater sidecars.
-  foreach ($old in 'educationperfected-windows-x64.exe', 'educationperfected-windows-x64.exe.backup', 'educationperfected-windows-x64.exe.update-result', 'educationperfected-windows-x64.exe.update.lock') {
-    Remove-Item -Force (Join-Path $dest $old) -ErrorAction SilentlyContinue
-  }
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $entries = @(); if ($userPath) { $entries = $userPath -split ';' }
   if ($entries -notcontains $dest) {

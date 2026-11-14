@@ -28,12 +28,6 @@ Name: "addtopath"; Description: "Add EducationPerfected to your PATH"; GroupDesc
 Name: "{group}\EducationPerfected"; Filename: "{app}\educationperfected.exe"
 Name: "{group}\Uninstall EducationPerfected"; Filename: "{uninstallexe}"
 
-[InstallDelete]
-Type: files; Name: "{app}\educationperfected-windows-x64.exe"
-Type: files; Name: "{app}\educationperfected-windows-x64.exe.backup"
-Type: files; Name: "{app}\educationperfected-windows-x64.exe.update-result"
-Type: files; Name: "{app}\educationperfected-windows-x64.exe.update.lock"
-
 [UninstallDelete]
 Type: files; Name: "{app}\educationperfected.exe.backup"
 Type: files; Name: "{app}\educationperfected.exe.update-result"

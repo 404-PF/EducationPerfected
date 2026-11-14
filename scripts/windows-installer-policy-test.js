@@ -6,7 +6,7 @@ for(const required of [
  '{localappdata}\\Programs\\EducationPerfected','OutputBaseFilename=educationperfected-windows-x64-setup',
  'DestName: "educationperfected.exe"','Name: "addtopath"','{group}\\EducationPerfected',
  'CurUninstallStepChanged','RemoveAppFromPath','UninstallDisplayName=EducationPerfected',
- '[UninstallDelete]','[InstallDelete]','{app}\\educationperfected-windows-x64.exe.update-result','educationperfected.exe.backup','educationperfected.exe.update-result',
+ '[UninstallDelete]','educationperfected.exe.backup','educationperfected.exe.update-result',
  'educationperfected.exe.update.lock','{app}\\.update-*',
  'MB_DEFBUTTON2','forget-credentials','DelTree','{%USERPROFILE}\\.educationperfected',
 ])assert.ok(iss.includes(required),required);
