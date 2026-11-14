@@ -3,11 +3,11 @@
 // EP_INSTALL_BASE_URL overrides the download base (CI/testing only).
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const pkg=require('./package.json');
-const base=process.env.EP_INSTALL_BASE_URL||`https://github.com/404-PF/EducationPerfected/releases/download/v${pkg.version}`;
+const base=process.env.EP_INSTALL_BASE_URL||`https://github.com/404-Page-Found/EducationPerfected/releases/download/v${pkg.version}`;
 const key=`${process.platform}-${process.arch}`;
 const targets={'darwin-arm64':'macos-arm64','darwin-x64':'macos-x64','linux-x64':'linux-x64','linux-arm64':'linux-arm64','win32-x64':'windows-x64'};
 const target=targets[key];
-if(!target){console.error(`Unsupported platform ${key}; download manually from https://github.com/404-PF/EducationPerfected/releases`);process.exit(1);}
+if(!target){console.error(`Unsupported platform ${key}; download manually from https://github.com/404-Page-Found/EducationPerfected/releases`);process.exit(1);}
 const asset=`educationperfected-${target}${process.platform==='win32'?'.exe':''}`;
 const dir=path.join(__dirname,'vendor');
 const dest=path.join(dir,'educationperfected'+(process.platform==='win32'?'.exe':''));

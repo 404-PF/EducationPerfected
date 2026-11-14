@@ -18,4 +18,4 @@ EducationPerfected is a packaged command-line app that opens Education Perfect i
 - On macOS, reading back a saved login from the packaged build is unproved.
 - The updater only sees normal (non-draft, non-prerelease) releases whose tag is a plain three-part version such as `v2026.11.14`, and needs the five platform assets plus `SHA256SUMS` attached to the release.
 
-Built from commit a7fc6499fe969b999ccfff2f720b59081a9faff0 (all six validation lanes green: https://github.com/404-PF/EducationPerfected/actions/runs/43555380722).
+Built from commit a7fc6499fe969b999ccfff2f720b59081a9faff0 (all six validation lanes green: https://github.com/404-Page-Found/EducationPerfected/actions/runs/43555380722).

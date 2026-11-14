@@ -8,4 +8,4 @@ npm install -g educationperfected
 educationperfected setup
 ```
 
-Source and releases: https://github.com/404-PF/EducationPerfected
+Source and releases: https://github.com/404-Page-Found/EducationPerfected

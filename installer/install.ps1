@@ -5,9 +5,9 @@
 param([string]$Version = 'latest')
 $ErrorActionPreference = 'Stop'
 if ($Version -eq 'latest') {
-  $base = if ($env:EP_INSTALL_BASE_URL) { $env:EP_INSTALL_BASE_URL } else { 'https://github.com/404-PF/EducationPerfected/releases/latest/download' }
+  $base = if ($env:EP_INSTALL_BASE_URL) { $env:EP_INSTALL_BASE_URL } else { 'https://github.com/404-Page-Found/EducationPerfected/releases/latest/download' }
 } else {
-  $base = if ($env:EP_INSTALL_BASE_URL) { $env:EP_INSTALL_BASE_URL } else { "https://github.com/404-PF/EducationPerfected/releases/download/v$Version" }
+  $base = if ($env:EP_INSTALL_BASE_URL) { $env:EP_INSTALL_BASE_URL } else { "https://github.com/404-Page-Found/EducationPerfected/releases/download/v$Version" }
 }
 $asset = 'educationperfected-windows-x64.exe'
 $tmp = Join-Path $env:TEMP ("ep-install-" + [guid]::NewGuid().ToString('N'))

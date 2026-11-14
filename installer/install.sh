@@ -6,9 +6,9 @@
 set -eu
 version=${1:-latest}
 if [ "$version" = latest ]; then
-  base="${EP_INSTALL_BASE_URL:-https://github.com/404-PF/EducationPerfected/releases/latest/download}"
+  base="${EP_INSTALL_BASE_URL:-https://github.com/404-Page-Found/EducationPerfected/releases/latest/download}"
 else
-  base="${EP_INSTALL_BASE_URL:-https://github.com/404-PF/EducationPerfected/releases/download/v$version}"
+  base="${EP_INSTALL_BASE_URL:-https://github.com/404-Page-Found/EducationPerfected/releases/download/v$version}"
 fi
 case "$(uname -s)" in
   Darwin) os=macos;;
