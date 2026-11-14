@@ -11,6 +11,11 @@ on:
         required: true
         default: false
         type: boolean
+      upload_candidate_bundles:
+        description: 'Upload every target downloadable candidate (executable, notices, SHA256SUMS) for 90 days, for manual owner publication'
+        required: true
+        default: false
+        type: boolean
       browser_mode:
         description: 'Embedded development build or direct-download native validation (test upload is a separate opt-in)'
         required: true
@@ -107,6 +112,16 @@ jobs:
         id: test_package
         if: inputs.upload_windows_test && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
         run: node scripts/stage-windows-test-artifact.js
+      - name: Upload explicitly requested downloadable candidate bundle
+        if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.upload_candidate_bundles && inputs.browser_mode == 'direct-download-validation' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: downloadable-candidate-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            build/${{ matrix.target }}-downloadable/educationperfected${{ runner.os == 'Windows' && '.exe' || '' }}
+            build/${{ matrix.target }}-downloadable/THIRD-PARTY-NOTICES
+            build/${{ matrix.target }}-downloadable/SHA256SUMS
+          retention-days: 90
       - name: Upload explicitly requested unsigned Windows test package
         if: inputs.upload_windows_test && steps.test_package.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -1,6 +1,6 @@
 {
   "name": "educationperfected",
-  "version": "2026.0.0",
+  "version": "2026.11.14",
   "private": true,
   "description": "Automates Education Perfect language and Dash tasks with Puppeteer.",
   "license": "SEE LICENSE IN LICENSE",
