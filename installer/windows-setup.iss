@@ -107,7 +107,18 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  AppData: string;
+  ResultCode: Integer;
 begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if MsgBox('Also remove the saved EducationPerfected login from the Windows credential store?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes then
+      Exec(ExpandConstant('{app}\educationperfected-windows-x64.exe'), 'forget-credentials', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    AppData := ExpandConstant('{%USERPROFILE}\.educationperfected');
+    if DirExists(AppData) and (MsgBox('Also remove EducationPerfected app data and downloaded browsers (' + AppData + ')?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes) then
+      DelTree(AppData, True, True, True);
+  end;
   if CurUninstallStep = usPostUninstall then
     RemoveAppFromPath;
 end;

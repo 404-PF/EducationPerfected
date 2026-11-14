@@ -8,7 +8,9 @@ for(const required of [
  'CurUninstallStepChanged','RemoveAppFromPath','UninstallDisplayName=EducationPerfected',
  '[UninstallDelete]','educationperfected-windows-x64.exe.backup','educationperfected-windows-x64.exe.update-result',
  'educationperfected-windows-x64.exe.update.lock','{app}\\.update-*',
+ 'MB_DEFBUTTON2','forget-credentials','DelTree','{%USERPROFILE}\\.educationperfected',
 ])assert.ok(iss.includes(required),required);
+assert.equal((iss.match(/MB_DEFBUTTON2/g)||[]).length,2,'both uninstall prompts default to No');
 assert.doesNotMatch(iss,/PrivilegesRequired=(admin|poweruser)/);
 assert.ok(!iss.includes('ChangesUninstall'),'not a valid Inno directive; ISCC aborts on it');
 assert.ok(!iss.includes('StringChange'),'PATH removal matches whole ;-delimited entries, never substrings');
