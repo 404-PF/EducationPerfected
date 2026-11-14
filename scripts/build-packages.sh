@@ -8,6 +8,7 @@ test -f "$src"
 case "$version" in (*[!0-9.]*|'') echo "version must be numeric parts"; exit 1;; esac
 identical() { cmp -s "$1" "$2" || { echo "package payload is not byte-identical to the validated candidate: $1"; exit 1; }; }
 mkdir -p "$out"
+out=$(cd "$out" && pwd)
 case "$target" in
   macos-*)
     command -v pkgbuild >/dev/null || { echo "pkgbuild not found on this runner"; exit 1; }
@@ -17,8 +18,8 @@ case "$target" in
     pkg="$out/educationperfected-$target.pkg"
     pkgbuild --root "$payload" --identifier com.404pf.educationperfected --version "$version" --install-location / "$pkg" >/dev/null
     check=$(mktemp -d)
-    pkgutil --expand-full "$pkg" "$check" >/dev/null
-    identical "$check/Payload/usr/local/bin/educationperfected" "$src"
+    pkgutil --expand-full "$pkg" "$check/expanded" >/dev/null
+    identical "$check/expanded/Payload/usr/local/bin/educationperfected" "$src"
     ;;
   linux-x64|linux-arm64)
     mkdir -p "$out"
@@ -41,6 +42,7 @@ case "$target" in
     mkdir -p "$work/rpm/BUILD" "$work/rpm/RPMS" "$work/rpm/SOURCES" "$work/rpm/SPECS" "$work/rpm/SRPMS"
     cp "$src" "$work/rpm/SOURCES/educationperfected"
     cat > "$work/rpm/SPECS/educationperfected.spec" <<SPEC
+%global __os_install_post %{nil}
 Name: educationperfected
 Source0: educationperfected
 Version: $version
