@@ -7,7 +7,7 @@ for(const required of ['Install rpm tooling for Linux package lanes','apt-get in
 const sh=fs.readFileSync(path.join(__dirname,'../installer/install.sh'),'utf8');
 for(const required of ['set -eu','SHA256SUMS','sha256sum','Checksum mismatch','/.local/bin','EP_INSTALL_BASE_URL','educationperfected-$os-$arch'])assert.ok(sh.includes(required),required);
 const ps1=fs.readFileSync(path.join(__dirname,'../installer/install.ps1'),'utf8');
-for(const required of ['Get-FileHash','SHA256SUMS','Checksum mismatch','LOCALAPPDATA','EP_INSTALL_BASE_URL','educationperfected-windows-x64.exe','Test-Path $base'])assert.ok(ps1.includes(required),required);
+for(const required of ['Get-FileHash','SHA256SUMS','Checksum mismatch','LOCALAPPDATA','EP_INSTALL_BASE_URL','educationperfected-windows-x64.exe','Test-Path $base','Remove-Item','educationperfected-windows-x64.exe.update.lock','educationperfected.exe'])assert.ok(ps1.includes(required),required);
 const npmdir=path.join(__dirname,'../npm/educationperfected');
 const pkg=JSON.parse(fs.readFileSync(path.join(npmdir,'package.json'),'utf8'));
 assert.equal(pkg.name,'educationperfected');assert.equal(pkg.scripts.postinstall,'node install.js');assert.ok(pkg.bin.educationperfected);
