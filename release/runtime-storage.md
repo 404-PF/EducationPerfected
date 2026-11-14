@@ -46,7 +46,7 @@ Signals before handoff have no browser owner and use bootstrap's existing cleanu
 ## Subcommands and uninstall
 
 `setup` acquires Chrome with the existing explicit consent/checksum flow, then
-offers optional hidden credential storage. Cached browser reuse skips another
+offers optional credential storage with typed answers visible. Cached browser reuse skips another
 download. `check-credentials` and `forget-credentials` do not download or launch
 a browser. `help` and `version`, including -h/--help and -v/--version, return
 before runtime/store initialization. Old credential/update/uninstall --flags
