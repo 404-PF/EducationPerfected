@@ -81,10 +81,10 @@ def main():
                     if time.monotonic()>deadline:
                         banner=' after store banner' if b'Save a login' in data else ' before store banner'
                         raise RuntimeError('Mac credential prompt timed out: '+marker.decode()+banner)
-                    if not download_answered and b'Type download to fetch' in data:
+                    if not download_answered and b'Download now? [y/N]' in data:
                         download_answered=True
                         deadline=time.monotonic()+950 # Installer has a 15-minute hard timeout.
-                        os.write(master,b'download\r');data=b''
+                        os.write(master,b'y\r');data=b''
                     if download_answered and b'Browser ready.' in data:
                         download_answered=False;deadline=time.monotonic()+10
                     if select.select([master],[],[],.1)[0]:

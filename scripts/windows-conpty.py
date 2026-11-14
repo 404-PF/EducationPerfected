@@ -78,15 +78,15 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-PUBLIC_DOWNLOAD_PROMPT=b'Type download'
+PUBLIC_DOWNLOAD_PROMPT=b'Download now? [y/N]'
 
 def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None,public_browser_download=False):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""
     # Exact public browser-consent protocol only. Never an arbitrary echo waiver:
     # setup callers keep the visible-input echo checks and 30s/120s budgets.
     public_protocols=(
-        ((PUBLIC_DOWNLOAD_PROMPT,b'cancel\r'),),
-        ((PUBLIC_DOWNLOAD_PROMPT,b'download\r'),(b'EP email',b'\r')),
+        ((PUBLIC_DOWNLOAD_PROMPT,b'n\r'),),
+        ((PUBLIC_DOWNLOAD_PROMPT,b'y\r'),(b'EP email',b'\r')),
     )
     if type(public_browser_download) is not bool:raise RuntimeError('host-guard')
     if public_browser_download:
