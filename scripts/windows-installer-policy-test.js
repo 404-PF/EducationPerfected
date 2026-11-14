@@ -11,12 +11,20 @@ for(const required of [
 ])assert.ok(iss.includes(required),required);
 assert.doesNotMatch(iss,/PrivilegesRequired=(admin|poweruser)/);
 assert.ok(!iss.includes('ChangesUninstall'),'not a valid Inno directive; ISCC aborts on it');
+assert.ok(!iss.includes('RegWriteStringValue'),'PATH writes must preserve REG_EXPAND_SZ');
+assert.ok(iss.includes('RegWriteExpandStringValue'),'PATH writes use RegWriteExpandStringValue');
 const beta=fs.readFileSync(path.join(__dirname,'../.github/workflows/beta-preparation.yml'),'utf8');
 for(const required of [
  'Inno Setup 6\\ISCC.exe',"require('./package.json').version",'/DAppVersion','/DSourceExe',
  'installer\\windows-setup.iss','educationperfected-setup-windows-x64.exe >> SHA256SUMS',
  "inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'",
 ])assert.ok(beta.includes(required),required);
+const isccStep=beta.split('      - name: Build the per-user Windows installer')[1].split('      - name:')[0];
+assert.ok(isccStep.includes('Join-Path $root'),'ISCC receives absolute paths; Inno resolves relative Source/OutputDir against the script directory');
+assert.doesNotMatch(isccStep,/\/DSourceExe=build\\/,'no repo-root-relative /DSourceExe');
+const compileCheck=fs.readFileSync(path.join(__dirname,'../.github/workflows/installer-compile-check.yml'),'utf8');
+for(const required of ['pull_request:','windows-2025','Inno Setup 6\\ISCC.exe','stub executable, compile proof only','Join-Path $root','contents: read'])assert.ok(compileCheck.includes(required),required);
+assert.doesNotMatch(compileCheck,/upload-artifact|contents: write|pull_request_target/,'compile proof only, no artifacts or write access');
 const bundles=beta.split('      - name: Upload explicitly requested downloadable candidate bundle')[1].split('      - name:')[0];
 assert.match(bundles,/educationperfected\*/,'candidate upload picks up the installer via glob');
 assert.ok(beta.indexOf('      - name: Stage explicitly requested Windows internal test package')<beta.indexOf('      - name: Checksum the Windows installer'),'test package stages before the installer line is appended to SHA256SUMS, keeping the manifest byte-equality assertion intact');

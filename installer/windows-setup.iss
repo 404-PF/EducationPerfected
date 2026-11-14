@@ -40,17 +40,31 @@ const
 
 procedure AddAppToPath;
 var
-  CurrentPath: string;
+  CurrentPath, Entry, Rest: string;
+  P: Integer;
 begin
   if not RegQueryStringValue(HKCU, EnvironmentKey, 'Path', CurrentPath) then
     CurrentPath := '';
-  if Pos(Uppercase(ExpandConstant('{app}')), Uppercase(CurrentPath)) = 0 then
+  Rest := CurrentPath;
+  while True do
   begin
-    if CurrentPath = '' then
-      RegWriteStringValue(HKCU, EnvironmentKey, 'Path', ExpandConstant('{app}'))
+    P := Pos(';', Rest);
+    if P = 0 then
+      Entry := Rest
     else
-      RegWriteStringValue(HKCU, EnvironmentKey, 'Path', CurrentPath + ';' + ExpandConstant('{app}'));
+    begin
+      Entry := Copy(Rest, 1, P - 1);
+      Rest := Copy(Rest, P + 1, Length(Rest));
+    end;
+    if CompareText(Entry, ExpandConstant('{app}')) = 0 then
+      Exit;
+    if P = 0 then
+      Break;
   end;
+  if CurrentPath = '' then
+    RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', ExpandConstant('{app}'))
+  else
+    RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', CurrentPath + ';' + ExpandConstant('{app}'));
 end;
 
 procedure RemoveAppFromPath;
@@ -64,7 +78,7 @@ begin
     StringChange(Cleaned, ExpandConstant('{app}') + ';', '');
     StringChange(Cleaned, ExpandConstant('{app}'), '');
     if Cleaned <> CurrentPath then
-      RegWriteStringValue(HKCU, EnvironmentKey, 'Path', Cleaned);
+      RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', Cleaned);
   end;
 end;
 

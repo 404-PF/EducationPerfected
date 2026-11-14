@@ -115,8 +115,11 @@ jobs:
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { throw 'Inno Setup 6 (ISCC.exe) not found on this runner image.' }
           $version = node -p "require('./package.json').version"
-          $out = 'build\windows-x64-downloadable'
-          & $iscc "/DAppVersion=$version" "/DSourceExe=$out\educationperfected.exe" "/DOutputDir=$out" installer\windows-setup.iss | Out-Host
+          $root = (Get-Location).Path
+          $out = Join-Path $root 'build\windows-x64-downloadable'
+          $src = Join-Path $out 'educationperfected.exe'
+          $iss = Join-Path $root 'installer\windows-setup.iss'
+          & $iscc "/DAppVersion=$version" "/DSourceExe=$src" "/DOutputDir=$out" $iss | Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stage explicitly requested Windows internal test package
         id: test_package

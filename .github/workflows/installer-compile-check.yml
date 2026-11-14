@@ -1,0 +1,30 @@
+name: Installer compile check
+on:
+  pull_request:
+    paths:
+      - 'installer/**'
+      - '.github/workflows/installer-compile-check.yml'
+permissions:
+  contents: read
+jobs:
+  compile:
+    name: Compile the Inno Setup script against a stub executable
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Compile installer with a stub executable (compile proof only, no artifacts)
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup 6 (ISCC.exe) not found on this runner image.' }
+          $root = (Get-Location).Path
+          $stub = Join-Path $root 'build\installer-compile-check'
+          New-Item -ItemType Directory -Force -Path $stub | Out-Null
+          Set-Content -Path (Join-Path $stub 'educationperfected.exe') -Value 'stub executable, compile proof only'
+          $src = Join-Path $stub 'educationperfected.exe'
+          $iss = Join-Path $root 'installer\windows-setup.iss'
+          & $iscc "/DAppVersion=0.0.0" "/DSourceExe=$src" "/DOutputDir=$stub" $iss | Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
