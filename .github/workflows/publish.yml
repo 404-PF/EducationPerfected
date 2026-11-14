@@ -1,13 +1,25 @@
 name: Publish
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing DRAFT release tag (v<version>) to attach the verified bundle to'
+        required: true
+        type: string
   release:
-    types: [created]
+    types: [published]
 
-# Attach-only automation: fires when the owner saves a draft release, finds the
-# staging bundle built from the release commit, verifies it against its
-# SHA256SUMS, and uploads the files as release assets. It never creates tags,
-# never edits the release, and never publishes: the draft stays a draft for the
-# owner to review and publish manually.
+# Attach-only automation. Two entry points, both ending in a manual owner
+# review:
+#  - workflow_dispatch (primary): the owner saves a draft release, then runs
+#    this workflow with its tag. Drafts fire no release events (GitHub
+#    limitation), so the button is the only way to reach a draft. The assets
+#    are attached to the draft and it STAYS a draft for manual publication.
+#  - release:published (fallback): if the owner publishes a release directly,
+#    the verified assets are attached automatically - but only when the
+#    release has zero assets, so this never replaces anything.
+# This workflow never creates tags, never edits or publishes a release, and
+# never touches npm.
 permissions:
   actions: read
   contents: write
@@ -18,20 +30,32 @@ concurrency:
 
 jobs:
   attach:
-    if: github.event.release.draft == true
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - name: Resolve the release tag and its commit
+      - name: Resolve the release, its commit and whether to attach
         id: plan
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
-          TARGET: ${{ github.event.release.target_commitish }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           version=${TAG#v}
           echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag must be v<three numeric parts>, got $TAG"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release.json
+          draft=$(jq -r .draft release.json)
+          assets=$(jq '.assets | length' release.json)
+          target=$(jq -r .target_commitish release.json)
+          if [ "$EVENT" = workflow_dispatch ]; then
+            [ "$draft" = true ] || { echo "Release $TAG is not a draft; refusing to modify a published release."; exit 1; }
+          else
+            if [ "$assets" -ne 0 ]; then
+              echo "Release $TAG already has $assets assets; leaving it untouched."
+              echo "attach=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           gitapi="repos/$GITHUB_REPOSITORY/git"
           ref=$(gh api "$gitapi/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
           if [ -n "$ref" ] && [ "$(gh api "$gitapi/ref/tags/$TAG" --jq '.object.type')" = tag ]; then
@@ -40,14 +64,16 @@ jobs:
             sha=$ref
           else
             # A draft's new tag exists only after publication; use the head of
-            # the branch the draft targets, resolved now.
-            sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET" --jq '.sha')
+            # the branch the release targets, resolved now.
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$target" --jq '.sha')
           fi
           echo "$sha" | grep -qE '^[0-9a-f]{40}$' || { echo "could not resolve a commit for $TAG"; exit 1; }
+          echo "attach=true" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Find the staging bundle built from that commit
         id: bundle
+        if: steps.plan.outputs.attach == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.plan.outputs.version }}
@@ -56,14 +82,21 @@ jobs:
           set -euo pipefail
           want="release-bundle-v$VERSION-$SHA"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&name=$want" > artifacts.json
-          filter='[.artifacts[] | select(.name == $n and (.expired | not) and .workflow_run.head_sha == $s and (.workflow_run.path | endswith("release-bundle-staging.yml")))]'
+          filter='[.artifacts[] | select(.name == $n and (.expired | not) and .workflow_run.head_sha == $s)]'
           if [ "$(jq --arg n "$want" --arg s "$SHA" "$filter | length" artifacts.json)" -lt 1 ]; then
-            echo "No usable staging bundle $want. Run Release bundle staging for that commit first (or check main has not moved since the draft was created)."
+            echo "No usable staging bundle $want. Run Release bundle staging for that commit first (or check the target branch has not moved since the release was created)."
             exit 1
           fi
-          id=$(jq -r --arg n "$want" --arg s "$SHA" "$filter | sort_by(.created_at) | last | .id" artifacts.json)
+          latest=$(jq -r --arg n "$want" --arg s "$SHA" "$filter | sort_by(.created_at) | last | [.id, .workflow_run.id] | @tsv" artifacts.json)
+          id=${latest%%$'\t'*}
+          runid=${latest##*$'\t'}
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$runid" > staging-run.json
+          path=$(jq -r .path staging-run.json)
+          [ "$path" = .github/workflows/release-bundle-staging.yml ] || { echo "bundle artifact came from $path, not release-bundle-staging.yml"; exit 1; }
+          [ "$(jq -r .conclusion staging-run.json)" = success ] || { echo "staging run $runid was not green"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
       - name: Download and verify the bundle
+        if: steps.plan.outputs.attach == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACT_ID: ${{ steps.bundle.outputs.id }}
@@ -80,13 +113,14 @@ jobs:
           mkdir bundle
           unzip -q bundle.zip -d bundle
           (cd bundle && sha256sum -c SHA256SUMS)
-      - name: Attach the verified files to the draft release
+      - name: Attach the verified files to the release
+        if: steps.plan.outputs.attach == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
           set -euo pipefail
           cd bundle
           gh release upload "$TAG" --clobber -- *
           count=$(gh release view "$TAG" --json assets --jq '.assets | length')
-          echo "Attached $count assets. The release remains a draft; publish it manually when ready."
+          echo "Attached $count assets to $TAG. Publication stays manual; this workflow only attaches files."
