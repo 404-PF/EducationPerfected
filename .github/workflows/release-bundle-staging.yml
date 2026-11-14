@@ -1,0 +1,88 @@
+name: Release bundle staging (artifact only, no publication)
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Green beta-preparation run id whose candidate artifacts are staged'
+        required: true
+        type: string
+      release_version:
+        description: 'Release version label, for example 2026.11.14'
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-bundle-staging
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download validated candidate artifacts from the source run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          case "$RUN_ID" in (*[!0-9]*|'') echo "source_run_id must be numeric"; exit 1;; esac
+          mkdir -p candidates
+          curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts?per_page=100" > artifacts.json
+          # Two-step download: the API replies with a signed redirect; the token
+          # is never sent to the redirect target.
+          jq -r '.artifacts[] | select(.name | startswith("downloadable-candidate-")) | "\(.id) \(.name)"' artifacts.json \
+            | while read -r id name; do
+                url=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -o /dev/null -w '%{redirect_url}' \
+                  "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$id/zip")
+                test -n "$url"
+                curl -sf "$url" -o "$name.zip"
+                mkdir -p "candidates/$name"
+                unzip -q "$name.zip" -d "candidates/$name"
+              done
+          count=$(find candidates -maxdepth 1 -type d -name 'downloadable-candidate-*' | wc -l)
+          if [ "$count" -ne 5 ]; then echo "Expected 5 candidate artifacts, found $count"; exit 1; fi
+      - name: Assemble and verify the release bundle
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          echo "$RELEASE_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release_version must be three numeric parts"; exit 1; }
+          root=$(pwd)
+          staging="release-bundle-v$RELEASE_VERSION"
+          mkdir -p "$staging"
+          for spec in \
+            "windows-x64 educationperfected.exe educationperfected-windows-x64.exe" \
+            "macos-arm64 educationperfected educationperfected-macos-arm64" \
+            "macos-x64 educationperfected educationperfected-macos-x64" \
+            "linux-x64 educationperfected educationperfected-linux-x64" \
+            "linux-arm64 educationperfected educationperfected-linux-arm64"; do
+            set -- $spec
+            target=$1; exe=$2; renamed=$3
+            dir=$(echo "candidates/downloadable-candidate-$target"-*)
+            test -d "$dir"
+            (cd "$dir" && sha256sum -c SHA256SUMS > /dev/null)
+            expected=$(awk -v f="$exe" '$2 == f {print $1}' "$dir/SHA256SUMS")
+            test -n "$expected"
+            cp "$dir/$exe" "$staging/$renamed"
+            actual=$(sha256sum "$staging/$renamed" | awk '{print $1}')
+            if [ "$actual" != "$expected" ]; then echo "$renamed is not byte-identical to the validated candidate"; exit 1; fi
+            (cd "$dir" && zip -qr "$root/$staging/THIRD-PARTY-NOTICES-$target.zip" THIRD-PARTY-NOTICES)
+          done
+          cp "release/release-notes-$RELEASE_VERSION.md" "$staging/release-notes.md"
+          (cd "$staging" && sha256sum -- * > SHA256SUMS && sha256sum -c SHA256SUMS > /dev/null)
+          echo "Bundle verified: 5 executables byte-identical to the validated candidates; SHA256SUMS covers the 11 payload files (5 executables, 5 notices zips, release-notes.md)."
+      - name: Upload the staged release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle-v${{ inputs.release_version }}-${{ github.sha }}
+          path: release-bundle-v${{ inputs.release_version }}/
+          retention-days: 90
+          if-no-files-found: error
+      # Staging only: this workflow never tags, releases or publishes. The owner
+      # downloads this one zip and creates the GitHub release manually.
