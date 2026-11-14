@@ -1,0 +1,92 @@
+name: Publish
+on:
+  release:
+    types: [created]
+
+# Attach-only automation: fires when the owner saves a draft release, finds the
+# staging bundle built from the release commit, verifies it against its
+# SHA256SUMS, and uploads the files as release assets. It never creates tags,
+# never edits the release, and never publishes: the draft stays a draft for the
+# owner to review and publish manually.
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  attach:
+    if: github.event.release.draft == true
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Resolve the release tag and its commit
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          TARGET: ${{ github.event.release.target_commitish }}
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag must be v<three numeric parts>, got $TAG"; exit 1; }
+          gitapi="repos/$GITHUB_REPOSITORY/git"
+          ref=$(gh api "$gitapi/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$ref" ] && [ "$(gh api "$gitapi/ref/tags/$TAG" --jq '.object.type')" = tag ]; then
+            sha=$(gh api "$gitapi/tags/$ref" --jq '.object.sha')
+          elif [ -n "$ref" ]; then
+            sha=$ref
+          else
+            # A draft's new tag exists only after publication; use the head of
+            # the branch the draft targets, resolved now.
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET" --jq '.sha')
+          fi
+          echo "$sha" | grep -qE '^[0-9a-f]{40}$' || { echo "could not resolve a commit for $TAG"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Find the staging bundle built from that commit
+        id: bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          want="release-bundle-v$VERSION-$SHA"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&name=$want" > artifacts.json
+          filter='[.artifacts[] | select(.name == $n and (.expired | not) and .workflow_run.head_sha == $s and (.workflow_run.path | endswith("release-bundle-staging.yml")))]'
+          if [ "$(jq --arg n "$want" --arg s "$SHA" "$filter | length" artifacts.json)" -lt 1 ]; then
+            echo "No usable staging bundle $want. Run Release bundle staging for that commit first (or check main has not moved since the draft was created)."
+            exit 1
+          fi
+          id=$(jq -r --arg n "$want" --arg s "$SHA" "$filter | sort_by(.created_at) | last | .id" artifacts.json)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+      - name: Download and verify the bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_ID: ${{ steps.bundle.outputs.id }}
+        run: |
+          set -euo pipefail
+          # Two-step download: the API replies with a signed redirect; the token
+          # is never sent to the redirect target.
+          url=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -o /dev/null -w '%{redirect_url}' \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip")
+          test -n "$url"
+          curl -sf "$url" -o bundle.zip
+          entries=$(unzip -Z1 bundle.zip | wc -l)
+          if [ "$entries" -ne 22 ]; then echo "Expected 22 bundle entries (21 payloads + SHA256SUMS), found $entries"; exit 1; fi
+          mkdir bundle
+          unzip -q bundle.zip -d bundle
+          (cd bundle && sha256sum -c SHA256SUMS)
+      - name: Attach the verified files to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          cd bundle
+          gh release upload "$TAG" --clobber -- *
+          count=$(gh release view "$TAG" --json assets --jq '.assets | length')
+          echo "Attached $count assets. The release remains a draft; publish it manually when ready."
