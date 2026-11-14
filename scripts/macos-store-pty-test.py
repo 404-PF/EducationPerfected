@@ -90,18 +90,25 @@ def main():
                     if select.select([master],[],[],.1)[0]:
                         data+=os.read(master,65536)
                 os.write(master,answer)
-            try:
-                child.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                # The prompts were answered but the child neither exited nor failed.
-                # A bounded same-Node read separates a hung save from a stuck exit.
-                child.kill();child.wait(timeout=10)
+            # A hosted save can be slow: keep a generous outer budget, and on each
+            # quiet slice drain the stream and probe the record so a final failure
+            # says both whether the ack printed and whether the record landed.
+            stuck_deadline=time.monotonic()+120
+            while True:
                 try:
-                    run([node,'-e',verify_saved])
-                    landed='present'
-                except subprocess.CalledProcessError:
-                    landed='absent'
-                raise RuntimeError('Mac credential setup child stuck after prompts; saved record '+landed)
+                    child.wait(timeout=15)
+                    break
+                except subprocess.TimeoutExpired:
+                    data=drain_pty(master,data)
+                    ack='printed' if b'Login saved in the OS credential store.' in data else 'missing'
+                    try:
+                        run([node,'-e',verify_saved])
+                        landed='present'
+                    except subprocess.CalledProcessError:
+                        landed='absent'
+                    if time.monotonic()>=stuck_deadline:
+                        child.kill();child.wait(timeout=10)
+                        raise RuntimeError('Mac credential setup child stuck after prompts; saved record '+landed+'; save ack '+ack)
             data=drain_pty(master,data)
             problems=[]
             if child.returncode != 0:problems.append('nonzero-exit')
