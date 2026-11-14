@@ -4,7 +4,7 @@
 # expanding/extracting it and comparing bytes. Fails closed on any mismatch.
 set -euo pipefail
 target=$1; version=$2; src=$3; out=$4
-test -f "$src"
+[[ -f $src ]]
 case "$version" in (*[!0-9.]*|'') echo "version must be numeric parts"; exit 1;; esac
 identical() { cmp -s "$1" "$2" || { echo "package payload is not byte-identical to the validated candidate: $1"; exit 1; }; }
 mkdir -p "$out"
@@ -58,7 +58,7 @@ install -m 755 %{SOURCE0} %{buildroot}/usr/bin/educationperfected
 SPEC
     rpmbuild -bb --define "_topdir $work/rpm" "$work/rpm/SPECS/educationperfected.spec" >/dev/null
     rpm_file=$(find "$work/rpm/RPMS" -name '*.rpm' | head -1)
-    test -n "$rpm_file"
+    [[ -n $rpm_file ]]
     mv "$rpm_file" "$out/educationperfected-${version}-1.${rpmarch}.rpm"
     exr=$(mktemp -d)
     (cd "$exr" && rpm2cpio "$out/educationperfected-${version}-1.${rpmarch}.rpm" | cpio -idm --quiet)
