@@ -4,7 +4,7 @@ Status update, 2 November 2026: Phase 3 remains WIP and PR49 is unmerged.
 The historical proposals below are design history, not current execution authority.
 A separate workflow-only PR50 put a manual workflow on main, pinned to
 5e36f51abf5b69510c30adffbe832654df79d28b. Its one approved invocation
-[41348821347](https://github.com/404-PF/EducationPerfected/actions/runs/41348821347)
+[41348821347](https://github.com/404-Page-Found/EducationPerfected/actions/runs/41348821347)
 stopped with source uncertainty before SEA. Source browser start and failure cause
 remain unestablished. Its authorization window has expired; no repeat, new pin or
 new diagnostic invocation is authorized by this document. Later branch changes,

@@ -15,7 +15,7 @@ function fixtureExecutable(file, version) {
 function releaseList(tag, assets, flags = {}) {
     return [{
         tag_name: tag, draft: Boolean(flags.draft), prerelease: Boolean(flags.prerelease),
-        assets: assets.map(([name, bytes]) => ({ name, size: bytes.length, browser_download_url: 'https://github.com/404-PF/EducationPerfected/releases/download/' + tag + '/' + name, _bytes: bytes })),
+        assets: assets.map(([name, bytes]) => ({ name, size: bytes.length, browser_download_url: 'https://github.com/404-Page-Found/EducationPerfected/releases/download/' + tag + '/' + name, _bytes: bytes })),
     }];
 }
 
@@ -101,7 +101,7 @@ const ttyPair = answer => {
     const evil = releaseList('v2026.1.5', [['educationperfected-linux-x64', newBytes], [update.SUMS_NAME, sumsBytes]]);
     evil[0].assets[0].browser_download_url = 'https://evil.example.com/educationperfected-linux-x64';
     assert.throws(() => update.selectUpdatePlan(evil, '2026.0.0', 'educationperfected-linux-x64'), /outside|Invalid/);
-    evil[0].assets[0].browser_download_url = 'https://github.com/404-PF/EducationPerfected/releases/download/v2026.1.5/educationperfected-linux-x64?inject=1';
+    evil[0].assets[0].browser_download_url = 'https://github.com/404-Page-Found/EducationPerfected/releases/download/v2026.1.5/educationperfected-linux-x64?inject=1';
     assert.throws(() => update.selectUpdatePlan(evil, '2026.0.0', 'educationperfected-linux-x64'), /outside|Invalid/);
     assert.throws(() => update.selectUpdatePlan(releases, 'not-a-version', 'educationperfected-linux-x64'), /Unrecognized/);
 

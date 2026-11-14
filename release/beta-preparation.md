@@ -45,7 +45,7 @@ See [the 12 November build-only result](beta-build-2026-11-12.md) for exact comm
 
 `direct-download-validation` builds candidates with only manifest and native binding SEA assets. The original embedded-browser builders remain development tools, not the selected release distribution path.
 
-The merged-main beta.5 run on `51385b3615a27c5f052a0757c53ea35fcfecef99` passed five native build/cached local CLI lanes and four POSIX actual first-run consent/download/local-login/SIGINT cleanup lanes: https://github.com/404-PF/EducationPerfected/actions/runs/43179483052 . That run did not test Windows first-run consent or the exact downloadable artifact with native credential fixtures.
+The merged-main beta.5 run on `51385b3615a27c5f052a0757c53ea35fcfecef99` passed five native build/cached local CLI lanes and four POSIX actual first-run consent/download/local-login/SIGINT cleanup lanes: https://github.com/404-Page-Found/EducationPerfected/actions/runs/43179483052 . That run did not test Windows first-run consent or the exact downloadable artifact with native credential fixtures.
 
 The follow-through workflow adds a fixed public-input Windows ConPTY first-run probe. The public probe has a 16-minute outer process budget (one minute beyond the downloader watchdog) and a 950-second post-consent readiness wait. Its only echo-check exemption is the literal browser consent answer; credential prompts keep the required typed-echo and closure checks. It owns a fresh home, local login page and job; decline must leave no cache, consent must verify the pinned browser and reach the local login-ready marker, and raw ETX must exit130 with job-zero, EOF and extraction/lock cleanup. This is hosted ConPTY evidence only when the native run passes, not a physical console or clean machine claim.
 
@@ -55,6 +55,6 @@ Candidates and notices remain ephemeral unless the separately approved Windows t
 
 ### Windows failure evidence and independent lanes
 
-The beta.7 run on ed9547f built all targets and passed POSIX first-run/store fixtures. Windows cached local CLI exited1 before owner-login-ready in two attempts: https://github.com/404-PF/EducationPerfected/actions/runs/43183901438 . The actual Windows first-run and store fixtures were skipped, not failed or passed.
+The beta.7 run on ed9547f built all targets and passed POSIX first-run/store fixtures. Windows cached local CLI exited1 before owner-login-ready in two attempts: https://github.com/404-Page-Found/EducationPerfected/actions/runs/43183901438 . The actual Windows first-run and store fixtures were skipped, not failed or passed.
 
 The fixture now reports only fixed known startup-message presence booleans, never raw child output. A failed cached browser probe remains a failed job. Independent Windows first-run and synthetic credential-store checks may still run after it only if their candidate build/verified fixture copy succeeded and the run was not cancelled. This gathers separate evidence without hiding the cached probe failure or changing release gates.
