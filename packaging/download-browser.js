@@ -16,11 +16,11 @@ function hostPin(platform=process.platform,arch=process.arch){
  if(url.protocol!=='https:'||url.hostname!=='storage.googleapis.com'||url.pathname!==`/chrome-for-testing-public/${pins.version}/${name}/chrome-${name}.zip`||url.search||url.hash)throw new Error('Invalid fixed Google browser source');
  return pin;
 }
-async function promptDownload({input=process.stdin,output=process.stdout}={}){
+async function promptDownload({input=process.stdin,output=process.stdout,home=os.homedir()}={}){
  if(!input.isTTY||!output.isTTY){output.write('First browser download needs an interactive terminal. Open this executable in a terminal and retry.\n');throw new Error('First browser download needs an interactive terminal');}
- output.write('This test build does not include Chrome. Download Chrome for Testing '+pins.version+' directly from Google (about 200 MB)?\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/\nType download to fetch and use it under Google\'s terms, or anything else to cancel: ');
+ output.write('This test build needs a one-time Chrome for Testing '+pins.version+' download (about 200 MB) from Google, stored in '+path.join(home,'.educationperfected')+'.\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/ (downloading accepts them).\nDownload now? [y/N]: ');
  const rl=require('node:readline').createInterface({input,output});
- try { return await new Promise(resolve=>{rl.once('line',line=>resolve(line.trim()==='download'));rl.once('close',()=>resolve(false));}); }
+ try { return await new Promise(resolve=>{rl.once('line',line=>resolve(['y','yes'].includes(line.trim().toLowerCase())));rl.once('close',()=>resolve(false));}); }
  finally {rl.close();}
 }
 async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir(),platform=process.platform,arch=process.arch,output=process.stdout,extractor=checkExtractor}={}){

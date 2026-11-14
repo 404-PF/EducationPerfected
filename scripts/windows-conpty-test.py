@@ -228,23 +228,23 @@ class PublicAPI(BudgetAPI):
         return super().CreateProcessW(exe,c.create_unicode_buffer('fixed.exe setup'),*args)
     def ReadFile(self,h,buf,size,count,overlap):
         self.reads+=1
-        if self.reads==1:chunk=b'Type download'
+        if self.reads==1:chunk=b'Download now? [y/N]: '
         elif self.reads==2:
             assert self.ready.wait(2)
-            chunk=b'cancel' if self.decline else b'download\r\nBrowser download checksum verified\r\nEP email\r\nSetup cancelled; no login saved.'
+            chunk=b'n\r\nBrowser download cancelled; no browser started.' if self.decline else b'y\r\nBrowser download checksum verified\r\nEP email\r\nSetup cancelled; no login saved.'
         else:self.console_closed.wait(2);c.set_last_error(109);return 0
         c.memmove(buf,chunk,len(chunk));count._obj.value=len(chunk);return 1
     def GetExitCodeProcess(self,h,code):code._obj.value=1 if self.decline else 0;return 1
 for decline in (False,True):
     api=PublicAPI(decline)
-    prompts=[(b'Type download',b'cancel\r')] if decline else [(b'Type download',b'download\r'),(b'EP email',b'\r')]
+    prompts=[(b'Download now? [y/N]',b'n\r')] if decline else [(b'Download now? [y/N]',b'y\r'),(b'EP email',b'\r')]
     assert m.run_console('fixed.exe',['setup'],{'HOME':'owned'},'owned',prompts,b'cancel' if decline else b'Browser download checksum verified',api=api,process_budget_ms=960000,public_browser_download=True,expected_exit=1 if decline else 0)
     assert api.waits[0]==960000 and api.waits.count(960000)==1
-    assert api.writes==([b'cancel\r'] if decline else [b'download\r',b'\r'])
+    assert api.writes==([b'n\r'] if decline else [b'y\r',b'\r'])
 for kwargs in (
     {'args':['setup'],'prompts':[(b'EP email',b'public-answer\r')]},
-    {'args':[],'prompts':[(b'Type download',b'arbitrary-secret\r')]},
-    {'args':[],'prompts':[(b'Type download',b'download\r')]},
+    {'args':[],'prompts':[(b'Download now? [y/N]',b'arbitrary-secret\r')]},
+    {'args':[],'prompts':[(b'Download now? [y/N]',b'y\r')]},
 ):
     with mock.patch.object(m,'kernel32',side_effect=AssertionError('No allocation')):
         try:m.run_console('fixed.exe',env={},cwd='owned',process_budget_ms=960000,public_browser_download=True,**kwargs)
