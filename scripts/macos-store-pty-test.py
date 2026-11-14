@@ -102,9 +102,14 @@ def main():
                     data=drain_pty(master,data)
                     ack='printed' if b'Login saved in the OS credential store.' in data else 'missing'
                     try:
-                        run([node,'-e',verify_saved])
-                        landed='present'
-                    except subprocess.CalledProcessError:
+                        if label=='source':
+                            run([node,'-e',verify_saved]);landed='present'
+                        else:
+                            # A source Node read of a SEA-created secret times out on
+                            # both architectures, so probe with the SEA's own health read.
+                            health=run([*command,'check-credentials'])
+                            landed='present' if health.stdout==b'Saved login is available and its record is valid.\n' else 'absent'
+                    except (subprocess.CalledProcessError,subprocess.TimeoutExpired):
                         landed='absent'
                     if time.monotonic()>=stuck_deadline:
                         child.kill();child.wait(timeout=10)
