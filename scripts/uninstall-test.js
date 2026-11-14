@@ -1,6 +1,7 @@
 // Synthetic files/store only. Never removes user data or real credentials.
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
-const {uninstallCommand}=require('../packaging/uninstall');
+const {uninstallCommand,confirmUninstall}=require('../packaging/uninstall');
+const {PassThrough}=require('node:stream');
 const {acquireMaintenance,storageRoot}=require('../lib/storage-maintenance');
 const {createRuntimeDirectory}=require('../lib/runtime-directory');
 (async()=>{
@@ -47,5 +48,22 @@ const {createRuntimeDirectory}=require('../lib/runtime-directory');
    assert.ok(!output.includes('Error:'));
   }finally{fs.rmSync(home,{recursive:true,force:true});}
  }
- console.log('Uninstall per-item Y/n (default No), cancel keeps all, safe removal, live/unknown/download-lock retention, deliberate keeps and credential failure passed (synthetic).');
+ // confirmUninstall parsing: empty answers and EOF default to No; pasted
+ // multi-line input is buffered, not dropped; only y/yes counts as yes.
+ for(const [typed,expected] of [
+  ['\n\n\n',{login:false,data:false,browsers:false}],
+  ['',{login:false,data:false,browsers:false}],
+  ['y\nyes\nN\n',{login:true,data:true,browsers:false}],
+  ['y\ny\ny\nextra\n',{login:true,data:true,browsers:true}],
+  ['YES\nn\nmaybe\n',{login:true,data:false,browsers:false}],
+ ]){
+  const input=new PassThrough(),output=new PassThrough();
+  input.isTTY=true;output.isTTY=true;
+  const pending=confirmUninstall(input,output);
+  if(typed)input.write(typed);
+  input.end();
+  assert.deepEqual(await pending,expected,'default-No parsing for '+JSON.stringify(typed));
+ }
+ const noTty=new PassThrough();await assert.rejects(()=>confirmUninstall(noTty,Object.assign(new PassThrough(),{isTTY:true})),/interactive terminal/);
+ console.log('Uninstall per-item Y/n (default No), cancel keeps all, safe removal, live/unknown/download-lock retention, deliberate keeps, credential failure and prompt parsing (empty/EOF/paste) passed (synthetic).');
 })().catch(error=>{console.error(error);process.exitCode=1;});

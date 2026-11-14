@@ -3,18 +3,22 @@
 // bootstrap supplies its owned store and cleanup callback.
 const fs=require('node:fs'),path=require('node:path');
 const {storageRoot,acquireMaintenance}=require('../lib/storage-maintenance');
-function askYesNo(rl,output,question){
- output.write(question);
- return new Promise(resolve=>{rl.once('line',line=>resolve(/^\s*y(es)?\s*$/i.test(line)));});
-}
 async function confirmUninstall(input=process.stdin,output=process.stdout){
  if(!input.isTTY||!output.isTTY)throw new Error('Uninstall requires an interactive terminal');
  output.write('Close every other EducationPerfected copy (including source CLI) and its Chrome window first.\n');
  const rl=require('node:readline').createInterface({input,output});
+ // The async iterator buffers pasted multi-line input instead of dropping
+ // lines between prompts, and ends (done) on EOF/Ctrl+D: both resolve as No.
+ const lines=rl[Symbol.asyncIterator]();
+ const ask=async question=>{
+  output.write(question);
+  const {done,value}=await lines.next();
+  return !done&&/^\s*y(es)?\s*$/i.test(value);
+ };
  try{
-  const login=await askYesNo(rl,output,'Remove the saved login from the OS credential store? [y/N] ');
-  const data=await askYesNo(rl,output,'Remove EducationPerfected app data (settings and temporary files)? [y/N] ');
-  const browsers=await askYesNo(rl,output,'Remove downloaded browsers (about 200 MB)? [y/N] ');
+  const login=await ask('Remove the saved login from the OS credential store? [y/N] ');
+  const data=await ask('Remove EducationPerfected app data (settings and temporary files)? [y/N] ');
+  const browsers=await ask('Remove downloaded browsers (about 200 MB)? [y/N] ');
   return {login,data,browsers};
  }finally{rl.close();}
 }

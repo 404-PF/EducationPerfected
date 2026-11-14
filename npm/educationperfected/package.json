@@ -1,0 +1,10 @@
+{
+  "name": "educationperfected",
+  "version": "2026.11.14",
+  "description": "Education Perfect helper CLI (downloads the verified platform binary from GitHub releases)",
+  "license": "UNLICENSED",
+  "bin": { "educationperfected": "bin/educationperfected.js" },
+  "scripts": { "postinstall": "node install.js" },
+  "files": [ "bin", "install.js", "README.md" ],
+  "engines": { "node": ">=18" }
+}

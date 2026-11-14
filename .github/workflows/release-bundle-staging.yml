@@ -74,16 +74,30 @@ jobs:
             if [ "$actual" != "$expected" ]; then echo "$renamed is not byte-identical to the validated candidate"; exit 1; fi
             (cd "$dir" && zip -qr "$root/$staging/THIRD-PARTY-NOTICES-$target.zip" THIRD-PARTY-NOTICES)
           done
-          win_dir=$(echo "candidates/downloadable-candidate-windows-x64"-*)
-          setup_name=educationperfected-setup-windows-x64.exe
-          setup=$(awk -v n="$setup_name" '$2 == n {print $1}' "$win_dir/SHA256SUMS")
-          test -n "$setup"
-          cp "$win_dir/$setup_name" "$staging/$setup_name"
-          actual=$(sha256sum "$staging/$setup_name" | awk '{print $1}')
-          if [ "$actual" != "$setup" ]; then echo "installer is not byte-identical to the validated candidate"; exit 1; fi
+          # Extra per-target assets: installer, packages, npm tarball. Each must
+          # exist in its candidate artifact and be byte-identical to the
+          # candidate's checksum (the '*' binary-mode marker is normalized).
+          for pair in \
+            "windows-x64:educationperfected-setup-windows-x64.exe" \
+            "macos-arm64:educationperfected-macos-arm64.pkg" \
+            "macos-x64:educationperfected-macos-x64.pkg" \
+            "linux-x64:educationperfected_${RELEASE_VERSION}_amd64.deb" \
+            "linux-x64:educationperfected-${RELEASE_VERSION}-1.x86_64.rpm" \
+            "linux-x64:educationperfected-${RELEASE_VERSION}.tgz" \
+            "linux-arm64:educationperfected_${RELEASE_VERSION}_arm64.deb" \
+            "linux-arm64:educationperfected-${RELEASE_VERSION}-1.aarch64.rpm"; do
+            target=${pair%%:*}; name=${pair#*:}
+            dir=$(echo "candidates/downloadable-candidate-$target"-*)
+            expected=$(awk -v n="$name" '{f=$2; sub(/^\*/, "", f); if (f == n) {print $1; exit}}' "$dir/SHA256SUMS")
+            test -n "$expected" || { echo "no checksum for $name in the $target candidate"; exit 1; }
+            cp "$dir/$name" "$staging/$name"
+            actual=$(sha256sum "$staging/$name" | awk '{print $1}')
+            if [ "$actual" != "$expected" ]; then echo "$name is not byte-identical to the validated candidate"; exit 1; fi
+          done
+          cp installer/install.sh installer/install.ps1 "$staging/"
           cp "release/release-notes-$RELEASE_VERSION.md" "$staging/release-notes.md"
           (cd "$staging" && sha256sum -- * > SHA256SUMS && sha256sum -c SHA256SUMS > /dev/null)
-          echo "Bundle verified: 6 executables byte-identical to the validated candidates; SHA256SUMS covers the 12 payload files (5 raw executables, Windows installer, 5 notices zips, release-notes.md)."
+          echo "Bundle verified: all executables and packages byte-identical to the validated candidates; SHA256SUMS covers the 19 payload files (5 raw executables, Windows installer, 2 pkg, 2 deb, 2 rpm, npm tarball, install.sh, install.ps1, 5 notices zips, release-notes.md)."
       - name: Upload the staged release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
