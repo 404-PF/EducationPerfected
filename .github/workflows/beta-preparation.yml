@@ -122,6 +122,7 @@ jobs:
             build/${{ matrix.target }}-downloadable/THIRD-PARTY-NOTICES
             build/${{ matrix.target }}-downloadable/SHA256SUMS
           retention-days: 90
+          if-no-files-found: error
       - name: Upload explicitly requested unsigned Windows test package
         if: inputs.upload_windows_test && steps.test_package.outcome == 'success' && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -184,5 +185,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # No tag, release, normal saved-login, no-Node or
       # signing-policy validation. Existing release:check is not bypassed.
-      # Only the explicitly requested Windows test package is retained for 7 days.
+      # Explicitly requested candidate bundles are retained for 90 days and the
+      # Windows test package for 7 days; publication stays a manual owner act.
       # Other build files remain ephemeral in this runner's build directory.

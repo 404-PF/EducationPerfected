@@ -78,7 +78,7 @@ def kernel32():
 def checked(value,stage):
     if not value:raise RuntimeError(stage)
 
-PUBLIC_DOWNLOAD_PROMPT=b'Download now? [y/N]'
+PUBLIC_DOWNLOAD_PROMPT=b'Download now? [Y/n]'
 
 def run_console(executable,args,env,cwd,prompts=(),expected=b'',api=None,clock=time.monotonic,capability_diagnostics=False,expected_exit=0,on_closed=None,forbidden_output=(),process_budget_ms=30000,on_drain=None,public_browser_download=False):
     """Only drain-side bytes are inspected. No arbitrary child output is printed."""

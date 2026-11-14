@@ -49,7 +49,9 @@ async function main() {
     if (parsed.command === 'help') { console.log(require('../lib/cli-command').helpText()); return; }
     if (parsed.command === 'version') { console.log(require('../package.json').version); return; }
     if (parsed.command === 'update') {
-        await require('./update').updateCommand({executable:process.execPath});
+        // Update failures are reported as update failures, never as startup failures.
+        try { await require('./update').updateCommand({executable:process.execPath}); }
+        catch (error) { console.error(require('../lib/diagnostics').diagnostic(error, 'Update')); process.exitCode = 1; }
         return;
     }
     const runtime = require('../lib/runtime-directory').createRuntimeDirectory();

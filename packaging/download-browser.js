@@ -18,9 +18,9 @@ function hostPin(platform=process.platform,arch=process.arch){
 }
 async function promptDownload({input=process.stdin,output=process.stdout,home=os.homedir()}={}){
  if(!input.isTTY||!output.isTTY){output.write('First browser download needs an interactive terminal. Open this executable in a terminal and retry.\n');throw new Error('First browser download needs an interactive terminal');}
- output.write('This test build needs a one-time Chrome for Testing '+pins.version+' download (about 200 MB) from Google, stored in '+path.join(home,'.educationperfected')+'.\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/ (downloading accepts them).\nDownload now? [y/N]: ');
+ output.write('EducationPerfected needs a one-time Chrome for Testing '+pins.version+' download (about 200 MB) from Google, stored in '+path.join(home,'.educationperfected')+'.\nGoogle terms: https://policies.google.com/terms and https://www.google.com/chrome/terms/ (downloading accepts them).\nDownload now? [Y/n]: ');
  const rl=require('node:readline').createInterface({input,output});
- try { return await new Promise(resolve=>{rl.once('line',line=>resolve(['y','yes'].includes(line.trim().toLowerCase())));rl.once('close',()=>resolve(false));}); }
+ try { return await new Promise(resolve=>{rl.once('line',line=>{const answer=line.trim().toLowerCase();resolve(answer===''||answer==='y'||answer==='yes');});rl.once('close',()=>resolve(false));}); }
  finally {rl.close();}
 }
 async function ensureBrowser({consent=promptDownload,install,api,home=os.homedir(),platform=process.platform,arch=process.arch,output=process.stdout,extractor=checkExtractor}={}){

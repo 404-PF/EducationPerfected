@@ -28,7 +28,7 @@ def run_probe(artifact,env,home,response):
             if select.select([master],[],[],.1)[0]:
                 try:text+=os.read(master,65536)
                 except OSError:break
-            if not sent and b'Download now? [y/N]' in text:os.write(master,response);sent=True
+            if not sent and b'Download now? [Y/n]' in text:os.write(master,response);sent=True
             if b'EP_TEST_LOGIN_READY' in text:
                 ready=True;os.kill(child.pid,signal.SIGINT);break
         child.wait(timeout=15)
@@ -49,10 +49,10 @@ def main():
         home=root/'home';home.mkdir();temp=root/'tmp';temp.mkdir();artifact=root/'educationperfected';shutil.copy2(source,artifact)
         env={k:v for k,v in os.environ.items() if k not in ('EP_EMAIL','EP_PASSWORD','NODE_OPTIONS','PUPPETEER_EXECUTABLE_PATH')}
         env.update(HOME=str(home),XDG_CONFIG_HOME=str(home/'config'),XDG_CACHE_HOME=str(home/'cache'),TMPDIR=str(temp),EP_TEST_BOOT='1',EP_LOGIN_URL='http://127.0.0.1:'+str(server.server_port)+'/app/login',EP_LOGIN_HOST='127.0.0.1')
-        for response in (b'n\n',b'y\n'):
+        for response in (b'n\n',b'\n',b'y\n'):
             run_probe(artifact,env,home,response)
             assert not list(temp.glob('educationperfected-*'))
-        print('Native first-run SEA: fresh-home interactive decline leaves no cache; fresh download consent verifies archive, reaches local login-ready, SIGINT130 and owned extraction/install-lock cleanup passed. Not physical-console/no-Node proof.',flush=True)
+        print('Native first-run SEA: fresh-home interactive decline leaves no cache; Enter and explicit yes both accept; fresh download consent verifies archive, reaches local login-ready, SIGINT130 and owned extraction/install-lock cleanup passed. Not physical-console/no-Node proof.',flush=True)
     finally:
         server.shutdown();server.server_close();thread.join(timeout=3);shutil.rmtree(root)
 if __name__=='__main__':main()
