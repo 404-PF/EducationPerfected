@@ -11,6 +11,8 @@ for(const required of [
 ])assert.ok(iss.includes(required),required);
 assert.doesNotMatch(iss,/PrivilegesRequired=(admin|poweruser)/);
 assert.ok(!iss.includes('ChangesUninstall'),'not a valid Inno directive; ISCC aborts on it');
+assert.ok(!iss.includes('StringChange'),'PATH removal matches whole ;-delimited entries, never substrings');
+assert.ok(iss.includes('WizardIsTaskSelected'),'task check uses the wizard-context function');
 assert.ok(!iss.includes('RegWriteStringValue'),'PATH writes must preserve REG_EXPAND_SZ');
 assert.ok(iss.includes('RegWriteExpandStringValue'),'PATH writes use RegWriteExpandStringValue');
 const beta=fs.readFileSync(path.join(__dirname,'../.github/workflows/beta-preparation.yml'),'utf8');

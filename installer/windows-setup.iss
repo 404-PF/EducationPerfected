@@ -69,22 +69,40 @@ end;
 
 procedure RemoveAppFromPath;
 var
-  CurrentPath, Cleaned: string;
+  CurrentPath, Entry, Rest, Cleaned: string;
+  P: Integer;
 begin
-  if RegQueryStringValue(HKCU, EnvironmentKey, 'Path', CurrentPath) then
+  if not RegQueryStringValue(HKCU, EnvironmentKey, 'Path', CurrentPath) then
+    Exit;
+  Rest := CurrentPath;
+  Cleaned := '';
+  while True do
   begin
-    Cleaned := CurrentPath;
-    StringChange(Cleaned, ';' + ExpandConstant('{app}'), '');
-    StringChange(Cleaned, ExpandConstant('{app}') + ';', '');
-    StringChange(Cleaned, ExpandConstant('{app}'), '');
-    if Cleaned <> CurrentPath then
-      RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', Cleaned);
+    P := Pos(';', Rest);
+    if P = 0 then
+      Entry := Rest
+    else
+    begin
+      Entry := Copy(Rest, 1, P - 1);
+      Rest := Copy(Rest, P + 1, Length(Rest));
+    end;
+    if CompareText(Entry, ExpandConstant('{app}')) <> 0 then
+    begin
+      if Cleaned = '' then
+        Cleaned := Entry
+      else
+        Cleaned := Cleaned + ';' + Entry;
+    end;
+    if P = 0 then
+      Break;
   end;
+  if Cleaned <> CurrentPath then
+    RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', Cleaned);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssPostInstall) and IsTaskSelected('addtopath') then
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('addtopath') then
     AddAppToPath;
 end;
 
