@@ -15,6 +15,6 @@ assert.ok(require('../package.json').version===pkg.version,'npm package version 
 const install=fs.readFileSync(path.join(npmdir,'install.js'),'utf8');
 for(const required of ['EP_INSTALL_BASE_URL','SHA256SUMS','Checksum mismatch','macos-arm64','linux-arm64','windows-x64','createHash(\'sha256\')'])assert.ok(install.includes(required),required);
 const staging=fs.readFileSync(path.join(__dirname,'../.github/workflows/release-bundle-staging.yml'),'utf8');
-for(const required of ['19 payload files','install.sh','install.ps1','educationperfected-macos-arm64.pkg','_amd64.deb','.x86_64.rpm','educationperfected-${RELEASE_VERSION}.tgz'])assert.ok(staging.includes(required),required);
+for(const required of ['21 payload files','install.sh','install.ps1','educationperfected-macos-arm64.pkg','_amd64.deb','.x86_64.rpm','educationperfected-${RELEASE_VERSION}.tgz'])assert.ok(staging.includes(required),required);
 assert.ok(require('../package.json').scripts['test:phase3'].includes('platform-packages-policy-test.js'),'wired into test:phase3');
 console.log('Platform packages: pkg/deb/rpm byte-verified in lanes, curl/PowerShell installers verify SHA256SUMS, npm package prepared (never published by CI).');

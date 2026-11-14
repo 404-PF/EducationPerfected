@@ -33,6 +33,6 @@ const bundles=beta.split('      - name: Upload explicitly requested downloadable
 assert.match(bundles,/educationperfected\*/,'candidate upload picks up the installer via glob');
 assert.ok(beta.indexOf('      - name: Stage explicitly requested Windows internal test package')<beta.indexOf('      - name: Checksum the Windows installer'),'test package stages before the installer line is appended to SHA256SUMS, keeping the manifest byte-equality assertion intact');
 const staging=fs.readFileSync(path.join(__dirname,'../.github/workflows/release-bundle-staging.yml'),'utf8');
-for(const required of ['windows-x64:educationperfected-setup-windows-x64.exe',' is not byte-identical to the validated candidate','19 payload files'])assert.ok(staging.includes(required),required);
+for(const required of ['windows-x64:educationperfected-setup-windows-x64.exe',' is not byte-identical to the validated candidate','21 payload files'])assert.ok(staging.includes(required),required);
 assert.ok(require('../package.json').scripts['test:phase3'].includes('windows-installer-policy-test.js'),'wired into test:phase3');
 console.log('Windows installer: per-user Inno Setup script, candidate lane builds and checksums it, staging bundles it byte-identical, raw exe asset names unchanged.');

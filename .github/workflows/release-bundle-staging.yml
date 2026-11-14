@@ -97,7 +97,7 @@ jobs:
           cp installer/install.sh installer/install.ps1 "$staging/"
           cp "release/release-notes-$RELEASE_VERSION.md" "$staging/release-notes.md"
           (cd "$staging" && sha256sum -- * > SHA256SUMS && sha256sum -c SHA256SUMS > /dev/null)
-          echo "Bundle verified: all executables and packages byte-identical to the validated candidates; SHA256SUMS covers the 19 payload files (5 raw executables, Windows installer, 2 pkg, 2 deb, 2 rpm, npm tarball, install.sh, install.ps1, 5 notices zips, release-notes.md)."
+          echo "Bundle verified: all executables and packages byte-identical to the validated candidates; SHA256SUMS covers the 21 payload files (5 raw executables, Windows installer, 2 pkg, 2 deb, 2 rpm, npm tarball, install.sh, install.ps1, 5 notices zips, release-notes.md)."
       - name: Upload the staged release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

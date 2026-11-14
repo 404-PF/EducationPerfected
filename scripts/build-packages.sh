@@ -31,7 +31,7 @@ case "$target" in
     # .deb
     mkdir -p "$work/deb/DEBIAN" "$work/deb/usr/bin"
     install -m 755 "$src" "$work/deb/usr/bin/educationperfected"
-    printf 'Package: educationperfected\nVersion: %s\nArchitecture: %s\nMaintainer: 404-PF\nDescription: Education Perfect helper CLI (packaged binary)\n' "$version" "$debarch" > "$work/deb/DEBIAN/control"
+    printf 'Package: educationperfected\nVersion: %s\nArchitecture: %s\nMaintainer: 404-Page-Found\nDescription: Education Perfect helper CLI (packaged binary)\n' "$version" "$debarch" > "$work/deb/DEBIAN/control"
     dpkg-deb --build --root-owner-group "$work/deb" "$out/educationperfected_${version}_${debarch}.deb" >/dev/null
     ex=$(mktemp -d)
     dpkg-deb --extract "$out/educationperfected_${version}_${debarch}.deb" "$ex"
@@ -42,10 +42,11 @@ case "$target" in
     cp "$src" "$work/rpm/SOURCES/educationperfected"
     cat > "$work/rpm/SPECS/educationperfected.spec" <<SPEC
 Name: educationperfected
+Source0: educationperfected
 Version: $version
 Release: 1
 Summary: Education Perfect helper CLI (packaged binary)
-License: Proprietary
+License: MIT
 BuildArch: $rpmarch
 %description
 Packaged command-line app that opens Education Perfect in a dedicated browser window.

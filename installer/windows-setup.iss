@@ -4,7 +4,7 @@
 AppId={{5C0EDD47-9C42-5901-AF48-2393F39A36CD}
 AppName=EducationPerfected
 AppVersion={#AppVersion}
-AppPublisher=404-PF
+AppPublisher=404-Page-Found
 DefaultDirName={localappdata}\Programs\EducationPerfected
 DefaultGroupName=EducationPerfected
 PrivilegesRequired=lowest
