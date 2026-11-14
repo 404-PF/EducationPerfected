@@ -3,23 +3,25 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing DRAFT release tag (v<version>) to attach the verified bundle to'
+        description: 'Existing empty DRAFT release tag (v<version>) to attach the verified bundle to'
         required: true
         type: string
   release:
     types: [published]
 
-# Attach-only automation. Two entry points, both ending in a manual owner
-# review:
-#  - workflow_dispatch (primary): the owner saves a draft release, then runs
-#    this workflow with its tag. Drafts fire no release events (GitHub
+# Attach-only automation. Two entry points, both refusing to touch any release
+# that already has assets, and both ending in a manual owner review:
+#  - workflow_dispatch (primary): the owner saves an EMPTY draft release, then
+#    runs this workflow with its tag. Drafts fire no release events (GitHub
 #    limitation), so the button is the only way to reach a draft. The assets
 #    are attached to the draft and it STAYS a draft for manual publication.
+#    A draft that already has assets is refused: remove them manually to
+#    re-attach.
 #  - release:published (fallback): if the owner publishes a release directly,
 #    the verified assets are attached automatically - but only when the
 #    release has zero assets, so this never replaces anything.
-# This workflow never creates tags, never edits or publishes a release, and
-# never touches npm.
+# This workflow never creates tags, never edits or publishes a release, never
+# replaces or removes assets, and never touches npm.
 permissions:
   actions: read
   contents: write
@@ -49,6 +51,7 @@ jobs:
           target=$(jq -r .target_commitish release.json)
           if [ "$EVENT" = workflow_dispatch ]; then
             [ "$draft" = true ] || { echo "Release $TAG is not a draft; refusing to modify a published release."; exit 1; }
+            [ "$assets" -eq 0 ] || { echo "Draft $TAG already has $assets assets; remove them manually to re-attach."; exit 1; }
           else
             if [ "$assets" -ne 0 ]; then
               echo "Release $TAG already has $assets assets; leaving it untouched."
@@ -57,15 +60,19 @@ jobs:
             fi
           fi
           gitapi="repos/$GITHUB_REPOSITORY/git"
-          ref=$(gh api "$gitapi/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
-          if [ -n "$ref" ] && [ "$(gh api "$gitapi/ref/tags/$TAG" --jq '.object.type')" = tag ]; then
-            sha=$(gh api "$gitapi/tags/$ref" --jq '.object.sha')
-          elif [ -n "$ref" ]; then
-            sha=$ref
-          else
+          if refjson=$(gh api "$gitapi/ref/tags/$TAG" 2>ref-error.txt); then
+            ref=$(echo "$refjson" | jq -r .object.sha)
+            if [ "$(echo "$refjson" | jq -r .object.type)" = tag ]; then
+              sha=$(gh api "$gitapi/tags/$ref" --jq '.object.sha')
+            else
+              sha=$ref
+            fi
+          elif grep -q 'Not Found' ref-error.txt; then
             # A draft's new tag exists only after publication; use the head of
             # the branch the release targets, resolved now.
             sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$target" --jq '.sha')
+          else
+            echo "Tag ref lookup failed for $TAG:"; cat ref-error.txt; exit 1
           fi
           echo "$sha" | grep -qE '^[0-9a-f]{40}$' || { echo "could not resolve a commit for $TAG"; exit 1; }
           echo "attach=true" >> "$GITHUB_OUTPUT"
@@ -120,7 +127,11 @@ jobs:
           TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
           set -euo pipefail
+          # Final guard, checked immediately before upload on both paths: never
+          # attach over existing assets.
+          assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets | length')
+          [ "$assets" -eq 0 ] || { echo "Release $TAG gained $assets assets since the run started; refusing to attach."; exit 1; }
           cd bundle
-          gh release upload "$TAG" --clobber -- *
+          gh release upload "$TAG" -- *
           count=$(gh release view "$TAG" --json assets --jq '.assets | length')
           echo "Attached $count assets to $TAG. Publication stays manual; this workflow only attaches files."
