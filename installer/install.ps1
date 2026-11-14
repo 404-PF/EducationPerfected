@@ -31,7 +31,7 @@ try {
   if ($actual -ne $expected) { throw "Checksum mismatch for $asset; download discarded." }
   $dest = Join-Path $env:LOCALAPPDATA 'Programs\EducationPerfected'
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
-  Copy-Item (Join-Path $tmp $asset) (Join-Path $dest 'educationperfected-windows-x64.exe') -Force
+  Copy-Item (Join-Path $tmp $asset) (Join-Path $dest 'educationperfected.exe') -Force
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $entries = @(); if ($userPath) { $entries = $userPath -split ';' }
   if ($entries -notcontains $dest) {
@@ -39,7 +39,7 @@ try {
     [Environment]::SetEnvironmentVariable('Path', $combined, 'User')
   }
   Write-Host "Verified and installed to $dest"
-  Write-Host 'Open a NEW terminal, then run: educationperfected-windows-x64 setup'
+  Write-Host 'Open a NEW terminal, then run: educationperfected setup'
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }

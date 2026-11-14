@@ -4,10 +4,10 @@ const iss=fs.readFileSync(path.join(__dirname,'../installer/windows-setup.iss'),
 for(const required of [
  'AppId={{5C0EDD47-9C42-5901-AF48-2393F39A36CD}','PrivilegesRequired=lowest',
  '{localappdata}\\Programs\\EducationPerfected','OutputBaseFilename=educationperfected-setup-windows-x64',
- 'DestName: "educationperfected-windows-x64.exe"','Name: "addtopath"','{group}\\EducationPerfected',
+ 'DestName: "educationperfected.exe"','Name: "addtopath"','{group}\\EducationPerfected',
  'CurUninstallStepChanged','RemoveAppFromPath','UninstallDisplayName=EducationPerfected',
- '[UninstallDelete]','educationperfected-windows-x64.exe.backup','educationperfected-windows-x64.exe.update-result',
- 'educationperfected-windows-x64.exe.update.lock','{app}\\.update-*',
+ '[UninstallDelete]','educationperfected.exe.backup','educationperfected.exe.update-result',
+ 'educationperfected.exe.update.lock','{app}\\.update-*',
  'MB_DEFBUTTON2','forget-credentials','DelTree','{%USERPROFILE}\\.educationperfected',
 ])assert.ok(iss.includes(required),required);
 assert.equal((iss.match(/MB_DEFBUTTON2/g)||[]).length,2,'both uninstall prompts default to No');

@@ -181,7 +181,7 @@ jobs:
           "$hash  educationperfected-windows-x64.exe" | Set-Content (Join-Path $dist 'SHA256SUMS')
           $env:EP_INSTALL_BASE_URL = $dist
           & installer\install.ps1 -Version test-version
-          $installed = Join-Path $env:LOCALAPPDATA 'Programs\EducationPerfected\educationperfected-windows-x64.exe'
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\EducationPerfected\educationperfected.exe'
           if (-not (Test-Path $installed)) { throw 'install.ps1 did not install the executable' }
       - name: Upload explicitly requested downloadable candidate bundle
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.upload_candidate_bundles && inputs.browser_mode == 'direct-download-validation' }}

@@ -19,19 +19,19 @@ UninstallDisplayName=EducationPerfected
 ChangesEnvironment=yes
 
 [Files]
-Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "educationperfected-windows-x64.exe"; Flags: ignoreversion
+Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "educationperfected.exe"; Flags: ignoreversion
 
 [Tasks]
 Name: "addtopath"; Description: "Add EducationPerfected to your PATH"; GroupDescription: "Extra options:"
 
 [Icons]
-Name: "{group}\EducationPerfected"; Filename: "{app}\educationperfected-windows-x64.exe"
+Name: "{group}\EducationPerfected"; Filename: "{app}\educationperfected.exe"
 Name: "{group}\Uninstall EducationPerfected"; Filename: "{uninstallexe}"
 
 [UninstallDelete]
-Type: files; Name: "{app}\educationperfected-windows-x64.exe.backup"
-Type: files; Name: "{app}\educationperfected-windows-x64.exe.update-result"
-Type: files; Name: "{app}\educationperfected-windows-x64.exe.update.lock"
+Type: files; Name: "{app}\educationperfected.exe.backup"
+Type: files; Name: "{app}\educationperfected.exe.update-result"
+Type: files; Name: "{app}\educationperfected.exe.update.lock"
 Type: filesandordirs; Name: "{app}\.update-*"
 
 [Code]
@@ -114,8 +114,8 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     if MsgBox('Also remove the saved EducationPerfected login from the Windows credential store?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes then
-      if not Exec(ExpandConstant('{app}\educationperfected-windows-x64.exe'), 'forget-credentials', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
-        MsgBox('The saved login could not be removed automatically. Run: educationperfected-windows-x64.exe forget-credentials', mbInformation, MB_OK);
+      if not Exec(ExpandConstant('{app}\educationperfected.exe'), 'forget-credentials', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+        MsgBox('The saved login could not be removed automatically. Run: educationperfected.exe forget-credentials', mbInformation, MB_OK);
     AppData := ExpandConstant('{%USERPROFILE}\.educationperfected');
     if DirExists(AppData) and (MsgBox('Also remove EducationPerfected app data and downloaded browsers (' + AppData + ')?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes) then
       DelTree(AppData, True, True, True);
