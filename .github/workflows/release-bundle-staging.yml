@@ -78,7 +78,7 @@ jobs:
           # exist in its candidate artifact and be byte-identical to the
           # candidate's checksum (the '*' binary-mode marker is normalized).
           for pair in \
-            "windows-x64:educationperfected-setup-windows-x64.exe" \
+            "windows-x64:educationperfected-windows-x64-setup.exe" \
             "macos-arm64:educationperfected-macos-arm64.pkg" \
             "macos-x64:educationperfected-macos-x64.pkg" \
             "linux-x64:educationperfected_${RELEASE_VERSION}_amd64.deb" \

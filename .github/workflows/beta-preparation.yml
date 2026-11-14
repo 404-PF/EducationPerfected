@@ -129,7 +129,7 @@ jobs:
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
         run: |
           cd build/windows-x64-downloadable
-          sha256sum educationperfected-setup-windows-x64.exe >> SHA256SUMS
+          sha256sum educationperfected-windows-x64-setup.exe >> SHA256SUMS
       - name: Install rpm tooling for Linux package lanes
         if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y rpm rpm2cpio
