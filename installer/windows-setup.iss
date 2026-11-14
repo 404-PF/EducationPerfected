@@ -4,7 +4,7 @@
 AppId={{5C0EDD47-9C42-5901-AF48-2393F39A36CD}
 AppName=EducationPerfected
 AppVersion={#AppVersion}
-AppPublisher=404-PF
+AppPublisher=404-Page-Found
 DefaultDirName={localappdata}\Programs\EducationPerfected
 DefaultGroupName=EducationPerfected
 PrivilegesRequired=lowest
@@ -114,7 +114,8 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     if MsgBox('Also remove the saved EducationPerfected login from the Windows credential store?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes then
-      Exec(ExpandConstant('{app}\educationperfected-windows-x64.exe'), 'forget-credentials', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      if not Exec(ExpandConstant('{app}\educationperfected-windows-x64.exe'), 'forget-credentials', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+        MsgBox('The saved login could not be removed automatically. Run: educationperfected-windows-x64.exe forget-credentials', mbInformation, MB_OK);
     AppData := ExpandConstant('{%USERPROFILE}\.educationperfected');
     if DirExists(AppData) and (MsgBox('Also remove EducationPerfected app data and downloaded browsers (' + AppData + ')?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes) then
       DelTree(AppData, True, True, True);

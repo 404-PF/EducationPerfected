@@ -9,8 +9,8 @@ const { createHash } = require('node:crypto');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 
-const RELEASES_API = 'https://api.github.com/repos/404-PF/EducationPerfected/releases?per_page=30';
-const DOWNLOAD_PREFIX = '/404-PF/EducationPerfected/releases/download/';
+const RELEASES_API = 'https://api.github.com/repos/404-Page-Found/EducationPerfected/releases?per_page=30';
+const DOWNLOAD_PREFIX = '/404-Page-Found/EducationPerfected/releases/download/';
 const SUMS_NAME = 'SHA256SUMS';
 const TARGETS = {
     'linux-x64': 'linux-x64',

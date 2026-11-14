@@ -2,15 +2,15 @@
 
 Candidate label: `2026.11.12-beta.1`. Source: `352bf6ada59d97f6e7691397781cc478be3d8693`. Source package version: `2026.0.0`.
 
-[Hosted build-only run](https://github.com/404-PF/EducationPerfected/actions/runs/43135645352) completed successfully for validation and all five native build lanes. Each lane built a fresh development executable and printed its manifest/checksums after checking source stayed clean. The manifests identify the expected browser pin as `156.0.8078.47`, not an observed browser-launch version.
+[Hosted build-only run](https://github.com/404-Page-Found/EducationPerfected/actions/runs/43135645352) completed successfully for validation and all five native build lanes. Each lane built a fresh development executable and printed its manifest/checksums after checking source stayed clean. The manifests identify the expected browser pin as `156.0.8078.47`, not an observed browser-launch version.
 
 | Native target | Executable bytes | Executable SHA-256 | Inventoried files | Job |
 | --- | ---: | --- | ---: | --- |
-| linux-arm64 | 318639232 | `3351e85eb133359af2a8e1b500c9d8122aa0860cc3cec8e2582a4773addb5150` | 37 | [Build log](https://github.com/404-PF/EducationPerfected/actions/runs/43135645352/job/130910279125) |
-| linux-x64 | 317852864 | `be445e2b0525f29ab76e589d11af61567325b3b8501b797b27dd6f4ca54a4dfb` | 37 | [Build log](https://github.com/404-PF/EducationPerfected/actions/runs/43135645352/job/130910278964) |
-| macos-arm64 | 303910112 | `49574ffe2e92fbae0bf55f8912969dc3fb90308c76c25a30300fb64127474983` | 36 | [Build log](https://github.com/404-PF/EducationPerfected/actions/runs/43135645352/job/130910278944) |
-| macos-x64 | 313005424 | `d311b8856872f0ce11cfc73fcd8bb130d827ddef0a78a1346171e1759c8e37ad` | 36 | [Build log](https://github.com/404-PF/EducationPerfected/actions/runs/43135645352/job/130910278909) |
-| windows-x64 | 305192448 | `c1ec6c6b293a534015c90c80060d623bd07aa90265234d41252f1c12686daf5e` | 36 | [Build log](https://github.com/404-PF/EducationPerfected/actions/runs/43135645352/job/130910278932) |
+| linux-arm64 | 318639232 | `3351e85eb133359af2a8e1b500c9d8122aa0860cc3cec8e2582a4773addb5150` | 37 | [Build log](https://github.com/404-Page-Found/EducationPerfected/actions/runs/43135645352/job/130910279125) |
+| linux-x64 | 317852864 | `be445e2b0525f29ab76e589d11af61567325b3b8501b797b27dd6f4ca54a4dfb` | 37 | [Build log](https://github.com/404-Page-Found/EducationPerfected/actions/runs/43135645352/job/130910278964) |
+| macos-arm64 | 303910112 | `49574ffe2e92fbae0bf55f8912969dc3fb90308c76c25a30300fb64127474983` | 36 | [Build log](https://github.com/404-Page-Found/EducationPerfected/actions/runs/43135645352/job/130910278944) |
+| macos-x64 | 313005424 | `d311b8856872f0ce11cfc73fcd8bb130d827ddef0a78a1346171e1759c8e37ad` | 36 | [Build log](https://github.com/404-Page-Found/EducationPerfected/actions/runs/43135645352/job/130910278909) |
+| windows-x64 | 305192448 | `c1ec6c6b293a534015c90c80060d623bd07aa90265234d41252f1c12686daf5e` | 36 | [Build log](https://github.com/404-Page-Found/EducationPerfected/actions/runs/43135645352/job/130910278932) |
 
 ## What this proves
 

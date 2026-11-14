@@ -5,7 +5,7 @@ for(const required of [
  'workflow_dispatch:','source_run_id:','release_version:','actions: read','contents: read',
  'persist-credentials: false','/actions/runs/$RUN_ID/artifacts','downloadable-candidate-',
  'sha256sum -c SHA256SUMS','sha256sum -- *','byte-identical','release-notes.md','THIRD-PARTY-NOTICES-$target.zip',
- 'educationperfected-setup-windows-x64.exe','12 payload files',
+ 'educationperfected-setup-windows-x64.exe','21 payload files',String.raw`sub(/^\*`,
  'name: release-bundle-v','retention-days: 90','if-no-files-found: error',
  '"\\(.id) \\(.name)"','%{redirect_url}','source_run_id must be numeric','release_version must be three numeric parts',
 ])assert.ok(source.includes(required),required);

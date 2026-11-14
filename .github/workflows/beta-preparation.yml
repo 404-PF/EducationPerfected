@@ -130,6 +130,59 @@ jobs:
         run: |
           cd build/windows-x64-downloadable
           sha256sum educationperfected-setup-windows-x64.exe >> SHA256SUMS
+      - name: Install rpm tooling for Linux package lanes
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm rpm2cpio
+      - name: Build and byte-verify platform packages
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          scripts/build-packages.sh "$CANDIDATE_TARGET" "$version" "build/$CANDIDATE_TARGET-downloadable/educationperfected" "build/$CANDIDATE_TARGET-downloadable"
+      - name: Pack the npm installer package
+        if: inputs.browser_mode == 'direct-download-validation' && matrix.target == 'linux-x64'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          (cd npm/educationperfected && npm pack --pack-destination "../../build/$CANDIDATE_TARGET-downloadable" >/dev/null)
+          test -f "build/$CANDIDATE_TARGET-downloadable/educationperfected-$version.tgz"
+      - name: Checksum the platform packages
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
+        run: |
+          cd "build/$CANDIDATE_TARGET-downloadable"
+          for f in educationperfected-*.pkg educationperfected_*.deb educationperfected-*.rpm educationperfected-*.tgz; do
+            if [ -e "$f" ]; then sha256sum "$f" >> SHA256SUMS; fi
+          done
+      - name: Exercise install.sh end-to-end against the local candidate
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os != 'Windows'
+        run: |
+          dist=$(mktemp -d)
+          cp "build/$CANDIDATE_TARGET-downloadable/educationperfected" "$dist/educationperfected-$CANDIDATE_TARGET"
+          (cd "$dist" && sha256sum -- * > SHA256SUMS)
+          home=$(mktemp -d)
+          EP_INSTALL_BASE_URL="file://$dist" HOME="$home" sh installer/install.sh test-version
+          "$home/.local/bin/educationperfected" version | head -1
+      - name: Exercise the npm package end-to-end against the local candidate
+        if: inputs.browser_mode == 'direct-download-validation' && matrix.target == 'linux-x64'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          dist=$(mktemp -d)
+          cp "build/$CANDIDATE_TARGET-downloadable/educationperfected" "$dist/educationperfected-$CANDIDATE_TARGET"
+          (cd "$dist" && sha256sum -- * > SHA256SUMS)
+          app=$(mktemp -d) && cd "$app" && npm init -y >/dev/null
+          EP_INSTALL_BASE_URL="file://$dist" npm install "$OLDPWD/build/$CANDIDATE_TARGET-downloadable/educationperfected-$version.tgz" >/dev/null
+          "./node_modules/.bin/educationperfected" version | head -1
+      - name: Exercise install.ps1 end-to-end against the local candidate
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP 'ep-dist'
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          Copy-Item 'build\windows-x64-downloadable\educationperfected.exe' (Join-Path $dist 'educationperfected-windows-x64.exe')
+          $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $dist 'educationperfected-windows-x64.exe')).Hash.ToLowerInvariant()
+          "$hash  educationperfected-windows-x64.exe" | Set-Content (Join-Path $dist 'SHA256SUMS')
+          $env:EP_INSTALL_BASE_URL = $dist
+          & installer\install.ps1 -Version test-version
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\EducationPerfected\educationperfected-windows-x64.exe'
+          if (-not (Test-Path $installed)) { throw 'install.ps1 did not install the executable' }
       - name: Upload explicitly requested downloadable candidate bundle
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.upload_candidate_bundles && inputs.browser_mode == 'direct-download-validation' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
