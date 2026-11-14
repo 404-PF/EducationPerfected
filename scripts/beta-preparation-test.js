@@ -145,6 +145,7 @@ fs.writeFileSync(path.join(out,'sea.json'),JSON.stringify({assets:{manifest:'ine
     const bundles=active.split('      - name: Upload explicitly requested downloadable candidate bundle')[1].split('      - name:')[0];
     assert.match(bundles,/inputs\.upload_candidate_bundles/);assert.match(bundles,/retention-days: 90/);assert.match(bundles,/if-no-files-found: error/);
     assert.match(bundles,/name: downloadable-candidate-/);assert.match(bundles,/SHA256SUMS/);assert.match(bundles,/THIRD-PARTY-NOTICES/);
+    assert.match(bundles,/educationperfected\*/,'candidate upload path is a glob so the Windows lane also carries the installer');
     assert.match(active,/upload_candidate_bundles:[\s\S]*?default: false/);
     assert.doesNotMatch(active,/run:.*\$\{\{\s*inputs\./);
     assert.equal((active.match(/- uses:/g)||[]).length,4);

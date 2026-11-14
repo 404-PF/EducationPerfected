@@ -108,17 +108,35 @@ jobs:
           else
             node scripts/beta-candidate.js build "$VALIDATION_LABEL" "$CANDIDATE_TARGET"
           fi
+      - name: Build the per-user Windows installer
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup 6 (ISCC.exe) not found on this runner image.' }
+          $version = node -p "require('./package.json').version"
+          $root = (Get-Location).Path
+          $out = Join-Path $root 'build\windows-x64-downloadable'
+          $src = Join-Path $out 'educationperfected.exe'
+          $iss = Join-Path $root 'installer\windows-setup.iss'
+          & $iscc "/DAppVersion=$version" "/DSourceExe=$src" "/DOutputDir=$out" $iss | Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stage explicitly requested Windows internal test package
         id: test_package
         if: inputs.upload_windows_test && inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
         run: node scripts/stage-windows-test-artifact.js
+      - name: Checksum the Windows installer
+        if: inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'
+        run: |
+          cd build/windows-x64-downloadable
+          sha256sum educationperfected-setup-windows-x64.exe >> SHA256SUMS
       - name: Upload explicitly requested downloadable candidate bundle
         if: ${{ !cancelled() && steps.candidate_build.outcome == 'success' && inputs.upload_candidate_bundles && inputs.browser_mode == 'direct-download-validation' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: downloadable-candidate-${{ matrix.target }}-${{ github.sha }}
           path: |
-            build/${{ matrix.target }}-downloadable/educationperfected${{ runner.os == 'Windows' && '.exe' || '' }}
+            build/${{ matrix.target }}-downloadable/educationperfected*
             build/${{ matrix.target }}-downloadable/THIRD-PARTY-NOTICES
             build/${{ matrix.target }}-downloadable/SHA256SUMS
           retention-days: 90

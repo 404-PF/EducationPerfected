@@ -74,9 +74,16 @@ jobs:
             if [ "$actual" != "$expected" ]; then echo "$renamed is not byte-identical to the validated candidate"; exit 1; fi
             (cd "$dir" && zip -qr "$root/$staging/THIRD-PARTY-NOTICES-$target.zip" THIRD-PARTY-NOTICES)
           done
+          win_dir=$(echo "candidates/downloadable-candidate-windows-x64"-*)
+          setup_name=educationperfected-setup-windows-x64.exe
+          setup=$(awk -v n="$setup_name" '$2 == n {print $1}' "$win_dir/SHA256SUMS")
+          test -n "$setup"
+          cp "$win_dir/$setup_name" "$staging/$setup_name"
+          actual=$(sha256sum "$staging/$setup_name" | awk '{print $1}')
+          if [ "$actual" != "$setup" ]; then echo "installer is not byte-identical to the validated candidate"; exit 1; fi
           cp "release/release-notes-$RELEASE_VERSION.md" "$staging/release-notes.md"
           (cd "$staging" && sha256sum -- * > SHA256SUMS && sha256sum -c SHA256SUMS > /dev/null)
-          echo "Bundle verified: 5 executables byte-identical to the validated candidates; SHA256SUMS covers the 11 payload files (5 executables, 5 notices zips, release-notes.md)."
+          echo "Bundle verified: 6 executables byte-identical to the validated candidates; SHA256SUMS covers the 12 payload files (5 raw executables, Windows installer, 5 notices zips, release-notes.md)."
       - name: Upload the staged release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
