@@ -59,6 +59,16 @@ try {
         assert.equal(flaky.remove(true), true);
     } finally { fs.rmSync = originalRemove; }
     assert.equal(fs.existsSync(flaky.directory), false);
+    const racing = createRuntimeDirectory({home, pid:48, kill:dead, cleanupRetry:{attempts:4, delayMs:1}});
+    const racingProfile = path.join(racing.directory, 'chrome-profile');
+    fs.mkdirSync(racingProfile);
+    let dirStrikes = 2;
+    const originalRmdir = fs.rmdirSync;
+    try {
+        fs.rmdirSync = (target, options) => { if (target === racing.directory && dirStrikes-- > 0) throw Object.assign(new Error('inert still-written directory'), {code:'ENOTEMPTY'}); return originalRmdir(target, options); };
+        assert.equal(racing.remove(true), true);
+    } finally { fs.rmdirSync = originalRmdir; }
+    assert.equal(fs.existsSync(racing.directory), false);
     const weird = createRuntimeDirectory({home, pid:47, kill:dead, cleanupRetry:{attempts:3, delayMs:1}});
     const weirdLocked = path.join(weird.directory, 'locked-profile');
     fs.writeFileSync(weirdLocked, 'inert');
@@ -89,5 +99,5 @@ try {
             assert.throws(() => createRuntimeDirectory({home}), /real directory/);
         } finally { fs.rmSync(outside, {recursive:true, force:true}); }
     }
-    console.log('Runtime root containment, cache preservation, live/uncertain ownership, safe stale cleanup, transient-lock retry and non-retryable passthrough passed (synthetic only).');
+    console.log('Runtime root containment, cache preservation, live/uncertain ownership, safe stale cleanup, transient-lock retry, ENOTEMPTY directory-race retry and non-retryable passthrough passed (synthetic only).');
 } finally { fs.rmSync(home, {recursive:true, force:true}); }
