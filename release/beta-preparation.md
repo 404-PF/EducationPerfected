@@ -1,6 +1,6 @@
 # V2026 stable-release preparation
 
-This prepares stable version `2026.0.0`, not a published or certified release. On November 13 Page chose a stable first public version without a prerelease suffix. On November 12 Page chose a downloadable beta and re-authorized the release validation removed from the November 3 code-only board. Re-authorized work is not passed work. The existing package.json and package-lock.json version is already `2026.0.0`; no version change or publication is implied.
+This prepares stable version `2026.11.14`, not a published or certified release. On November 14 Page set the first public version to `2026.11.14` and chose to publish it himself on GitHub. On November 13 Page had chosen a stable first public version without a prerelease suffix. On November 12 Page chose a downloadable beta and re-authorized the release validation removed from the November 3 code-only board. Re-authorized work is not passed work. The package.json and package-lock.json version is `2026.11.14`; setting it does not publish anything.
 
 ## Internal validation labels and public versions
 
@@ -8,7 +8,7 @@ CI validation uses a dated internal label such as `2026.11.12-validation.1`. The
 
 Earlier logs used `2026.11.12-beta.1` through `beta.12` as internal candidate labels. That was misleading: none was a published beta, and those counters do not consume public release numbers. Historical evidence below retains its original labels so it can be reconciled to the actual runs.
 
-The first public version being prepared is `2026.0.0`, without `-beta.1` or any other prerelease suffix. Internal `validation.N` labels remain separate and do not consume release numbers. A stable name does not claim stability evidence or waive any gate. Tag, release and publication still require Page's explicit approval and completed release gates. Validation builds do not change package.json or package-lock.json, create a tag or approve publication.
+The first public version being prepared is `2026.11.14`, without `-beta.1` or any other prerelease suffix. Internal `validation.N` labels remain separate and do not consume release numbers. A stable name does not claim stability evidence or waive any gate. Tag, release and publication still require Page's explicit approval and completed release gates. Validation builds do not change package.json or package-lock.json, create a tag or approve publication.
 
 The existing beta-named script, workflow file and document paths are retained for compatibility with earlier run references. Their current display names and release intent are stable, not prerelease.
 
@@ -28,7 +28,7 @@ Page chose the direct-Google-download candidate path in PR #133. This does not a
 
 ## Release-note outline
 
-- V2026 CLI stable-release candidate `2026.0.0`, exact commit and internal validation label.
+- V2026 CLI stable-release candidate `2026.11.14`, exact commit and internal validation label.
 - Source code and local fixture evidence only where that is what passed.
 - Task-support prose in README; partial lesson support is not all-task support.
 - Assessment mode remains refused. Manually/self-marked work and unimplemented maths editors remain refused.

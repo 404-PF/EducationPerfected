@@ -26,7 +26,7 @@ async function stage(source, destination, commit) {
     fs.readFileSync(path.join(source, "CANDIDATE.json"), "utf8"),
   );
   assert.equal(candidate.schemaVersion, 2);
-  assert.equal(candidate.sourceVersion, "2026.0.0");
+  assert.equal(candidate.sourceVersion, "2026.11.14");
   assert.equal(candidate.labelKind, "internal-validation-not-release");
   assert.equal(candidate.status, "build-only-not-for-distribution");
   assert.equal(candidate.publicationAuthorized, false);
