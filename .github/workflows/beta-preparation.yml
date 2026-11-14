@@ -87,6 +87,7 @@ jobs:
           node scripts/packaged-startup-evidence-test.js
           node scripts/test-startup-failure-test.js
           node scripts/windows-navigation-panel-test.js
+          node scripts/runtime-directory-test.js
           if [ "$RUNNER_OS" = Windows ]; then python_bin=python; else python_bin=python3; fi
           "$python_bin" scripts/windows-conpty-test.py
           "$python_bin" scripts/downloadable-first-run-windows-test.py
