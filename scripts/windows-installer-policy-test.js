@@ -1,0 +1,22 @@
+// Fixed repository source only; no Inno compile or installer execution.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const iss=fs.readFileSync(path.join(__dirname,'../installer/windows-setup.iss'),'utf8');
+for(const required of [
+ 'AppId={{5C0EDD47-9C42-5901-AF48-2393F39A36CD}','PrivilegesRequired=lowest',
+ '{localappdata}\\Programs\\EducationPerfected','OutputBaseFilename=educationperfected-setup-windows-x64',
+ 'DestName: "educationperfected-windows-x64.exe"','Name: "addtopath"','{group}\\EducationPerfected',
+ 'CurUninstallStepChanged','RemoveAppFromPath','UninstallDisplayName=EducationPerfected',
+])assert.ok(iss.includes(required),required);
+assert.doesNotMatch(iss,/PrivilegesRequired=(admin|poweruser)/);
+const beta=fs.readFileSync(path.join(__dirname,'../.github/workflows/beta-preparation.yml'),'utf8');
+for(const required of [
+ 'Inno Setup 6\\ISCC.exe',"require('./package.json').version",'/DAppVersion','/DSourceExe',
+ 'installer\\windows-setup.iss','educationperfected-setup-windows-x64.exe >> SHA256SUMS',
+ "inputs.browser_mode == 'direct-download-validation' && runner.os == 'Windows'",
+])assert.ok(beta.includes(required),required);
+const bundles=beta.split('      - name: Upload explicitly requested downloadable candidate bundle')[1].split('      - name:')[0];
+assert.match(bundles,/educationperfected\*/,'candidate upload picks up the installer via glob');
+const staging=fs.readFileSync(path.join(__dirname,'../.github/workflows/release-bundle-staging.yml'),'utf8');
+for(const required of ['educationperfected-setup-windows-x64.exe','installer is not byte-identical','12 payload files'])assert.ok(staging.includes(required),required);
+assert.ok(require('../package.json').scripts['test:phase3'].includes('windows-installer-policy-test.js'),'wired into test:phase3');
+console.log('Windows installer: per-user Inno Setup script, candidate lane builds and checksums it, staging bundles it byte-identical, raw exe asset names unchanged.');

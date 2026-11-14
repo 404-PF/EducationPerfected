@@ -10,7 +10,7 @@ EducationPerfected is a packaged command-line app that opens Education Perfect i
 
 ### Install and first run
 
-1. Download the asset for your platform from the v2026.11.14 release: `educationperfected-windows-x64.exe`, `educationperfected-macos-arm64`, `educationperfected-macos-x64`, `educationperfected-linux-x64`, or `educationperfected-linux-arm64`. Verify it against `SHA256SUMS` in the same release.
+1. Download the asset for your platform from the v2026.11.14 release: `educationperfected-windows-x64.exe`, `educationperfected-macos-arm64`, `educationperfected-macos-x64`, `educationperfected-linux-x64`, or `educationperfected-linux-arm64`. Verify it against `SHA256SUMS` in the same release. On Windows, `educationperfected-setup-windows-x64.exe` is an optional per-user installer (no administrator rights needed): it places the app in `%LOCALAPPDATA%\Programs\EducationPerfected`, adds a Start menu entry, can add the app to your PATH, and registers an uninstaller. The raw executables are unchanged and the updater still applies to installed copies.
 2. Builds are unsigned. On Windows, SmartScreen shows "Windows protected your PC": choose "More info", then "Run anyway". On macOS, the downloaded app is quarantined: right-click it and choose Open once, or run `xattr -d com.apple.quarantine educationperfected-macos-*`.
 3. Run `educationperfected setup` in a terminal. It asks consent for a one-time Chrome for Testing download (about 200 MB from Google, stored in `~/.educationperfected`), then offers to save a login in your OS credential store. Both are optional; a saved login can be removed with `forget-credentials`.
 4. Run `educationperfected` to open the login browser and the interactive CLI. `help` lists every command.
