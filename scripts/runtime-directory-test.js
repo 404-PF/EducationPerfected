@@ -32,7 +32,7 @@ try {
     const invalid = path.join(tmp, 'run-JKL012');
     fs.mkdirSync(invalid);
     fs.writeFileSync(path.join(invalid, 'OWNER.json'), 'not-json');
-    const next = createRuntimeDirectory({home, pid:45, kill:pid => { if (pid !== 43) dead(); }});
+    const next = createRuntimeDirectory({home, pid:45, kill:pid => { if (pid !== 43) dead(); }, cleanupRetry:{attempts:3, delayMs:1}});
     assert.equal(fs.existsSync(stale), false);
     for (const directory of [first.directory, live, uncertain, invalid]) assert.ok(fs.existsSync(directory));
     assert.equal(fs.readFileSync(path.join(browserCache, 'receipt-inert'), 'utf8'), 'keep');
@@ -48,6 +48,28 @@ try {
     assert.equal(next.remove(true), true);
     assert.equal(next.remove(true), true);
     assert.equal(fs.existsSync(next.directory), false);
+    // A transient Windows-style lock (closing browser helper, scanner) is retried
+    // and the exit still cleans up; a non-retryable failure is not retried.
+    const flaky = createRuntimeDirectory({home, pid:46, kill:dead, cleanupRetry:{attempts:4, delayMs:1}});
+    const flakyLocked = path.join(flaky.directory, 'locked-profile');
+    fs.writeFileSync(flakyLocked, 'inert');
+    let strikes = 2;
+    try {
+        fs.rmSync = (file, options) => { if (file === flakyLocked && strikes-- > 0) throw Object.assign(new Error('inert transient lock'), {code:'EPERM'}); return originalRemove(file, options); };
+        assert.equal(flaky.remove(true), true);
+    } finally { fs.rmSync = originalRemove; }
+    assert.equal(fs.existsSync(flaky.directory), false);
+    const weird = createRuntimeDirectory({home, pid:47, kill:dead, cleanupRetry:{attempts:3, delayMs:1}});
+    const weirdLocked = path.join(weird.directory, 'locked-profile');
+    fs.writeFileSync(weirdLocked, 'inert');
+    let weirdCalls = 0;
+    try {
+        fs.rmSync = (file, options) => { if (file === weirdLocked) { weirdCalls++; throw Object.assign(new Error('inert non-retryable'), {code:'EACCES'}); } return originalRemove(file, options); };
+        assert.throws(() => weird.remove(true), /non-retryable/);
+    } finally { fs.rmSync = originalRemove; }
+    assert.equal(weirdCalls, 1);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(weird.directory, 'OWNER.json'))).state, 'cleanup-ready');
+    assert.equal(weird.remove(true), true);
     assert.equal(first.remove(true), true);
     // Symlink tests apply where the local OS permits creating them. Windows
     // hosted integration must not be inferred from a POSIX synthetic fixture.
@@ -67,5 +89,5 @@ try {
             assert.throws(() => createRuntimeDirectory({home}), /real directory/);
         } finally { fs.rmSync(outside, {recursive:true, force:true}); }
     }
-    console.log('Runtime root containment, cache preservation, live/uncertain ownership and safe stale cleanup passed (synthetic only).');
+    console.log('Runtime root containment, cache preservation, live/uncertain ownership, safe stale cleanup, transient-lock retry and non-retryable passthrough passed (synthetic only).');
 } finally { fs.rmSync(home, {recursive:true, force:true}); }
