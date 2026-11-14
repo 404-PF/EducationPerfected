@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Native SEA first-run UI/download probe. Local pages and no credentials; not no-Node proof."""
 import os,sys,pathlib,platform,pty,subprocess,tempfile,select,time,threading,http.server,shutil,signal
+APP_DATA='.educationperfected'
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.end_headers()
@@ -13,10 +14,10 @@ def verify_result(response,text,sent,ready,returncode,home):
     if response.startswith(b'n'):
         assert sent and returncode==1 and not ready
         assert b'Browser download checksum verified' not in text
-        cache=home/'.educationperfected'/'browsers';assert not list(cache.iterdir())
+        cache=home/APP_DATA/'browsers';assert not list(cache.iterdir())
     else:
         assert sent and ready and b'Browser download checksum verified' in text and returncode==130
-        cache=home/'.educationperfected'/'browsers';assert len(list(cache.glob('*/COMPLETE.json')))==1
+        cache=home/APP_DATA/'browsers';assert len(list(cache.glob('*/COMPLETE.json')))==1
         assert not list(cache.glob('*.lock')) and not list(cache.glob('.download-*'))
 
 def run_probe(artifact,env,home,response):
@@ -52,6 +53,9 @@ def main():
         for response in (b'n\n',b'\n',b'y\n'):
             run_probe(artifact,env,home,response)
             assert not list(temp.glob('educationperfected-*'))
+            # Each probe must start from a fresh cache: a cached browser skips the
+            # consent prompt, so later accept probes would never see it.
+            shutil.rmtree(home/APP_DATA,ignore_errors=True)
         print('Native first-run SEA: fresh-home interactive decline leaves no cache; Enter and explicit yes both accept; fresh download consent verifies archive, reaches local login-ready, SIGINT130 and owned extraction/install-lock cleanup passed. Not physical-console/no-Node proof.',flush=True)
     finally:
         server.shutdown();server.server_close();thread.join(timeout=3);shutil.rmtree(root)
